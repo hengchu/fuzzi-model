@@ -1,0 +1,112 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: df9aad487486a27d078e37e10aef3eb82483778fb45463aa3f4a079dcaa72da6
+
+name:           fuzzi-model
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/githubuser/fuzzi-model#readme>
+homepage:       https://github.com/githubuser/fuzzi-model#readme
+bug-reports:    https://github.com/githubuser/fuzzi-model/issues
+author:         Author name here
+maintainer:     example@example.com
+copyright:      2019 Author name here
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/fuzzi-model
+
+library
+  ghc-options: -Wall -Wno-unused-imports -Wno-unused-matches -Wno-name-shadowing -fprint-potential-instances
+  exposed-modules:
+                  Term
+                , Examples
+                , Interp.StraightForward
+                , Interp.Tracing
+                , Interp.Concrete
+                , Interp.Types
+                , Interp.TracingConcrete
+                , Interp
+                , Distribution
+                , Model
+  other-modules:
+      Paths_fuzzi_model
+  hs-source-dirs:
+      src
+  build-depends:
+                base >=4.7    && <5
+              , free >= 5.1.1 && <6
+              , mtl  >= 2.2.2 && <2.3
+              , random-fu >= 0.2.7.0 && <0.3
+              , mwc-random >= 0.14.0.0 && <0.15
+              , transformers >= 0.5.6.2 && <0.6
+  default-language: Haskell2010
+  default-extensions:
+                     DataKinds
+                   , DeriveGeneric
+                   , DuplicateRecordFields
+                   , FlexibleContexts
+                   , TypeApplications
+                   , DeriveFunctor
+                   , DeriveFoldable
+                   , DeriveTraversable
+                   , TypeOperators
+                   , ApplicativeDo
+                   , ViewPatterns
+                   , LambdaCase
+                   , GeneralizedNewtypeDeriving
+                   , TypeFamilies
+                   , ScopedTypeVariables
+                   , RankNTypes
+                   , FlexibleInstances
+                   , DeriveDataTypeable
+                   , QuasiQuotes
+                   , TemplateHaskell
+                   , ConstraintKinds
+                   , UndecidableInstances
+                   , MultiParamTypeClasses
+                   , KindSignatures
+                   , FunctionalDependencies
+                   , DataKinds
+                   , GADTs
+                   , StandaloneDeriving
+                   , ViewPatterns
+                   , CPP
+                   , PartialTypeSignatures
+                   , AllowAmbiguousTypes
+                   , PolyKinds
+
+executable fuzzi-model-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_fuzzi_model
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+                base >=4.7 && <5
+              , free >= 5.1.1 && <6
+              , fuzzi-model
+  default-language: Haskell2010
+
+test-suite fuzzi-model-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_fuzzi_model
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , fuzzi-model
+  default-language: Haskell2010
