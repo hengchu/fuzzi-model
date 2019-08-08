@@ -6,11 +6,32 @@ import qualified Distribution as D
 import Control.Monad.Trans.Class
 import Types
 
+infix 4 %<, %<=, %>, %>=, %==, %/=
+
+class ModelOrd a where
+  type CmpResult a :: *
+
+  (%<)  :: a -> a -> CmpResult a
+  (%<=) :: a -> a -> CmpResult a
+  (%>)  :: a -> a -> CmpResult a
+  (%>=) :: a -> a -> CmpResult a
+  (%==) :: a -> a -> CmpResult a
+  (%/=) :: a -> a -> CmpResult a
+
+instance ModelOrd Double where
+  type CmpResult Double = Bool
+
+  (%<)  = (<)
+  (%<=) = (<=)
+  (%>)  = (>)
+  (%>=) = (>=)
+  (%==) = (==)
+  (%/=) = (/=)
+
 -- |Models of samples from distributions.
-class (Monad domain, Fractional a, Value a) => Model domain a where
+class (Monad domain, Fractional a, Value a, ModelOrd a) => Model domain a where
   laplace  :: a -> Double -> domain a
   gaussian :: a -> Double -> domain a
-
 
 instance (MonadTrans t, Monad (t Dist)) => Model (t Dist) Double where
   laplace c w = lift $ D.laplace c w
@@ -59,6 +80,9 @@ getSample (Gaussian v _ _) = v
 getSample (Bin v _ _ _) = v
 getSample (Un v _ _) = v
 
+inject :: a -> WithDistribution a
+inject = Pure
+
 instance Num a => Num (WithDistribution a) where
   lhs + rhs     = Bin (getSample lhs + getSample rhs) lhs PLUS rhs
   lhs * rhs     = Bin (getSample lhs * getSample rhs) lhs MULT rhs
@@ -78,5 +102,15 @@ instance (Model domain a) => Model domain (WithDistribution a) where
   gaussian c w = do
     sample <- gaussian @domain @a (getSample c) w
     return $ Gaussian sample c w
+
+instance ModelOrd a => ModelOrd (WithDistribution a) where
+  type CmpResult (WithDistribution a) = CmpResult a
+
+  (%<)  a b = (%<)  (getSample a) (getSample b)
+  (%<=) a b = (%<=) (getSample a) (getSample b)
+  (%>)  a b = (%>)  (getSample a) (getSample b)
+  (%>=) a b = (%>=) (getSample a) (getSample b)
+  (%==) a b = (%==) (getSample a) (getSample b)
+  (%/=) a b = (%/=) (getSample a) (getSample b)
 
 instance Value a => Value (WithDistribution a)
