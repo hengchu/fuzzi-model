@@ -17,13 +17,15 @@ import Interp.Types
 import Term
 import Data.Functor.Compose
 
-runInterpreter :: forall interp a. (Interpretation interp)
-               => Fuzzi (Domain interp) a
+runInterpreter :: forall interp bool a.
+                  (Interpretation interp, Decision interp ~ bool)
+               => Fuzzi (Domain interp) bool a
                -> (Domain interp) a
 runInterpreter = runAp (step @interp)
 
 
-runMultiInterpreter :: forall interp a. (MultiInterpretation interp)
-                    => Fuzzi (MultiDomain interp) a
+runMultiInterpreter :: forall interp bool a.
+                       (MultiInterpretation interp, MultiDecision interp ~ bool)
+                    => Fuzzi (MultiDomain interp) bool a
                     -> [(MultiDomain interp) a]
 runMultiInterpreter prog = getCompose $ runAp (stepAll @interp) prog

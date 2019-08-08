@@ -5,7 +5,7 @@ import Term
 import Data.Functor.Identity
 import qualified Model as M
 
-straightforwardInterp :: FuzziF M.NoRandomness a -> M.NoRandomness a
+straightforwardInterp :: FuzziF M.NoRandomness Bool a -> M.NoRandomness a
 straightforwardInterp (FPure a) =
   M.NoRandomness a
 straightforwardInterp (FAp f a) =
@@ -27,4 +27,5 @@ data StraightForwardInterp
 
 instance Interpretation StraightForwardInterp where
   type Domain StraightForwardInterp = M.NoRandomness
+  type Decision StraightForwardInterp = Bool
   step = straightforwardInterp

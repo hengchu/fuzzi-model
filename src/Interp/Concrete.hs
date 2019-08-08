@@ -8,7 +8,7 @@ import qualified Model as M
 
 type ConcreteDomain = Dist
 
-concreteInterp :: FuzziF ConcreteDomain a -> ConcreteDomain a
+concreteInterp :: FuzziF ConcreteDomain Bool a -> ConcreteDomain a
 concreteInterp (FPure x) = pure x
 concreteInterp (FAp f a) =
   concreteInterp f <*> concreteInterp a
@@ -31,4 +31,5 @@ data ConcreteInterp
 
 instance Interpretation ConcreteInterp where
   type Domain ConcreteInterp = ConcreteDomain
+  type Decision ConcreteInterp = Bool
   step = concreteInterp

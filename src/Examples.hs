@@ -7,13 +7,13 @@ import Term
 import qualified Distribution as D
 import qualified Model as M
 
-prog1 :: (M.Model domain v, Show v) => Fuzzi domain v
+prog1 :: (M.Model domain v, Show v) => Fuzzi domain bool v
 prog1 = do
   x1 <- laplace (pure 1.0) 1.0
   x2 <- gaussian (pure 1.0) 1.0
   pure $ x1 + x2
 
-prog2 :: (M.Model domain v, Show v) => Fuzzi domain v
+prog2 :: (M.Model domain v, Show v) => Fuzzi domain bool v
 prog2 =
   withSample (laplace (pure 1.0) 1.0) $ \x1 -> do
     x2 <- gaussian (pure x1) 1.0

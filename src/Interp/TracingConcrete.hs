@@ -8,7 +8,7 @@ import qualified Model as M
 
 type TracingConcreteDomain = WriterT [SomeTrace] Dist
 
-tracingConcreteInterp :: FuzziF TracingConcreteDomain a -> TracingConcreteDomain a
+tracingConcreteInterp :: FuzziF TracingConcreteDomain Bool a -> TracingConcreteDomain a
 tracingConcreteInterp (FPure x) = pure x
 tracingConcreteInterp (FAp f a) =
   tracingConcreteInterp f <*> tracingConcreteInterp a
@@ -33,4 +33,5 @@ data TracingConcreteInterp
 
 instance Interpretation TracingConcreteInterp where
   type Domain TracingConcreteInterp = TracingConcreteDomain
+  type Decision TracingConcreteInterp = Bool
   step = tracingConcreteInterp

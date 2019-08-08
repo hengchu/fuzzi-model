@@ -10,7 +10,7 @@ import Control.Monad.Cont
 
 type TracingDomain = WriterT [SomeTrace] M.NoRandomness
 
-tracingInterp :: FuzziF TracingDomain a -> TracingDomain a
+tracingInterp :: FuzziF TracingDomain Bool a -> TracingDomain a
 tracingInterp (FPure x) =
   pure x
 tracingInterp (FAp f a) =
@@ -36,4 +36,5 @@ data TracingInterp
 
 instance Interpretation TracingInterp where
   type Domain TracingInterp = TracingDomain
+  type Decision TracingInterp = Bool
   step = tracingInterp

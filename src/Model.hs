@@ -11,6 +11,7 @@ class (Monad domain, Fractional a, Value a) => Model domain a where
   laplace  :: a -> Double -> domain a
   gaussian :: a -> Double -> domain a
 
+
 instance (MonadTrans t, Monad (t Dist)) => Model (t Dist) Double where
   laplace c w = lift $ D.laplace c w
   gaussian c w = lift $ D.gaussian c w
