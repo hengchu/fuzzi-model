@@ -46,81 +46,85 @@ reportNoisyMax (x:xs) = do
     reportNoisyMaxAux xs 0 x
 
 test1 :: Double
-test1 = M.unwrapNoRandomness $ runInterpreter @StraightForwardInterp prog1
+test1 = M.unwrapNoRandomness $ runInterpreter StraightForwardInterp prog1
 
 test2 :: (Double, [SomeTrace])
-test2 = M.unwrapNoRandomness $ runWriterT $ runInterpreter @TracingInterp prog1
+test2 = M.unwrapNoRandomness $ runWriterT $ runInterpreter TracingInterp prog1
 
 test3 :: IO (Double, [SomeTrace])
-test3 = D.sample $ runWriterT $ runInterpreter @TracingConcreteInterp prog1
+test3 = D.sample $ runWriterT $ runInterpreter TracingConcreteInterp prog1
 
 test4 :: IO Double
-test4 = D.sample $ runInterpreter @ConcreteInterp prog1
+test4 = D.sample $ runInterpreter ConcreteInterp prog1
 
+{-
 test5 :: [Double]
-test5 = map M.unwrapNoRandomness $ runMultiInterpreter @StraightForwardInterp prog1
+test5 = M.unwrapNoRandomness $ runMultiInterpreter StraightForwardInterp prog1
 
-test6 :: [(Double, [SomeTrace])]
-test6 = map (M.unwrapNoRandomness . runWriterT) $ runMultiInterpreter @TracingInterp prog1
+test6 :: ([Double], [SomeTrace])
+test6 = M.unwrapNoRandomness . runWriterT $ runMultiInterpreter TracingInterp prog1
 
-test7 :: [IO (Double, [SomeTrace])]
-test7 = map (D.sample . runWriterT) $ runMultiInterpreter @TracingConcreteInterp prog1
+test7 :: IO ([Double], [SomeTrace])
+test7 = (D.sample . runWriterT) $ runMultiInterpreter TracingConcreteInterp prog1
 
-test8 :: [IO Double]
-test8 = map D.sample $ runMultiInterpreter @ConcreteInterp prog1
+test8 :: IO [Double]
+test8 = D.sample $ runMultiInterpreter ConcreteInterp prog1
+-}
 
 test9 :: M.WithDistribution Double
-test9 = M.unwrapNoRandomness $ runInterpreter @StraightForwardInterp prog1
+test9 = M.unwrapNoRandomness $ runInterpreter StraightForwardInterp prog1
 
 test10 :: (M.WithDistribution Double, [SomeTrace])
-test10 = M.unwrapNoRandomness $ runWriterT $ runInterpreter @TracingInterp prog1
+test10 = M.unwrapNoRandomness $ runWriterT $ runInterpreter TracingInterp prog1
 
 test11 :: IO (M.WithDistribution Double, [SomeTrace])
-test11 = D.sample $ runWriterT $ runInterpreter @TracingConcreteInterp prog1
+test11 = D.sample $ runWriterT $ runInterpreter TracingConcreteInterp prog1
 
 test12 :: IO (M.WithDistribution Double)
-test12 = D.sample $ runInterpreter @ConcreteInterp prog1
+test12 = D.sample $ runInterpreter ConcreteInterp prog1
 
+{-
 test13 :: [M.WithDistribution Double]
-test13 = map M.unwrapNoRandomness $ runMultiInterpreter @StraightForwardInterp prog1
+test13 = M.unwrapNoRandomness $ runMultiInterpreter StraightForwardInterp prog1
 
-test14 :: [(M.WithDistribution Double, [SomeTrace])]
-test14 = map (M.unwrapNoRandomness . runWriterT) $ runMultiInterpreter @TracingInterp prog1
+test14 :: ([M.WithDistribution Double], [SomeTrace])
+test14 = (M.unwrapNoRandomness . runWriterT) $ runMultiInterpreter TracingInterp prog1
 
-test15 :: [IO (M.WithDistribution Double, [SomeTrace])]
-test15 = map (D.sample . runWriterT) $ runMultiInterpreter @TracingConcreteInterp prog1
+test15 :: IO ([M.WithDistribution Double], [SomeTrace])
+test15 = (D.sample . runWriterT) $ runMultiInterpreter TracingConcreteInterp prog1
 
-test16 :: [IO (M.WithDistribution Double)]
-test16 = map D.sample $ runMultiInterpreter @ConcreteInterp prog1
+test16 :: IO [M.WithDistribution Double]
+test16 = D.sample $ runMultiInterpreter ConcreteInterp prog1
+-}
 
 test17 :: Int
 test17 = M.unwrapNoRandomness $
-  runInterpreter @StraightForwardInterp (reportNoisyMax @Double [1, 3, 2])
+  runInterpreter StraightForwardInterp (reportNoisyMax @Double [1, 3, 2])
 
 test18 :: (Int, [SomeTrace])
 test18 = M.unwrapNoRandomness . runWriterT $
-  runInterpreter @TracingInterp (reportNoisyMax @Double [1, 3, 2])
+  runInterpreter TracingInterp (reportNoisyMax @Double [1, 3, 2])
 
 test19 :: IO (Int, [SomeTrace])
 test19 = D.sample . runWriterT $
-  runInterpreter @TracingConcreteInterp (reportNoisyMax @Double [1, 3, 2])
+  runInterpreter TracingConcreteInterp (reportNoisyMax @Double [1, 3, 2])
 
 test20 :: IO Int
 test20 = D.sample $
-  runInterpreter @ConcreteInterp (reportNoisyMax @Double [1, 3, 2])
+  runInterpreter ConcreteInterp (reportNoisyMax @Double [1, 3, 2])
 
 test21 :: Int
 test21 = M.unwrapNoRandomness $
-  runInterpreter @StraightForwardInterp (reportNoisyMax @(M.WithDistribution Double) [1, 3, 2])
+  runInterpreter StraightForwardInterp (reportNoisyMax @(M.WithDistribution Double) [1, 3, 2])
 
 test22 :: (Int, [SomeTrace])
 test22 = M.unwrapNoRandomness . runWriterT $
-  runInterpreter @TracingInterp (reportNoisyMax @(M.WithDistribution Double) [1, 3, 2])
+  runInterpreter TracingInterp (reportNoisyMax @(M.WithDistribution Double) [1, 3, 2])
 
 test23 :: IO (Int, [SomeTrace])
 test23 = D.sample . runWriterT $
-  runInterpreter @TracingConcreteInterp (reportNoisyMax @(M.WithDistribution Double) [1, 3, 2])
+  runInterpreter TracingConcreteInterp (reportNoisyMax @(M.WithDistribution Double) [1, 3, 2])
 
 test24 :: IO Int
 test24 = D.sample $
-  runInterpreter @ConcreteInterp (reportNoisyMax @(M.WithDistribution Double) [1, 3, 2])
+  runInterpreter ConcreteInterp (reportNoisyMax @(M.WithDistribution Double) [1, 3, 2])

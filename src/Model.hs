@@ -5,6 +5,9 @@ import Distribution (Dist, DistT)
 import qualified Distribution as D
 import Control.Monad.Trans.Class
 import Types
+import Data.SBV
+import Symbol
+import Data.Coerce
 
 infix 4 %<, %<=, %>, %>=, %==, %/=
 
@@ -27,6 +30,16 @@ instance ModelOrd Double where
   (%>=) = (>=)
   (%==) = (==)
   (%/=) = (/=)
+
+instance ModelOrd RealExpr where
+  type CmpResult RealExpr = BoolExpr
+
+  (%<)  a b = BoolExpr $ (.<)  (unwrapRealExpr a) (unwrapRealExpr b)
+  (%<=) a b = BoolExpr $ (.<=) (unwrapRealExpr a) (unwrapRealExpr b)
+  (%>)  a b = BoolExpr $ (.>)  (unwrapRealExpr a) (unwrapRealExpr b)
+  (%>=) a b = BoolExpr $ (.>=) (unwrapRealExpr a) (unwrapRealExpr b)
+  (%==) a b = BoolExpr $ (.==) (unwrapRealExpr a) (unwrapRealExpr b)
+  (%/=) a b = BoolExpr $ (./=) (unwrapRealExpr a) (unwrapRealExpr b)
 
 -- |Models of samples from distributions.
 class (Monad domain, Fractional a, Value a, ModelOrd a) => Model domain a where
@@ -59,6 +72,10 @@ instance Model NoRandomness Double where
 instance (MonadTrans t, Monad (t NoRandomness)) => Model (t NoRandomness) Double where
   laplace c _ = lift $ NoRandomness c
   gaussian c _ = lift $ NoRandomness c
+
+instance (MonadTrans t, Monad (t FreshSymbolic)) => Model (t FreshSymbolic) RealExpr where
+  laplace  _ _ = lift $ mkRealSymbol "lap"
+  gaussian _ _ = lift $ mkRealSymbol "gauss"
 
 data BinOp = PLUS | MINUS | MULT | DIV
   deriving (Show, Eq, Ord)

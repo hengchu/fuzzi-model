@@ -27,9 +27,9 @@ concreteInterp (FIf cond truecmd falsecmd) = do
   then concreteInterp truecmd
   else concreteInterp falsecmd
 
-data ConcreteInterp
+data ConcreteInterp = ConcreteInterp
 
 instance Interpretation ConcreteInterp where
   type Domain ConcreteInterp = ConcreteDomain
   type Decision ConcreteInterp = Bool
-  step = concreteInterp
+  step _ = concreteInterp

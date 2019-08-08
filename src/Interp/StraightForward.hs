@@ -23,9 +23,9 @@ straightforwardInterp (FIf cond truecmd falsecmd) =
 straightforwardInterp (FWithSample a f) =
   straightforwardInterp $ f (M.unwrapNoRandomness $ straightforwardInterp a)
 
-data StraightForwardInterp
+data StraightForwardInterp = StraightForwardInterp
 
 instance Interpretation StraightForwardInterp where
   type Domain StraightForwardInterp = M.NoRandomness
   type Decision StraightForwardInterp = Bool
-  step = straightforwardInterp
+  step _ = straightforwardInterp

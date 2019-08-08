@@ -35,10 +35,12 @@ library
                 , Interp.Concrete
                 , Interp.Types
                 , Interp.TracingConcrete
+                , Interp.Symbolic
                 , Interp
                 , Distribution
                 , Model
                 , Types
+                , Symbol
   other-modules:
       Paths_fuzzi_model
   hs-source-dirs:
@@ -50,6 +52,8 @@ library
               , random-fu >= 0.2.7.0 && <0.3
               , mwc-random >= 0.14.0.0 && <0.15
               , transformers >= 0.5.6.2 && <0.6
+              , sbv >= 8.3 && < 9
+              , list-t >= 1.0.3.1 && < 1.1
   default-language: Haskell2010
   default-extensions:
                      DataKinds

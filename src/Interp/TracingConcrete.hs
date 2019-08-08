@@ -29,9 +29,9 @@ tracingConcreteInterp (FIf cond truecmd falsecmd) = do
   then tracingConcreteInterp truecmd
   else tracingConcreteInterp falsecmd
 
-data TracingConcreteInterp
+data TracingConcreteInterp = TracingConcreteInterp
 
 instance Interpretation TracingConcreteInterp where
   type Domain TracingConcreteInterp = TracingConcreteDomain
   type Decision TracingConcreteInterp = Bool
-  step = tracingConcreteInterp
+  step _ = tracingConcreteInterp

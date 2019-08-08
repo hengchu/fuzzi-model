@@ -1,9 +1,11 @@
 module Interp.Types where
 
-import Term
-import Model
-import Type.Reflection
+import Control.Monad.Trans.Class
 import Data.Functor.Compose
+import ListT
+import Model
+import Term
+import Type.Reflection
 
 data Trace :: * -> * where
   TrLap   :: a -> Double -> Trace a
@@ -24,16 +26,13 @@ trGauss center width = MkSomeTrace (typeRep @domain) (TrGauss center width)
 class Monad (Domain interpreter) => Interpretation interpreter where
   type Domain interpreter :: * -> *
   type Decision interpreter :: *
-  step :: FuzziF (Domain interpreter) (Decision interpreter) a
+  step :: interpreter
+       -> FuzziF (Domain interpreter) (Decision interpreter) a
        -> (Domain interpreter) a
 
 class Monad (MultiDomain interpreter) => MultiInterpretation interpreter where
   type MultiDomain interpreter :: * -> *
   type MultiDecision interpreter :: *
-  stepAll :: FuzziF (MultiDomain interpreter) (MultiDecision interpreter) a
-          -> Compose [] (MultiDomain interpreter) a
-
-instance Interpretation interpreter => MultiInterpretation interpreter where
-  type MultiDomain interpreter = Domain interpreter
-  type MultiDecision interpreter = Decision interpreter
-  stepAll prog = Compose [step @interpreter prog]
+  stepAll :: interpreter
+          -> FuzziF (MultiDomain interpreter) (MultiDecision interpreter) a
+          -> ListT (MultiDomain interpreter) a

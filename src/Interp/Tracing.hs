@@ -32,9 +32,9 @@ tracingInterp (FIf cond truecmd falsecmd) = do
   then tracingInterp truecmd
   else tracingInterp falsecmd
 
-data TracingInterp
+data TracingInterp = TracingInterp
 
 instance Interpretation TracingInterp where
   type Domain TracingInterp = TracingDomain
   type Decision TracingInterp = Bool
-  step = tracingInterp
+  step _ = tracingInterp
