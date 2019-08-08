@@ -38,6 +38,7 @@ library
                 , Interp
                 , Distribution
                 , Model
+                , Types
   other-modules:
       Paths_fuzzi_model
   hs-source-dirs:

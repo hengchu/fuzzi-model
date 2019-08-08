@@ -1,8 +1,9 @@
 module Term where
 
+import Control.Applicative.Free
 import Data.Proxy
 import Model
-import Control.Applicative.Free
+import Types
 
 data FuzziF :: (* -> *) -> * -> * where
   FPure    :: a -> FuzziF d a
@@ -57,13 +58,3 @@ withSample a f =
 fif :: Fuzzi domain Bool -> Fuzzi domain a -> Fuzzi domain a -> Fuzzi domain a
 fif cond truecmd falsecmd =
   liftAp $ FIf (retractAp cond) (retractAp truecmd) (retractAp falsecmd)
-
--- |Simple first-order types.
-class Value a
-
-instance Value Int
-instance Value Integer
-instance Value Bool
-instance Value Double
-instance (Value a, Value b) => Value (a, b)
-instance (Value a) => Value [a]
