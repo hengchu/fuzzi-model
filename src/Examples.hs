@@ -30,3 +30,16 @@ test3 = D.sample $ runWriterT $ runInterpreter @TracingConcreteInterp prog1
 
 test4 :: IO Double
 test4 = D.sample $ runInterpreter @ConcreteInterp prog1
+
+
+test5 :: [Double]
+test5 = map M.unwrapNoRandomness $ runMultiInterpreter @StraightForwardInterp prog1
+
+test6 :: [(Double, [SomeTrace])]
+test6 = map (M.unwrapNoRandomness . runWriterT) $ runMultiInterpreter @TracingInterp prog1
+
+test7 :: [IO (Double, [SomeTrace])]
+test7 = map (D.sample . runWriterT) $ runMultiInterpreter @TracingConcreteInterp prog1
+
+test8 :: [IO Double]
+test8 = map D.sample $ runMultiInterpreter @ConcreteInterp prog1
