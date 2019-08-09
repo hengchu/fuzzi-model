@@ -1,6 +1,6 @@
 module Main where
 
-import Term
+import EDSL
 --import Interp
 
 main :: IO ()
