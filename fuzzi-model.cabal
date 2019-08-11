@@ -29,6 +29,8 @@ library
   ghc-options: -Wall -Wno-unused-imports -Wno-unused-matches -Wno-name-shadowing -fprint-potential-instances
   exposed-modules:
                   EDSL
+                , Distribution
+                , Types
   other-modules:
       Paths_fuzzi_model
   hs-source-dirs:
@@ -77,6 +79,7 @@ library
                    , PartialTypeSignatures
                    , PolyKinds
                    , QuantifiedConstraints
+                   , DerivingVia
 
 executable fuzzi-model-exe
   main-is: Main.hs
@@ -90,6 +93,41 @@ executable fuzzi-model-exe
               , free >= 5.1.1 && <6
               , fuzzi-model
   default-language: Haskell2010
+  default-extensions:
+                     DataKinds
+                   , DeriveGeneric
+                   , DuplicateRecordFields
+                   , FlexibleContexts
+                   , TypeApplications
+                   , DeriveFunctor
+                   , DeriveFoldable
+                   , DeriveTraversable
+                   , TypeOperators
+                   , ApplicativeDo
+                   , ViewPatterns
+                   , LambdaCase
+                   , GeneralizedNewtypeDeriving
+                   , TypeFamilies
+                   , ScopedTypeVariables
+                   , RankNTypes
+                   , FlexibleInstances
+                   , DeriveDataTypeable
+                   , QuasiQuotes
+                   , TemplateHaskell
+                   , ConstraintKinds
+                   , UndecidableInstances
+                   , MultiParamTypeClasses
+                   , KindSignatures
+                   , FunctionalDependencies
+                   , DataKinds
+                   , GADTs
+                   , StandaloneDeriving
+                   , ViewPatterns
+                   , CPP
+                   , PartialTypeSignatures
+                   , PolyKinds
+                   , QuantifiedConstraints
+
 
 test-suite fuzzi-model-test
   type: exitcode-stdio-1.0
@@ -103,3 +141,37 @@ test-suite fuzzi-model-test
       base >=4.7 && <5
     , fuzzi-model
   default-language: Haskell2010
+  default-extensions:
+                     DataKinds
+                   , DeriveGeneric
+                   , DuplicateRecordFields
+                   , FlexibleContexts
+                   , TypeApplications
+                   , DeriveFunctor
+                   , DeriveFoldable
+                   , DeriveTraversable
+                   , TypeOperators
+                   , ApplicativeDo
+                   , ViewPatterns
+                   , LambdaCase
+                   , GeneralizedNewtypeDeriving
+                   , TypeFamilies
+                   , ScopedTypeVariables
+                   , RankNTypes
+                   , FlexibleInstances
+                   , DeriveDataTypeable
+                   , QuasiQuotes
+                   , TemplateHaskell
+                   , ConstraintKinds
+                   , UndecidableInstances
+                   , MultiParamTypeClasses
+                   , KindSignatures
+                   , FunctionalDependencies
+                   , DataKinds
+                   , GADTs
+                   , StandaloneDeriving
+                   , ViewPatterns
+                   , CPP
+                   , PartialTypeSignatures
+                   , PolyKinds
+                   , QuantifiedConstraints

@@ -4,54 +4,19 @@ module EDSL where
 import Data.Coerce
 import Data.Functor.Compose
 import Control.Monad.Codensity
+import Control.Monad.IO.Class
 import Type.Reflection (Typeable, typeRep, eqTypeRep, (:~~:)(..))
+import Types
 
--- |This constraint is only satisfied by first-class datatypes supported in
--- Fuzzi.
-class FuzziType (a :: *)
-
--- |Order operators in the semantic domain.
-class (Boolean (CmpResult a), Typeable a) => Ordered (a :: *) where
-  type CmpResult a :: *
-  (%<)  :: a -> a -> CmpResult a
-  (%<=) :: a -> a -> CmpResult a
-  (%>)  :: a -> a -> CmpResult a
-  (%>=) :: a -> a -> CmpResult a
-  (%==) :: a -> a -> CmpResult a
-  (%/=) :: a -> a -> CmpResult a
-
--- |This constraint is only satisfied by numeric datatypes supported in Fuzzi.
-class (Ordered a, Num a, Typeable a) => Numeric (a :: *)
-class (Numeric a, Fractional a) => FracNumeric (a :: *)
-
--- |Boolean operators in the semantic domain.
-class (Typeable a) => Boolean (a :: *) where
-  and :: a -> a -> a
-  or  :: a -> a -> a
-  neg :: a -> a
-
--- |Sample instructions in the semantic domain.
-class (Monad m, Typeable m) => MonadDist m where
-  laplace  :: (FracNumeric a) => a -> Double -> m a
-  gaussian :: (FracNumeric a) => a -> Double -> m a
+data Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
+  deriving (Functor)--, Applicative, Monad)
+  -- via (Codensity (Compose Fuzzi m))
 
 -- |The main typeclass for reification and reflection.
 class Syntactic a where
   type DeepRepr a :: *
   toDeepRepr      :: a -> Fuzzi (DeepRepr a)
   fromDeepRepr    :: Fuzzi (DeepRepr a) -> a
-
-data Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
-  deriving (Functor)--, Applicative, Monad)
-  -- via (Codensity (Compose Fuzzi m))
-
-instance Applicative (Mon m) where
-  pure a  = Mon $ \k -> k a
-  f <*> a = f >>= \f' -> a >>= \a' -> return (f' a')
-
-instance Monad (Mon m) where
-  return a = Mon $ \k -> k a
-  Mon m >>= f = Mon $ \k -> m (\a -> runMon (f a) k)
 
 data Fuzzi (a :: *) where
   Lam         :: (FuzziType a, Typeable a, Typeable b) => (Fuzzi a -> Fuzzi b) -> Fuzzi (a -> b)
@@ -61,8 +26,8 @@ data Fuzzi (a :: *) where
   Bind        :: (Monad m, Typeable m, Typeable a) => Fuzzi (m a) -> (Fuzzi (a -> m b)) -> Fuzzi (m b)
   Lit         :: FuzziType a    => a -> Fuzzi a
   If          :: (Boolean bool, Typeable a) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
-  Laplace     :: (Numeric a, MonadDist m) => Fuzzi a -> Double -> Fuzzi (m a)
-  Gaussian    :: (Numeric a, MonadDist m) => Fuzzi a -> Double -> Fuzzi (m a)
+  Laplace     :: (Distribution m a) => Fuzzi a -> Double -> Fuzzi (m a)
+  Gaussian    :: (Distribution m a) => Fuzzi a -> Double -> Fuzzi (m a)
   Variable    :: (Typeable a) => Int -> Fuzzi a
 
   And         :: (Boolean bool) => Fuzzi bool -> Fuzzi bool -> Fuzzi bool
@@ -90,10 +55,10 @@ data Fuzzi (a :: *) where
 if_ :: (Syntactic a, Boolean bool, Typeable bool, Typeable (DeepRepr a)) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
 
-lap :: (Numeric a, MonadDist m, FuzziType a) => Fuzzi a -> Double -> Mon m (Fuzzi a)
+lap :: Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
 lap c w = fromDeepRepr $ Laplace c w -- Mon ((Bind (Laplace c w)))
 
-gauss :: (Numeric a, MonadDist m, FuzziType a) => Fuzzi a -> Double -> Mon m (Fuzzi a)
+gauss :: Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
 gauss c w = fromDeepRepr $ Gaussian c w --  Mon ((Bind (Gaussian c w)))
 
 reify :: (Syntactic a) => a -> Fuzzi (DeepRepr a)
@@ -198,6 +163,62 @@ streamlineAux var (AssertTrue cond a) =
 streamlineAux var (AssertFalse cond a) =
   [AssertFalse cond' a' | cond' <- streamlineAux var cond, a' <- streamlineAux var a]
 
+ex1 :: (MonadDist m, Typeable m, Double ~ NumDomain m) => Mon m (Fuzzi Double)
+ex1 = do
+  x1 <- lap (Lit (1.0 :: Double)) 1.0
+  x2 <- lap (Lit 2.0) 1.0
+  return $ x1 + x2
+
+ex2 :: (MonadDist m, Typeable m, Double ~ NumDomain m) => Mon m (Fuzzi Double)
+ex2 = do
+  x1 <- lap 1.0 1.0
+  x2 <- lap x1 1.0
+  return $ x1 + x2
+
+ex3 :: Fuzzi Double -> Fuzzi Double -> Fuzzi Double
+ex3 a b = if_ (a %> b) a b
+
+ex4 :: (MonadDist m, Double ~ NumDomain m) => Mon m (Fuzzi Double)
+ex4 = do
+  x1 <- lap 1.0 1.0
+  x2 <- lap 1.0 1.0
+  if_ (x1 %> x2)
+      (do x3 <- gauss 1.0 1.0
+          return $ if_ (x3 %> x1) x3 x1
+      )
+      (do x4 <- gauss 1.0 1.0
+          return $ if_ (x4 %> x2) x4 x2
+      )
+
+reportNoisyMaxAux :: Distribution m a
+                  => [Fuzzi a]
+                  -> Fuzzi Int
+                  -> Fuzzi Int
+                  -> Fuzzi a
+                  -> Mon m (Fuzzi Int)
+reportNoisyMaxAux []     _       maxIdx _       = return maxIdx
+reportNoisyMaxAux (x:xs) currIdx maxIdx currMax = do
+  xNoised <- lap x 1.0
+  if_ (xNoised %> currMax)
+      (reportNoisyMaxAux xs (currIdx + 1) currIdx xNoised)
+      (reportNoisyMaxAux xs (currIdx + 1) maxIdx  currMax)
+
+reportNoisyMax :: Distribution m a
+               => [Fuzzi a]
+               -> Mon m (Fuzzi Int)
+reportNoisyMax []     = error "reportNoisyMax received empty input"
+reportNoisyMax (x:xs) = do
+  xNoised <- lap x 1.0
+  reportNoisyMaxAux xs 0 0 xNoised
+
+instance Applicative (Mon m) where
+  pure a  = Mon $ \k -> k a
+  f <*> a = f >>= \f' -> a >>= \a' -> return (f' a')
+
+instance Monad (Mon m) where
+  return a = Mon $ \k -> k a
+  Mon m >>= f = Mon $ \k -> m (\a -> runMon (f a) k)
+
 instance ( Syntactic a
          , Syntactic b
          , Typeable (DeepRepr a)
@@ -220,37 +241,6 @@ instance ( Monad m
   type DeepRepr (Mon m a) = m (DeepRepr a)
   toDeepRepr (Mon m) = m (Return . toDeepRepr)
   fromDeepRepr    m  = Mon $ \k -> Bind m (toDeepRepr $ k . fromDeepRepr)
-
-instance Boolean Bool where
-  and = (&&)
-  or  = (||)
-  neg = not
-
-instance Ordered Double where
-  type CmpResult Double = Bool
-  (%<)  = (<)
-  (%<=) = (<=)
-  (%>)  = (>)
-  (%>=) = (>=)
-  (%==) = (==)
-  (%/=) = (/=)
-
-instance Ordered Int where
-  type CmpResult Int = Bool
-  (%<)  = (<)
-  (%<=) = (<=)
-  (%>)  = (>)
-  (%>=) = (>=)
-  (%==) = (==)
-  (%/=) = (/=)
-
-instance FuzziType Double
-instance FuzziType Bool
-instance FuzziType Int
-
-instance Numeric Double
-instance FracNumeric Double
-instance Numeric Int
 
 instance (FuzziType a, Numeric a) => Num (Fuzzi a) where
   (+) = coerce Add
@@ -279,57 +269,3 @@ instance Boolean a => Boolean (Fuzzi a) where
   and = And
   or  = Or
   neg = Not
-
-ex1 :: (MonadDist m, Typeable m) => Mon m (Fuzzi Double)
-ex1 = do
-  x1 <- lap (Lit (1.0 :: Double)) 1.0
-  x2 <- lap (Lit 2.0) 1.0
-  return $ x1 + x2
-
-ex2 :: (MonadDist m, Typeable m) => Mon m (Fuzzi Double)
-ex2 = do
-  x1 <- lap 1.0 1.0
-  x2 <- lap x1 1.0
-  return $ x1 + x2
-
-ex3 :: Fuzzi Double -> Fuzzi Double -> Fuzzi Double
-ex3 a b = if_ (a %> b) a b
-
-ex4 :: (MonadDist m) => Mon m (Fuzzi Double)
-ex4 = do
-  x1 <- lap 1.0 1.0
-  x2 <- lap 1.0 1.0
-  if_ (x1 %> x2)
-      (do x3 <- gauss 1.0 1.0
-          return $ if_ (x3 %> x1) x3 x1
-      )
-      (do x4 <- gauss 1.0 1.0
-          return $ if_ (x4 %> x2) x4 x2
-      )
-
-reportNoisyMaxAux :: ( MonadDist   m
-                     , FracNumeric a
-                     , FuzziType   a)
-                  => [Fuzzi a]
-                  -> Fuzzi Int
-                  -> Fuzzi Int
-                  -> Fuzzi a
-                  -> Mon m (Fuzzi Int)
-reportNoisyMaxAux []     _       maxIdx _       = return maxIdx
-reportNoisyMaxAux (x:xs) currIdx maxIdx currMax = do
-  xNoised <- lap x 1.0
-  if_ (xNoised %> currMax)
-      (reportNoisyMaxAux xs (currIdx + 1) currIdx xNoised)
-      (reportNoisyMaxAux xs (currIdx + 1) maxIdx  currMax)
-
-reportNoisyMax :: ( MonadDist   m
-                  , FracNumeric a
-                  , FuzziType   a)
-               => [Fuzzi a]
-               -> Mon m (Fuzzi Int)
-reportNoisyMax []     = error "reportNoisyMax received empty input"
-reportNoisyMax (x:xs) = do
-  xNoised <- lap x 1.0
-  reportNoisyMaxAux xs 0 0 xNoised
-
-instance MonadDist IO
