@@ -4,7 +4,7 @@ import Type.Reflection
 
 -- |This constraint is only satisfied by first-class datatypes supported in
 -- Fuzzi.
-class FuzziType (a :: *)
+class (Typeable a, Show a) => FuzziType (a :: *)
 
 -- |Order operators in the semantic domain.
 class (Boolean (CmpResult a), Typeable a) => Ordered (a :: *) where
@@ -26,19 +26,32 @@ class (Typeable a) => Boolean (a :: *) where
   or  :: a -> a -> a
   neg :: a -> a
 
+class Boolean a => ConcreteBoolean (a :: *) where
+  toBool :: a -> Bool
+
 -- |Sample instructions in the semantic domain.
 class (Monad m, Typeable m, FracNumeric (NumDomain m)) => MonadDist m where
   type NumDomain m :: *
   laplace  :: NumDomain m -> Double -> m (NumDomain m)
   gaussian :: NumDomain m -> Double -> m (NumDomain m)
 
-type Distribution m a = (MonadDist m, NumDomain m ~ a, FuzziType a, FracNumeric a)
+class (Monad m, Typeable m, Boolean (BoolType m)) => MonadAssert m where
+  type BoolType m :: *
+  assertTrue  :: BoolType m -> m ()
+  assertFalse :: BoolType m -> m ()
+  assertFalse v = assertTrue (neg v)
 
+type Distribution m a    = (MonadDist m, NumDomain m ~ a, FuzziType a, FracNumeric a)
+type Assertion    m bool = (MonadAssert m, BoolType m ~ bool)
+type FuzziLang    m a    = (Distribution m a, Assertion m (CmpResult a))
 
 instance Boolean Bool where
   and = (&&)
   or  = (||)
   neg = not
+
+instance ConcreteBoolean Bool where
+  toBool = id
 
 instance Ordered Double where
   type CmpResult Double = Bool

@@ -5,29 +5,36 @@ import Data.Coerce
 import Data.Functor.Compose
 import Control.Monad.Codensity
 import Control.Monad.IO.Class
-import Type.Reflection (Typeable, typeRep, eqTypeRep, (:~~:)(..))
+import Type.Reflection (TypeRep, Typeable, typeRep, eqTypeRep, (:~~:)(..))
 import Types
+import Debug.Trace
 
-data Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
+newtype Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
   deriving (Functor)--, Applicative, Monad)
   -- via (Codensity (Compose Fuzzi m))
 
 -- |The main typeclass for reification and reflection.
-class Syntactic a where
+class Typeable (DeepRepr a) => Syntactic a where
   type DeepRepr a :: *
   toDeepRepr      :: a -> Fuzzi (DeepRepr a)
   fromDeepRepr    :: Fuzzi (DeepRepr a) -> a
+
+class Syntactic1 (m :: * -> *) where
+  type DeepRepr1 m :: * -> *
+  toDeepRepr1   :: (Syntactic a) => m a -> Fuzzi (DeepRepr1 m (DeepRepr a))
+  fromDeepRepr1 :: (Syntactic a, FuzziType (DeepRepr a)) => Fuzzi (DeepRepr1 m (DeepRepr a)) -> m a
 
 data Fuzzi (a :: *) where
   Lam         :: (FuzziType a, Typeable a, Typeable b) => (Fuzzi a -> Fuzzi b) -> Fuzzi (a -> b)
   App         :: (Typeable a) => Fuzzi (a -> b) -> Fuzzi a -> Fuzzi b
 
   Return      :: (Monad m, Typeable a) => Fuzzi a -> Fuzzi (m a)
-  Bind        :: (Monad m, Typeable m, Typeable a) => Fuzzi (m a) -> (Fuzzi (a -> m b)) -> Fuzzi (m b)
-  Lit         :: FuzziType a    => a -> Fuzzi a
-  If          :: (Boolean bool, Typeable a) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
-  Laplace     :: (Distribution m a) => Fuzzi a -> Double -> Fuzzi (m a)
-  Gaussian    :: (Distribution m a) => Fuzzi a -> Double -> Fuzzi (m a)
+  Bind        :: (Monad m, Typeable m, FuzziType a) => Fuzzi (m a) -> (Fuzzi a -> Fuzzi (m b)) -> Fuzzi (m b)
+  Lit         :: (FuzziType a) => a -> Fuzzi a
+  If          :: (ConcreteBoolean bool, FuzziType a) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
+  IfM         :: (FuzziType a, Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a) -> Fuzzi (m a)
+  Laplace     :: (Distribution m a) => TypeRep m -> Fuzzi a -> Double -> Fuzzi (m a)
+  Gaussian    :: (Distribution m a) => TypeRep m -> Fuzzi a -> Double -> Fuzzi (m a)
   Variable    :: (Typeable a) => Int -> Fuzzi a
 
   And         :: (Boolean bool) => Fuzzi bool -> Fuzzi bool -> Fuzzi bool
@@ -40,7 +47,7 @@ data Fuzzi (a :: *) where
   Sign        :: (Numeric a) => Fuzzi a -> Fuzzi a
   Abs         :: (Numeric a) => Fuzzi a -> Fuzzi a
 
-  Div         :: (Numeric a) => Fuzzi a -> Fuzzi a -> Fuzzi a
+  Div         :: (FracNumeric a) => Fuzzi a -> Fuzzi a -> Fuzzi a
 
   Lt          :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
   Le          :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
@@ -49,17 +56,23 @@ data Fuzzi (a :: *) where
   Eq_         :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
   Neq         :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
 
-  AssertTrue  :: (Boolean bool) => Fuzzi bool -> Fuzzi a -> Fuzzi a
-  AssertFalse :: (Boolean bool) => Fuzzi bool -> Fuzzi a -> Fuzzi a
+  AssertTrueM  :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a)
+  AssertFalseM :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a)
 
-if_ :: (Syntactic a, Boolean bool, Typeable bool, Typeable (DeepRepr a)) => Fuzzi bool -> a -> a -> a
+if_ :: (Syntactic a, ConcreteBoolean bool, FuzziType (DeepRepr a)) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
 
-lap :: Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
-lap c w = fromDeepRepr $ Laplace c w -- Mon ((Bind (Laplace c w)))
+ifM :: ( Syntactic1 m
+       , Syntactic a
+       , Assertion (DeepRepr1 m) bool
+       , FuzziType (DeepRepr a)) => Fuzzi bool -> m a -> m a -> m a
+ifM c t f = fromDeepRepr1 $ IfM c (toDeepRepr1 t) (toDeepRepr1 f)
 
-gauss :: Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
-gauss c w = fromDeepRepr $ Gaussian c w --  Mon ((Bind (Gaussian c w)))
+lap :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
+lap c w = fromDeepRepr $ Laplace (typeRep @m) c w -- Mon ((Bind (Laplace c w)))
+
+gauss :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
+gauss c w = fromDeepRepr $ Gaussian (typeRep @m) c w --  Mon ((Bind (Gaussian c w)))
 
 reify :: (Syntactic a) => a -> Fuzzi (DeepRepr a)
 reify a = toDeepRepr a
@@ -67,16 +80,17 @@ reify a = toDeepRepr a
 subst :: forall varType a. (Typeable varType, Typeable a) => Int -> Fuzzi a -> Fuzzi varType -> Fuzzi a
 subst v term filling =
   case term of
-    Lam f -> Lam $ \x -> subst v (f $ Variable v) filling
+    Lam f -> Lam $ \x -> subst v (f x) filling
     App f a -> App (subst v f filling) (subst v a filling)
 
     Return x -> Return $ subst v x filling
-    Bind a f -> Bind (subst v a filling) (subst v f filling)
+    Bind a f -> Bind (subst v a filling) (\x -> subst v (f x) filling)
 
     Lit x -> Lit x
     If cond t f -> If (subst v cond filling) (subst v t filling) (subst v f filling)
-    Laplace c w -> Laplace (subst v c filling) w
-    Gaussian c w -> Gaussian (subst v c filling) w
+    IfM cond t f -> IfM (subst v cond filling) (subst v t filling) (subst v f filling)
+    Laplace tr c w -> Laplace tr (subst v c filling) w
+    Gaussian tr c w -> Gaussian tr (subst v c filling) w
 
     Variable v' ->
       case (v == v', eqTypeRep (typeRep @varType) (typeRep @a)) of
@@ -102,8 +116,8 @@ subst v term filling =
     Eq_  a b -> Eq_  (subst v a filling) (subst v b filling)
     Neq  a b -> Neq  (subst v a filling) (subst v b filling)
 
-    AssertTrue cond a  -> AssertTrue (subst v cond filling) (subst v a filling)
-    AssertFalse cond a -> AssertFalse (subst v cond filling) (subst v a filling)
+    AssertTrueM cond a  -> AssertTrueM (subst v cond filling) (subst v a filling)
+    AssertFalseM cond a -> AssertFalseM (subst v cond filling) (subst v a filling)
 
 streamline :: Typeable a => Fuzzi a -> [Fuzzi a]
 streamline = streamlineAux 0
@@ -116,17 +130,20 @@ streamlineAux var (App f a) =
   [App f' a' | f' <- streamlineAux var f, a' <- streamlineAux var a]
 streamlineAux var (Return x) =
   [Return x' | x' <- streamlineAux var x]
-streamlineAux var (Bind a f) =
-  [Bind a' f' | a' <- streamlineAux var a, f' <- streamlineAux var f]
+streamlineAux var (Bind a (f :: Fuzzi a -> Fuzzi (m b))) =
+  let bodies = streamlineAux (var + 1) (f (Variable var))
+  in [Bind a' (\x -> subst @a var body' x) | a' <- streamlineAux var a, body' <- bodies]
 streamlineAux _ (Lit x) = [Lit x]
 streamlineAux var (If cond t f) =
+  [If cond' t' f' | cond' <- streamlineAux var cond, t' <- streamlineAux var t, f' <- streamlineAux var f]
+streamlineAux var (IfM cond t f) =
   let conds = streamlineAux var cond
-  in [AssertTrue cond' t' | cond' <- conds, t' <- streamlineAux var t]
-     ++ [AssertFalse cond' f' | cond' <- conds, f' <- streamlineAux var f]
-streamlineAux var (Laplace c w) =
-  [Laplace c' w | c' <- streamlineAux var c]
-streamlineAux var (Gaussian c w) =
-  [Gaussian c' w | c' <- streamlineAux var c]
+  in [AssertTrueM cond' t' | cond' <- conds, t' <- streamlineAux var t]
+     ++ [AssertFalseM cond' f' | cond' <- conds, f' <- streamlineAux var f]
+streamlineAux var (Laplace tr c w) =
+  [Laplace tr c' w | c' <- streamlineAux var c]
+streamlineAux var (Gaussian tr c w) =
+  [Gaussian tr c' w | c' <- streamlineAux var c]
 streamlineAux _ v@(Variable _) = [v]
 streamlineAux var (And a b) =
   [And a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
@@ -158,18 +175,18 @@ streamlineAux var (Eq_ a b) =
   [Eq_ a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (Neq a b) =
   [Neq a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (AssertTrue cond a) =
-  [AssertTrue cond' a' | cond' <- streamlineAux var cond, a' <- streamlineAux var a]
-streamlineAux var (AssertFalse cond a) =
-  [AssertFalse cond' a' | cond' <- streamlineAux var cond, a' <- streamlineAux var a]
+streamlineAux var (AssertTrueM cond a) =
+  [AssertTrueM cond' a' | cond' <- streamlineAux var cond, a' <- streamlineAux var a]
+streamlineAux var (AssertFalseM cond a) =
+  [AssertFalseM cond' a' | cond' <- streamlineAux var cond, a' <- streamlineAux var a]
 
-ex1 :: (MonadDist m, Typeable m, Double ~ NumDomain m) => Mon m (Fuzzi Double)
+ex1 :: (FuzziLang m Double) => Mon m (Fuzzi Double)
 ex1 = do
   x1 <- lap (Lit (1.0 :: Double)) 1.0
   x2 <- lap (Lit 2.0) 1.0
   return $ x1 + x2
 
-ex2 :: (MonadDist m, Typeable m, Double ~ NumDomain m) => Mon m (Fuzzi Double)
+ex2 :: (FuzziLang m Double) => Mon m (Fuzzi Double)
 ex2 = do
   x1 <- lap 1.0 1.0
   x2 <- lap x1 1.0
@@ -178,11 +195,11 @@ ex2 = do
 ex3 :: Fuzzi Double -> Fuzzi Double -> Fuzzi Double
 ex3 a b = if_ (a %> b) a b
 
-ex4 :: (MonadDist m, Double ~ NumDomain m) => Mon m (Fuzzi Double)
+ex4 :: (FuzziLang m Double) => Mon m (Fuzzi Double)
 ex4 = do
   x1 <- lap 1.0 1.0
   x2 <- lap 1.0 1.0
-  if_ (x1 %> x2)
+  ifM (x1 %> x2)
       (do x3 <- gauss 1.0 1.0
           return $ if_ (x3 %> x1) x3 x1
       )
@@ -190,20 +207,21 @@ ex4 = do
           return $ if_ (x4 %> x2) x4 x2
       )
 
-reportNoisyMaxAux :: Distribution m a
+
+reportNoisyMaxAux :: (FuzziLang m a)
                   => [Fuzzi a]
                   -> Fuzzi Int
                   -> Fuzzi Int
                   -> Fuzzi a
                   -> Mon m (Fuzzi Int)
 reportNoisyMaxAux []     _       maxIdx _       = return maxIdx
-reportNoisyMaxAux (x:xs) currIdx maxIdx currMax = do
+reportNoisyMaxAux (x:xs) lastIdx maxIdx currMax = do
   xNoised <- lap x 1.0
-  if_ (xNoised %> currMax)
-      (reportNoisyMaxAux xs (currIdx + 1) currIdx xNoised)
-      (reportNoisyMaxAux xs (currIdx + 1) maxIdx  currMax)
+  ifM (xNoised %> currMax)
+      (reportNoisyMaxAux xs (lastIdx + 1) (lastIdx+1) xNoised)
+      (reportNoisyMaxAux xs (lastIdx + 1) maxIdx      currMax)
 
-reportNoisyMax :: Distribution m a
+reportNoisyMax :: (FuzziLang m a)
                => [Fuzzi a]
                -> Mon m (Fuzzi Int)
 reportNoisyMax []     = error "reportNoisyMax received empty input"
@@ -228,7 +246,7 @@ instance ( Syntactic a
   toDeepRepr f = Lam (toDeepRepr . f . fromDeepRepr)
   fromDeepRepr f = fromDeepRepr . (App f) . toDeepRepr
 
-instance Syntactic (Fuzzi a) where
+instance Typeable a => Syntactic (Fuzzi a) where
   type DeepRepr (Fuzzi a) = a
   toDeepRepr   = id
   fromDeepRepr = id
@@ -240,7 +258,12 @@ instance ( Monad m
          , Typeable m) => Syntactic (Mon m a) where
   type DeepRepr (Mon m a) = m (DeepRepr a)
   toDeepRepr (Mon m) = m (Return . toDeepRepr)
-  fromDeepRepr    m  = Mon $ \k -> Bind m (toDeepRepr $ k . fromDeepRepr)
+  fromDeepRepr    m  = Mon $ \k -> Bind m (k . fromDeepRepr)
+
+instance (Monad m, Typeable m) => Syntactic1 (Mon m) where
+  type DeepRepr1 (Mon m) = m
+  toDeepRepr1 (Mon m) = m (Return . toDeepRepr)
+  fromDeepRepr1 m     = Mon $ \k -> Bind m (k . fromDeepRepr)
 
 instance (FuzziType a, Numeric a) => Num (Fuzzi a) where
   (+) = coerce Add
@@ -254,8 +277,7 @@ instance (FuzziType a, FracNumeric a) => Fractional (Fuzzi a) where
   (/)          = coerce Div
   fromRational = Lit . fromRational
 
-instance ( Boolean (CmpResult a)
-         , Boolean (Fuzzi (CmpResult a))
+instance ( Boolean (Fuzzi (CmpResult a))
          , Ordered a) => Ordered (Fuzzi a) where
   type CmpResult (Fuzzi a) = Fuzzi (CmpResult a)
   (%<)  = Lt

@@ -1,34 +1,43 @@
-module Interp (
-  module Interp.StraightForward
-  , module Interp.Types
-  , module Interp.Tracing
-  , module Interp.Concrete
-  , module Interp.TracingConcrete
-  , runInterpreter
-  , runMultiInterpreter
-  ) where
+module Interp where
 
-import Control.Applicative.Free (runAp)
-import Interp.Concrete
-import Interp.StraightForward
-import Interp.Tracing
-import Interp.TracingConcrete
-import Interp.Types
-import Term
-import Data.Functor.Compose
-import ListT
+import Prelude hiding (and, or)
+import Distribution hiding (Laplace, Gaussian, ArithOp(..), UOp(..))
+import EDSL
+import Types
+import Type.Reflection hiding (App)
 
-runInterpreter :: forall interp bool a.
-                  (Interpretation interp, Decision interp ~ bool)
-               => interp
-               -> Fuzzi (Domain interp) bool a
-               -> (Domain interp) a
-runInterpreter interp = runAp (step interp)
+monadDistErrorMessage :: String
+monadDistErrorMessage = "encoding MonadDist and interpretation MonadDist are different"
 
-
-runMultiInterpreter :: forall interp bool a.
-                       (MultiInterpretation interp, MultiDecision interp ~ bool)
-                    => interp
-                    -> Fuzzi (MultiDomain interp) bool a
-                    -> (MultiDomain interp) [a]
-runMultiInterpreter interp prog = toList $ runAp (stepAll interp) prog
+eval :: forall a. Fuzzi a -> a
+eval (Lam f) = eval . f . Lit
+eval (App f a) = (eval f) (eval a)
+eval (Return a) = return (eval a)
+eval (Bind a f) = (eval a) >>= (eval . f . Lit)
+eval (Lit a) = a
+eval (If cond t f) = if toBool (eval cond) then eval t else eval f
+eval (IfM _ _ _) = error "unexpected ifM"
+eval ((Laplace _ c w)) = laplace (eval c) w
+eval ((Gaussian _ c w)) = gaussian (eval c) w
+eval (Variable v) = error ("unexpected variable " ++ show v ++ " :: " ++ show (typeRep @a))
+eval (And a b) = and (eval a) (eval b)
+eval (Or a b) = or (eval a) (eval b)
+eval (Not a) = neg (eval a)
+eval (Add a b) = (eval a) + (eval b)
+eval (Mult a b) = (eval a) * (eval b)
+eval (Sub a b) = (eval a) - (eval b)
+eval (Sign a) = signum (eval a)
+eval (Abs a) = abs (eval a)
+eval (Div a b) = (eval a) / (eval b)
+eval (Lt a b) = (eval a) %< (eval b)
+eval (Le a b) = (eval a) %<= (eval b)
+eval (Gt a b) = (eval a) %> (eval b)
+eval (Ge a b) = (eval a) %>= (eval b)
+eval (Eq_ a b) = (eval a) %== (eval b)
+eval (Neq a b) = (eval a) %/= (eval b)
+eval (AssertTrueM cond v) = do
+  assertTrue (eval cond)
+  eval v
+eval (AssertFalseM cond v) = do
+  assertFalse (eval cond)
+  eval v

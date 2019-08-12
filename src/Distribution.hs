@@ -1,13 +1,18 @@
 module Distribution where
 
+import Control.Monad
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Maybe
+import Data.Functor.Identity
+import Data.Functor.Classes
+import Data.Random.Distribution.Normal
+import Data.Random.Distribution.Uniform
+import Data.Random.RVar
+import Type.Reflection
+import Types
+import qualified Control.Monad.Trans.Class as MT
 import qualified Data.Random as R
 import qualified Data.Random.Lift as RL
-import Data.Random.RVar
-import Data.Random.Distribution.Uniform
-import Data.Random.Distribution.Normal
-import Control.Monad.IO.Class
-import Types
-import Type.Reflection
 
 newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVar a }
   deriving (Functor, Applicative, Monad)
@@ -28,6 +33,17 @@ gaussianConcrete mean stddev =
 
 sampleConcrete :: ConcreteDist a -> IO a
 sampleConcrete = R.sample . runConcreteDist
+
+newtype NoRandomness a = NoRandomness { runNoRandomness :: a }
+  deriving (Functor, Applicative, Monad, Show1)
+  via (Identity)
+  deriving (Show, Eq, Ord)
+
+laplaceNoRandomness :: Double -> Double -> NoRandomness Double
+laplaceNoRandomness center _ = NoRandomness center
+
+gaussianNoRandomness :: Double -> Double -> NoRandomness Double
+gaussianNoRandomness center _ = NoRandomness center
 
 data ArithOp = Add | Mult | Sub | Div
   deriving (Show, Eq, Ord)
@@ -94,3 +110,17 @@ instance MonadDist ConcreteDist where
   type NumDomain ConcreteDist = Double
   laplace = laplaceConcrete
   gaussian = gaussianConcrete
+
+instance MonadDist NoRandomness where
+  type NumDomain NoRandomness = Double
+  laplace = laplaceNoRandomness
+  gaussian = gaussianNoRandomness
+
+instance MonadDist m => MonadDist (MaybeT m) where
+  type NumDomain (MaybeT m) = NumDomain m
+  laplace c w  = MT.lift $ laplace c w
+  gaussian c w = MT.lift $ gaussian c w
+
+instance (Monad m, Typeable m) => MonadAssert (MaybeT m) where
+  type BoolType (MaybeT m) = Bool
+  assertTrue v = guard v
