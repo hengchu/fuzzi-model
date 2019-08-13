@@ -8,6 +8,7 @@ import Control.Monad.IO.Class
 import Type.Reflection (TypeRep, Typeable, typeRep, eqTypeRep, (:~~:)(..))
 import Types
 import Debug.Trace
+import Distribution (WithDistributionProvenance)
 
 newtype Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
   deriving (Functor)--, Applicative, Monad)
@@ -31,7 +32,7 @@ data Fuzzi (a :: *) where
   Return      :: (Monad m, Typeable a) => Fuzzi a -> Fuzzi (m a)
   Bind        :: (Monad m, Typeable m, FuzziType a) => Fuzzi (m a) -> (Fuzzi a -> Fuzzi (m b)) -> Fuzzi (m b)
   Lit         :: (FuzziType a) => a -> Fuzzi a
-  If          :: (ConcreteBoolean bool, FuzziType a) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
+  If          :: (ConcreteBoolean bool) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
   IfM         :: (FuzziType a, Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a) -> Fuzzi (m a)
   Laplace     :: (Distribution m a) => TypeRep m -> Fuzzi a -> Double -> Fuzzi (m a)
   Gaussian    :: (Distribution m a) => TypeRep m -> Fuzzi a -> Double -> Fuzzi (m a)
@@ -48,6 +49,8 @@ data Fuzzi (a :: *) where
   Abs         :: (Numeric a) => Fuzzi a -> Fuzzi a
 
   Div         :: (FracNumeric a) => Fuzzi a -> Fuzzi a -> Fuzzi a
+  IDiv        :: (IntNumeric a)  => Fuzzi a -> Fuzzi a -> Fuzzi a
+  IMod        :: (IntNumeric a)  => Fuzzi a -> Fuzzi a -> Fuzzi a
 
   Lt          :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
   Le          :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
@@ -59,7 +62,9 @@ data Fuzzi (a :: *) where
   AssertTrueM  :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a)
   AssertFalseM :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a)
 
-if_ :: (Syntactic a, ConcreteBoolean bool, FuzziType (DeepRepr a)) => Fuzzi bool -> a -> a -> a
+  InjectProvenance :: (FuzziType a) => Fuzzi a -> Fuzzi (WithDistributionProvenance a)
+
+if_ :: (Syntactic a, ConcreteBoolean bool) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
 
 ifM :: ( Syntactic1 m
@@ -107,7 +112,9 @@ subst v term filling =
     Sign a   -> Sign (subst v a filling)
     Abs  a   -> Abs  (subst v a filling)
 
-    Div  a b -> Div  (subst v a filling) (subst v b filling)
+    Div   a b -> Div   (subst v a filling) (subst v b filling)
+    IDiv  a b -> IDiv  (subst v a filling) (subst v b filling)
+    IMod  a b -> IMod  (subst v a filling) (subst v b filling)
 
     Lt  a b  -> Lt   (subst v a filling) (subst v b filling)
     Le  a b  -> Le   (subst v a filling) (subst v b filling)
@@ -118,6 +125,15 @@ subst v term filling =
 
     AssertTrueM cond a  -> AssertTrueM (subst v cond filling) (subst v a filling)
     AssertFalseM cond a -> AssertFalseM (subst v cond filling) (subst v a filling)
+
+    InjectProvenance a -> InjectProvenance (subst v a filling)
+
+{-
+    ListEmpty -> ListEmpty
+    ListCons x xs -> ListCons (subst v x filling) (subst v xs filling)
+    ListSnoc xs x -> ListSnoc (subst v xs filling) (subst v x filling)
+    IsListEmpty xs -> IsListEmpty (subst v xs filling)
+-}
 
 streamline :: Typeable a => Fuzzi a -> [Fuzzi a]
 streamline = streamlineAux 0
@@ -163,6 +179,10 @@ streamlineAux var (Abs a) =
   [Abs a' | a' <- streamlineAux var a]
 streamlineAux var (Div a b) =
   [Div a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
+streamlineAux var (IDiv a b) =
+  [IDiv a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
+streamlineAux var (IMod a b) =
+  [IMod a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (Lt a b) =
   [Lt a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (Le a b) =
@@ -179,14 +199,25 @@ streamlineAux var (AssertTrueM cond a) =
   [AssertTrueM cond' a' | cond' <- streamlineAux var cond, a' <- streamlineAux var a]
 streamlineAux var (AssertFalseM cond a) =
   [AssertFalseM cond' a' | cond' <- streamlineAux var cond, a' <- streamlineAux var a]
+streamlineAux var (InjectProvenance a) =
+  [InjectProvenance a' | a' <- streamlineAux var a]
+{-
+streamlineAux _ ListEmpty = [ListEmpty]
+streamlineAux var (ListCons x xs) =
+  [ListCons x' xs' | x' <- streamlineAux var x, xs' <- streamlineAux var xs]
+streamlineAux var (ListSnoc xs x) =
+  [ListSnoc xs' x' | xs' <- streamlineAux var xs, x' <- streamlineAux var x]
+streamlineAux var (IsListEmpty x) =
+  [IsListEmpty x' | x' <- streamlineAux var x]
+-}
 
-ex1 :: (FuzziLang m Double) => Mon m (Fuzzi Double)
+ex1 :: (FuzziLang m a) => Mon m (Fuzzi a)
 ex1 = do
-  x1 <- lap (Lit (1.0 :: Double)) 1.0
+  x1 <- lap (Lit 1.0) 1.0
   x2 <- lap (Lit 2.0) 1.0
   return $ x1 + x2
 
-ex2 :: (FuzziLang m Double) => Mon m (Fuzzi Double)
+ex2 :: (FuzziLang m a) => Mon m (Fuzzi a)
 ex2 = do
   x1 <- lap 1.0 1.0
   x2 <- lap x1 1.0
@@ -195,7 +226,7 @@ ex2 = do
 ex3 :: Fuzzi Double -> Fuzzi Double -> Fuzzi Double
 ex3 a b = if_ (a %> b) a b
 
-ex4 :: (FuzziLang m Double) => Mon m (Fuzzi Double)
+ex4 :: (FuzziLang m a, ConcreteBoolean (CmpResult a)) => Mon m (Fuzzi a)
 ex4 = do
   x1 <- lap 1.0 1.0
   x2 <- lap 1.0 1.0
@@ -206,7 +237,6 @@ ex4 = do
       (do x4 <- gauss 1.0 1.0
           return $ if_ (x4 %> x2) x4 x2
       )
-
 
 reportNoisyMaxAux :: (FuzziLang m a)
                   => [Fuzzi a]
@@ -228,6 +258,30 @@ reportNoisyMax []     = error "reportNoisyMax received empty input"
 reportNoisyMax (x:xs) = do
   xNoised <- lap x 1.0
   reportNoisyMaxAux xs 0 0 xNoised
+
+{-
+smartSumAux :: (FuzziLang m a)
+            => [Fuzzi a] -- ^The inputs
+            -> Fuzzi a   -- ^The next partial sum
+            -> Fuzzi a   -- ^This partial sum
+            -> Fuzzi Int -- ^Iteration index
+            -> Fuzzi a   -- ^The un-noised raw sum
+            -> Fuzzi [a] -- ^The accumulated list
+            -> Mon m (Fuzzi [a])
+smartSumAux []     _    _ _ _   results = return results
+smartSumAux (x:xs) next n i sum results = do
+  let sum' = sum + x
+  if_ (((i + 1) `imod` 2) %== 0)
+      (do n' <- lap (n + sum') 1.0
+          smartSumAux xs n' n' (i+1) sum' (results `snoc` n'))
+      (do next' <- lap (next + x) 1.0
+          smartSumAux xs next' n (i+1) sum' (results `snoc` next'))
+
+smartSum :: (FuzziLang m a)
+         => [Fuzzi a]
+         -> Mon m (Fuzzi [a])
+smartSum xs = smartSumAux xs 0 0 0 0 nil
+-}
 
 instance Applicative (Mon m) where
   pure a  = Mon $ \k -> k a
@@ -276,6 +330,10 @@ instance (FuzziType a, Numeric a) => Num (Fuzzi a) where
 instance (FuzziType a, FracNumeric a) => Fractional (Fuzzi a) where
   (/)          = coerce Div
   fromRational = Lit . fromRational
+
+instance (FuzziType a, IntNumeric a) => LiteIntegral (Fuzzi a) where
+  idiv = IDiv
+  imod = IMod
 
 instance ( Boolean (Fuzzi (CmpResult a))
          , Ordered a) => Ordered (Fuzzi a) where

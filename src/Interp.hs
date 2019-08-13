@@ -1,5 +1,6 @@
 module Interp where
 
+import Distribution (inject)
 import Data.Proxy
 import Prelude hiding (and, or)
 import IfCxt
@@ -35,6 +36,8 @@ eval (Sub a b) = (eval a) - (eval b)
 eval (Sign a) = signum (eval a)
 eval (Abs a) = abs (eval a)
 eval (Div a b) = (eval a) / (eval b)
+eval (IDiv a b) = (eval a) `idiv` (eval b)
+eval (IMod a b) = (eval a) `imod` (eval b)
 eval (Lt a b) = (eval a) %< (eval b)
 eval (Le a b) = (eval a) %<= (eval b)
 eval (Gt a b) = (eval a) %> (eval b)
@@ -47,3 +50,13 @@ eval (AssertTrueM cond v) = do
 eval (AssertFalseM cond v) = do
   assertFalse (eval cond)
   eval v
+eval (InjectProvenance a) = inject (eval a)
+{-
+eval ListEmpty = []
+eval (ListCons x xs) = (eval x):(eval xs)
+eval (ListSnoc xs x) = (eval xs) ++ [eval x]
+eval (IsListEmpty xs) = fromBool $
+  case eval xs of
+    [] -> True
+    _  -> False
+-}

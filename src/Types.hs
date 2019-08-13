@@ -17,9 +17,25 @@ class (Boolean (CmpResult a), Typeable a) => Ordered (a :: *) where
   (%==) :: a -> a -> CmpResult a
   (%/=) :: a -> a -> CmpResult a
 
+class (Typeable f, Boolean (CmpResult1 f)) => Listy (f :: * -> *) where
+  type CmpResult1 f :: *
+  nil   :: Typeable a => f a
+  cons  :: Typeable a => a -> f a -> f a
+  snoc  :: Typeable a => f a -> a -> f a
+  isNil :: Typeable a => f a -> CmpResult1 f
+
+class LiteIntegral (a :: *) where
+  idiv :: a -> a -> a
+  imod :: a -> a -> a
+
+instance LiteIntegral Int where
+  idiv = div
+  imod = mod
+
 -- |This constraint is only satisfied by numeric datatypes supported in Fuzzi.
 class (Ordered a, Num a, Typeable a) => Numeric (a :: *)
 class (Numeric a, Fractional a) => FracNumeric (a :: *)
+class (Numeric a, LiteIntegral a) => IntNumeric (a :: *)
 
 -- |Boolean operators in the semantic domain.
 class (Typeable a) => Boolean (a :: *) where
@@ -28,7 +44,8 @@ class (Typeable a) => Boolean (a :: *) where
   neg :: a -> a
 
 class Boolean a => ConcreteBoolean (a :: *) where
-  toBool :: a -> Bool
+  toBool   :: a -> Bool
+  fromBool :: Bool -> a
 
 -- |Sample instructions in the semantic domain.
 class (Monad m, Typeable m, FracNumeric (NumDomain m)) => MonadDist m where
@@ -52,7 +69,9 @@ instance Boolean Bool where
   neg = not
 
 instance ConcreteBoolean Bool where
-  toBool = id
+  toBool   = id
+  fromBool = id
+
 
 instance {-# OVERLAPS #-} IfCxt (ConcreteBoolean Bool) where
   ifCxt _ t _ = t
@@ -68,17 +87,19 @@ instance Ordered Double where
 
 instance Ordered Int where
   type CmpResult Int = Bool
-  (%<)  = (<)
-  (%<=) = (<=)
-  (%>)  = (>)
-  (%>=) = (>=)
-  (%==) = (==)
-  (%/=) = (/=)
+  (%<)  a b = fromBool $ (<) a b
+  (%<=) a b = fromBool $ (<=) a b
+  (%>)  a b = fromBool $ (>) a b
+  (%>=) a b = fromBool $ (>=) a b
+  (%==) a b = fromBool $ (==) a b
+  (%/=) a b = fromBool $ (/=) a b
 
 instance FuzziType Double
 instance FuzziType Bool
 instance FuzziType Int
+instance (FuzziType a, Listy f, Show (f a)) => FuzziType (f a)
 
 instance Numeric Double
 instance FracNumeric Double
 instance Numeric Int
+instance IntNumeric Int
