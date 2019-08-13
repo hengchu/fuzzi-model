@@ -1,5 +1,0 @@
--c=stack ghci --test --main-is fuzzi-model:test:fuzzi-model-test
---test=:main
--l
---reload=src
---reload=test

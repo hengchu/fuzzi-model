@@ -1,5 +1,6 @@
 module Types where
 
+import IfCxt
 import Type.Reflection
 
 -- |This constraint is only satisfied by first-class datatypes supported in
@@ -42,7 +43,7 @@ class (Monad m, Typeable m, Boolean (BoolType m)) => MonadAssert m where
   assertFalse v = assertTrue (neg v)
 
 type Distribution m a    = (MonadDist m, NumDomain m ~ a, FuzziType a, FracNumeric a)
-type Assertion    m bool = (MonadAssert m, BoolType m ~ bool)
+type Assertion    m bool = (MonadAssert m, BoolType m ~ bool, IfCxt (ConcreteBoolean bool))
 type FuzziLang    m a    = (Distribution m a, Assertion m (CmpResult a))
 
 instance Boolean Bool where
@@ -52,6 +53,9 @@ instance Boolean Bool where
 
 instance ConcreteBoolean Bool where
   toBool = id
+
+instance {-# OVERLAPS #-} IfCxt (ConcreteBoolean Bool) where
+  ifCxt _ t _ = t
 
 instance Ordered Double where
   type CmpResult Double = Bool

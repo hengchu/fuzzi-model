@@ -2,12 +2,15 @@ module Distribution where
 
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.State.Class
 import Control.Monad.Trans.Maybe
-import Data.Functor.Identity
+import Control.Monad.Trans.State hiding (modify)
 import Data.Functor.Classes
+import Data.Functor.Identity
 import Data.Random.Distribution.Normal
 import Data.Random.Distribution.Uniform
 import Data.Random.RVar
+import Data.Sequence
 import Type.Reflection
 import Types
 import qualified Control.Monad.Trans.Class as MT
@@ -17,6 +20,19 @@ import qualified Data.Random.Lift as RL
 newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVar a }
   deriving (Functor, Applicative, Monad)
   via (RVar)
+
+data Trace :: * -> * where
+  TrLaplace  :: a -> Double -> a -> Trace a
+  TrGaussian :: a -> Double -> a -> Trace a
+  deriving (Show, Eq, Ord, Functor)
+
+type Profile a = Seq (Trace a)
+type DProfile  = Profile Double
+
+newtype TracedDist a =
+  TracedDist { runTracedDist_ :: StateT DProfile RVar a }
+  deriving (Functor, Applicative, Monad) via (StateT DProfile RVar)
+  deriving (MonadState DProfile) via (StateT DProfile RVar)
 
 laplaceConcrete :: Double -> Double -> ConcreteDist Double
 laplaceConcrete center width = ConcreteDist $ do
@@ -31,8 +47,35 @@ gaussianConcrete :: Double -> Double -> ConcreteDist Double
 gaussianConcrete mean stddev =
   ConcreteDist $ normalT mean stddev
 
+laplaceTraced :: WithDistributionProvenance Double
+              -> Double
+              -> TracedDist (WithDistributionProvenance Double)
+laplaceTraced center width = do
+  let centerValue = value center
+  lapSample <- (TracedDist . MT.lift)
+    (runConcreteDist (laplaceConcrete centerValue width))
+  let prov  = Laplace (provenance center) width
+  let trace = TrLaplace centerValue width lapSample
+  modify (|> trace)
+  return (WithDistributionProvenance lapSample prov)
+
+gaussianTraced :: WithDistributionProvenance Double
+              -> Double
+              -> TracedDist (WithDistributionProvenance Double)
+gaussianTraced center width = do
+  let centerValue = value center
+  gaussSample <- (TracedDist . MT.lift)
+    (runConcreteDist (gaussianConcrete centerValue width))
+  let prov  = Gaussian (provenance center) width
+  let trace = TrGaussian centerValue width gaussSample
+  modify (|> trace)
+  return (WithDistributionProvenance gaussSample prov)
+
 sampleConcrete :: ConcreteDist a -> IO a
 sampleConcrete = R.sample . runConcreteDist
+
+sampleTraced :: TracedDist a -> IO (a, DProfile)
+sampleTraced m = R.sample ((runStateT . runTracedDist_) m mempty)
 
 newtype NoRandomness a = NoRandomness { runNoRandomness :: a }
   deriving (Functor, Applicative, Monad, Show1)
@@ -53,8 +96,8 @@ data UOp = Abs | Sign
 
 data DistributionProvenance (a :: *) where
   Deterministic :: a -> DistributionProvenance a
-  Laplace       :: a -> Double -> DistributionProvenance a
-  Gaussian      :: a -> Double -> DistributionProvenance a
+  Laplace       :: DistributionProvenance a -> Double -> DistributionProvenance a
+  Gaussian      :: DistributionProvenance a -> Double -> DistributionProvenance a
   Arith         :: DistributionProvenance a
                 -> ArithOp
                 -> DistributionProvenance a
@@ -105,6 +148,7 @@ instance Ordered a => Ordered (WithDistributionProvenance a) where
 
 instance Numeric a     => Numeric     (WithDistributionProvenance a)
 instance FracNumeric a => FracNumeric (WithDistributionProvenance a)
+instance FuzziType a   => FuzziType   (WithDistributionProvenance a)
 
 instance MonadDist ConcreteDist where
   type NumDomain ConcreteDist = Double
@@ -124,3 +168,8 @@ instance MonadDist m => MonadDist (MaybeT m) where
 instance (Monad m, Typeable m) => MonadAssert (MaybeT m) where
   type BoolType (MaybeT m) = Bool
   assertTrue v = guard v
+
+instance MonadDist TracedDist where
+  type NumDomain TracedDist = WithDistributionProvenance Double
+  laplace = laplaceTraced
+  gaussian = gaussianTraced

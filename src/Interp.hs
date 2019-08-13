@@ -1,7 +1,8 @@
 module Interp where
 
+import Data.Proxy
 import Prelude hiding (and, or)
-import Distribution hiding (Laplace, Gaussian, ArithOp(..), UOp(..))
+import IfCxt
 import EDSL
 import Types
 import Type.Reflection hiding (App)
@@ -16,9 +17,14 @@ eval (Return a) = return (eval a)
 eval (Bind a f) = (eval a) >>= (eval . f . Lit)
 eval (Lit a) = a
 eval (If cond t f) = if toBool (eval cond) then eval t else eval f
-eval (IfM _ _ _) = error "unexpected ifM"
-eval ((Laplace _ c w)) = laplace (eval c) w
-eval ((Gaussian _ c w)) = gaussian (eval c) w
+eval (IfM (cond :: Fuzzi bool) t f) =
+  ifCxt (Proxy :: Proxy (ConcreteBoolean bool))
+        (if toBool (eval cond) then eval t else eval f)
+        (error ("The type "
+                ++ (show $ typeRep @bool)
+                ++ " does not support concrete execution"))
+eval (Laplace _ c w) = laplace (eval c) w
+eval (Gaussian _ c w) = gaussian (eval c) w
 eval (Variable v) = error ("unexpected variable " ++ show v ++ " :: " ++ show (typeRep @a))
 eval (And a b) = and (eval a) (eval b)
 eval (Or a b) = or (eval a) (eval b)

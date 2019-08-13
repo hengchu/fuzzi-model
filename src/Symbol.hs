@@ -28,7 +28,7 @@ defaultZ3Solver :: IO Solver
 defaultZ3Solver = do
   logger <- newLogger 0
   solver <- newSolver "z3" ["-smt2", "-in"] (Just logger)
-  setOption solver ":pp.decimal" "true"
+  setOption solver ":pp.decimal" "false"
   return solver
 
 runSymbolicT :: (MonadIO m) => SymbolicT m a -> m a

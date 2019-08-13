@@ -41,15 +41,15 @@ smtTest4 = H.assert . runSymbolicT @IO $ do
   r <- S.check
   v <- S.getRealValue "x"
   case r of
-    Sat -> return $ v == (Just 1)
-    _   -> return $ False
+    Sat -> return $ v == Just 1
+    _   -> return False
 
 smtTests :: Solver -> H.Test
 smtTests s = H.TestList [
-  H.TestCase (smtTest1)
-  , H.TestCase (smtTest2)
-  , H.TestCase (smtTest3)
-  , H.TestCase (smtTest4)
+  H.TestCase smtTest1
+  , H.TestCase smtTest2
+  , H.TestCase smtTest3
+  , H.TestCase smtTest4
   ]
 
 main :: IO ()
