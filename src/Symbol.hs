@@ -1,12 +1,8 @@
 module Symbol where
 
 import Text.Read (readMaybe)
-import Control.DeepSeq
 import Control.Monad.Reader
 import Control.Monad.State
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Reader hiding (ask)
-import Control.Monad.Trans.State hiding (get, modify)
 import Data.Coerce
 import SimpleSMT
 import Type.Reflection
@@ -105,7 +101,6 @@ check :: (MonadIO m) => SymbolicT m Result
 check = do
   solver <- ask
   r <- liftIO $ SimpleSMT.check solver
-  let () = rwhnf r
   return r
 
 getUnsatCore :: (MonadIO m) => SymbolicT m [String]

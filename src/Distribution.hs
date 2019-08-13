@@ -1,9 +1,9 @@
 module Distribution where
 
 import Control.Monad
-import Control.Monad.IO.Class
 import Control.Monad.State.Class
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Identity
 import Control.Monad.Trans.State hiding (modify)
 import Data.Functor.Classes
 import Data.Functor.Identity
@@ -15,8 +15,6 @@ import Type.Reflection
 import Types
 import qualified Control.Monad.Trans.Class as MT
 import qualified Data.Random as R
-import qualified Data.Random.Lift as RL
-import GHC.Generics
 
 newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVar a }
   deriving (Functor, Applicative, Monad)
@@ -212,9 +210,18 @@ instance MonadDist m => MonadDist (MaybeT m) where
   laplace c w  = MT.lift $ laplace c w
   gaussian c w = MT.lift $ gaussian c w
 
+instance MonadDist m => MonadDist (IdentityT m) where
+  type NumDomain (IdentityT m) = NumDomain m
+  laplace c w = MT.lift $ laplace c w
+  gaussian c w = MT.lift $ gaussian c w
+
 instance (Monad m, Typeable m) => MonadAssert (MaybeT m) where
   type BoolType (MaybeT m) = Bool
   assertTrue v = guard v
+
+instance (Monad m, Typeable m) => MonadAssert (IdentityT m) where
+  type BoolType (IdentityT m) = Bool
+  assertTrue _ = return ()
 
 instance MonadDist TracedDist where
   type NumDomain TracedDist = WithDistributionProvenance Double

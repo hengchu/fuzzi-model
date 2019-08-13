@@ -30,6 +30,7 @@ library
                -Wno-name-shadowing
                -fprint-potential-instances
                -Wno-orphans
+               -fwarn-redundant-constraints
   exposed-modules:
                   EDSL
                 , Distribution

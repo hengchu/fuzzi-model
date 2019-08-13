@@ -2,12 +2,8 @@
 module EDSL where
 
 import Data.Coerce
-import Data.Functor.Compose
-import Control.Monad.Codensity
-import Control.Monad.IO.Class
 import Type.Reflection (TypeRep, Typeable, typeRep, eqTypeRep, (:~~:)(..))
 import Types
-import Debug.Trace
 import Distribution (WithDistributionProvenance)
 
 newtype Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
@@ -339,7 +335,7 @@ instance (FuzziType a, FracNumeric a) => Fractional (Fuzzi a) where
   (/)          = coerce Div
   fromRational = Lit . fromRational
 
-instance (FuzziType a, IntNumeric a) => LiteIntegral (Fuzzi a) where
+instance (IntNumeric a) => LiteIntegral (Fuzzi a) where
   idiv = IDiv
   imod = IMod
 

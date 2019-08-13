@@ -1,6 +1,6 @@
 import Control.Concurrent.Async
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Identity
 import Distribution
 import EDSL
 import SimpleSMT
@@ -72,7 +72,7 @@ testSmartSumProvenance :: IO Bool
 testSmartSumProvenance = do
   results <- (profile 100 . reify)
     (smartSum
-      @(MaybeT TracedDist)
+      @(IdentityT TracedDist)
       @_
       @(WithDistributionProvenance [Double])
       [1, 2, 3, 4, 5])
