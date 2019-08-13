@@ -3,6 +3,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Identity
 import Distribution
 import EDSL
+import Examples
 import SimpleSMT
 import Symbol as S
 import System.Exit

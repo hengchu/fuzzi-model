@@ -1,5 +1,17 @@
 {-# LANGUAGE DerivingVia #-}
-module EDSL where
+module EDSL (
+  Fuzzi(..)
+  , Syntactic
+  , Syntactic1
+  , Mon
+
+  , if_
+  , ifM
+  , lap
+  , gauss
+  , reify
+  , streamline
+  ) where
 
 import Data.Coerce
 import Type.Reflection (TypeRep, Typeable, typeRep, eqTypeRep, (:~~:)(..))
@@ -81,7 +93,7 @@ gauss :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
 gauss c w = fromDeepRepr $ Gaussian (typeRep @m) c w --  Mon ((Bind (Gaussian c w)))
 
 reify :: (Syntactic a) => a -> Fuzzi (DeepRepr a)
-reify a = toDeepRepr a
+reify = toDeepRepr
 
 subst :: forall varType a. (Typeable varType, Typeable a) => Int -> Fuzzi a -> Fuzzi varType -> Fuzzi a
 subst v term filling =
@@ -140,14 +152,14 @@ streamline = streamlineAux 0
 streamlineAux :: Typeable a => Int -> Fuzzi a -> [Fuzzi a]
 streamlineAux var (Lam (f :: Fuzzi x -> Fuzzi y)) =
   let bodies = streamlineAux (var + 1) (f (Variable var))
-  in [Lam (\x -> subst @x var body x) | body <- bodies]
+  in [Lam (subst @x var body) | body <- bodies]
 streamlineAux var (App f a) =
   [App f' a' | f' <- streamlineAux var f, a' <- streamlineAux var a]
 streamlineAux var (Return x) =
   [Return x' | x' <- streamlineAux var x]
 streamlineAux var (Bind a (f :: Fuzzi a -> Fuzzi (m b))) =
   let bodies = streamlineAux (var + 1) (f (Variable var))
-  in [Bind a' (\x -> subst @a var body' x) | a' <- streamlineAux var a, body' <- bodies]
+  in [Bind a' (subst @a var body') | a' <- streamlineAux var a, body' <- bodies]
 streamlineAux _ (Lit x) = [Lit x]
 streamlineAux var (If cond t f) =
   [If cond' t' f' | cond' <- streamlineAux var cond, t' <- streamlineAux var t, f' <- streamlineAux var f]
@@ -208,85 +220,6 @@ streamlineAux var (ListSnoc xs x) =
 streamlineAux var (ListIsNil x) =
   [ListIsNil x' | x' <- streamlineAux var x]
 
-ex1 :: (FuzziLang m a) => Mon m (Fuzzi a)
-ex1 = do
-  x1 <- lap (Lit 1.0) 1.0
-  x2 <- lap (Lit 2.0) 1.0
-  return $ x1 + x2
-
-ex2 :: (FuzziLang m a) => Mon m (Fuzzi a)
-ex2 = do
-  x1 <- lap 1.0 1.0
-  x2 <- lap x1 1.0
-  return $ x1 + x2
-
-ex3 :: Fuzzi Double -> Fuzzi Double -> Fuzzi Double
-ex3 a b = if_ (a %> b) a b
-
-ex4 :: (FuzziLang m a, ConcreteBoolean (CmpResult a)) => Mon m (Fuzzi a)
-ex4 = do
-  x1 <- lap 1.0 1.0
-  x2 <- lap 1.0 1.0
-  ifM (x1 %> x2)
-      (do x3 <- gauss 1.0 1.0
-          return $ if_ (x3 %> x1) x3 x1
-      )
-      (do x4 <- gauss 1.0 1.0
-          return $ if_ (x4 %> x2) x4 x2
-      )
-
-reportNoisyMaxAux :: (FuzziLang m a)
-                  => [Fuzzi a]
-                  -> Fuzzi Int
-                  -> Fuzzi Int
-                  -> Fuzzi a
-                  -> Mon m (Fuzzi Int)
-reportNoisyMaxAux []     _       maxIdx _       = return maxIdx
-reportNoisyMaxAux (x:xs) lastIdx maxIdx currMax = do
-  xNoised <- lap x 1.0
-  ifM (xNoised %> currMax)
-      (reportNoisyMaxAux xs (lastIdx + 1) (lastIdx+1) xNoised)
-      (reportNoisyMaxAux xs (lastIdx + 1) maxIdx      currMax)
-
-reportNoisyMax :: (FuzziLang m a)
-               => [Fuzzi a]
-               -> Mon m (Fuzzi Int)
-reportNoisyMax []     = error "reportNoisyMax received empty input"
-reportNoisyMax (x:xs) = do
-  xNoised <- lap x 1.0
-  reportNoisyMaxAux xs 0 0 xNoised
-
-
-smartSumAux :: ( FuzziLang m a
-               , ListLike listA
-               , Elem listA ~ a
-               , FuzziType listA
-               , ConcreteBoolean (TestResult listA))
-            => [Fuzzi a] -- ^The inputs
-            -> Fuzzi a   -- ^The next partial sum
-            -> Fuzzi a   -- ^This partial sum
-            -> Fuzzi Int -- ^Iteration index
-            -> Fuzzi a   -- ^The un-noised raw sum
-            -> Fuzzi listA -- ^The accumulated list
-            -> Mon m (Fuzzi listA)
-smartSumAux []     _    _ _ _   results = return results
-smartSumAux (x:xs) next n i sum results = do
-  let sum' = sum + x
-  if_ (((i + 1) `imod` 2) %== 0)
-      (do n' <- lap (n + sum') 1.0
-          smartSumAux xs n' n' (i+1) sum' (results `snoc` n'))
-      (do next' <- lap (next + x) 1.0
-          smartSumAux xs next' n (i+1) sum' (results `snoc` next'))
-
-smartSum :: ( FuzziLang m a
-            , ListLike listA
-            , Elem listA ~ a
-            , FuzziType listA
-            , ConcreteBoolean (TestResult listA))
-         => [Fuzzi a]
-         -> Mon m (Fuzzi listA)
-smartSum xs = smartSumAux xs 0 0 0 0 nil
-
 instance Applicative (Mon m) where
   pure a  = Mon $ \k -> k a
   f <*> a = f >>= \f' -> a >>= \a' -> return (f' a')
@@ -302,7 +235,7 @@ instance ( Syntactic a
          , FuzziType (DeepRepr a)) => Syntactic (a -> b) where
   type DeepRepr (a -> b) = (DeepRepr a -> DeepRepr b)
   toDeepRepr f = Lam (toDeepRepr . f . fromDeepRepr)
-  fromDeepRepr f = fromDeepRepr . (App f) . toDeepRepr
+  fromDeepRepr f = fromDeepRepr . App f . toDeepRepr
 
 instance Typeable a => Syntactic (Fuzzi a) where
   type DeepRepr (Fuzzi a) = a

@@ -29,7 +29,7 @@ defaultZ3Solver = do
 
 runSymbolicT :: (MonadIO m) => SymbolicT m a -> m a
 runSymbolicT m = do
-  s <- liftIO $ defaultZ3Solver
+  s <- liftIO defaultZ3Solver
   evalStateT (runReaderT (runSymbolicT_ m) s) 0
 
 instance MonadTrans SymbolicT where
@@ -100,8 +100,7 @@ assertAndTrack name (BoolExpr cond) = do
 check :: (MonadIO m) => SymbolicT m Result
 check = do
   solver <- ask
-  r <- liftIO $ SimpleSMT.check solver
-  return r
+  liftIO $ SimpleSMT.check solver
 
 getUnsatCore :: (MonadIO m) => SymbolicT m [String]
 getUnsatCore = do

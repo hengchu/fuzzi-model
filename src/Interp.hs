@@ -15,14 +15,14 @@ eval :: forall a. Fuzzi a -> a
 eval (Lam f) = eval . f . Lit
 eval (App f a) = (eval f) (eval a)
 eval (Return a) = return (eval a)
-eval (Bind a f) = (eval a) >>= (eval . f . Lit)
+eval (Bind a f) = eval a >>= (eval . f . Lit)
 eval (Lit a) = a
 eval (If cond t f) = if toBool (eval cond) then eval t else eval f
 eval (IfM (cond :: Fuzzi bool) t f) =
   ifCxt (Proxy :: Proxy (ConcreteBoolean bool))
         (if toBool (eval cond) then eval t else eval f)
         (error ("The type "
-                ++ (show $ typeRep @bool)
+                ++ show (typeRep @bool)
                 ++ " does not support concrete execution"))
 eval (Laplace _ c w) = laplace (eval c) w
 eval (Gaussian _ c w) = gaussian (eval c) w

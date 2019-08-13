@@ -18,7 +18,7 @@ import qualified Data.Random as R
 
 newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVar a }
   deriving (Functor, Applicative, Monad)
-  via (RVar)
+  via RVar
 
 data Trace :: * -> * where
   TrLaplace  :: a -> Double -> a -> Trace a
@@ -78,7 +78,7 @@ sampleTraced m = R.sample ((runStateT . runTracedDist_) m mempty)
 
 newtype NoRandomness a = NoRandomness { runNoRandomness :: a }
   deriving (Functor, Applicative, Monad, Show1)
-  via (Identity)
+  via Identity
   deriving (Show, Eq, Ord)
 
 laplaceNoRandomness :: Double -> Double -> NoRandomness Double
@@ -128,8 +128,8 @@ instance Num a => Num (DistributionProvenance a) where
   a + b         = Arith a Add  b
   a * b         = Arith a Mult b
   a - b         = Arith a Sub  b
-  abs a         = Unary Abs  a
-  signum a      = Unary Sign a
+  abs           = Unary Abs
+  signum        = Unary Sign
   fromInteger v = Deterministic (fromInteger v)
 
 instance Fractional a => Fractional (DistributionProvenance a) where
@@ -217,7 +217,7 @@ instance MonadDist m => MonadDist (IdentityT m) where
 
 instance (Monad m, Typeable m) => MonadAssert (MaybeT m) where
   type BoolType (MaybeT m) = Bool
-  assertTrue v = guard v
+  assertTrue = guard
 
 instance (Monad m, Typeable m) => MonadAssert (IdentityT m) where
   type BoolType (IdentityT m) = Bool

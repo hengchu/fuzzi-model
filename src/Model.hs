@@ -59,7 +59,7 @@ newtype NoRandomness a = NoRandomness { unwrapNoRandomness :: a }
 
 instance Applicative NoRandomness where
   pure = NoRandomness
-  f <*> a = NoRandomness $ (unwrapNoRandomness f) (unwrapNoRandomness a)
+  f <*> a = NoRandomness $ unwrapNoRandomness f (unwrapNoRandomness a)
 
 instance Monad NoRandomness where
   return = pure

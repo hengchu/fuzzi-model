@@ -39,6 +39,8 @@ library
                 , Symbol
                 , IfCxt
                 , Test
+                , Examples
+                , Interface
   other-modules:
       Paths_fuzzi_model
   hs-source-dirs:
