@@ -16,6 +16,7 @@ import Types
 import qualified Control.Monad.Trans.Class as MT
 import qualified Data.Random as R
 import qualified Data.Random.Lift as RL
+import GHC.Generics
 
 newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVar a }
   deriving (Functor, Applicative, Monad)
@@ -95,9 +96,23 @@ data UOp = Abs | Sign
   deriving (Show, Eq, Ord)
 
 data DistributionProvenance (a :: *) where
-  Deterministic :: a -> DistributionProvenance a
-  Laplace       :: DistributionProvenance a -> Double -> DistributionProvenance a
-  Gaussian      :: DistributionProvenance a -> Double -> DistributionProvenance a
+  Deterministic :: a
+                -> DistributionProvenance a
+  ListEmpty     :: DistributionProvenance [a]
+  ListCons      :: (Show a, Eq a, Ord a)
+                => DistributionProvenance a
+                -> DistributionProvenance [a]
+                -> DistributionProvenance [a]
+  ListSnoc      :: (Show a, Eq a, Ord a)
+                => DistributionProvenance [a]
+                -> DistributionProvenance a
+                -> DistributionProvenance [a]
+  Laplace       :: DistributionProvenance a
+                -> Double
+                -> DistributionProvenance a
+  Gaussian      :: DistributionProvenance a
+                -> Double
+                -> DistributionProvenance a
   Arith         :: DistributionProvenance a
                 -> ArithOp
                 -> DistributionProvenance a
@@ -105,7 +120,11 @@ data DistributionProvenance (a :: *) where
   Unary         :: UOp
                 -> DistributionProvenance a
                 -> DistributionProvenance a
-  deriving (Show, Eq, Ord, Functor, Typeable)
+
+deriving instance (Show a) => Show (DistributionProvenance a)
+deriving instance (Eq a) => Eq (DistributionProvenance a)
+deriving instance (Ord a) => Ord (DistributionProvenance a)
+deriving instance Typeable DistributionProvenance
 
 instance Num a => Num (DistributionProvenance a) where
   a + b         = Arith a Add  b
@@ -123,7 +142,7 @@ data WithDistributionProvenance a =
   WithDistributionProvenance { value :: a
                              , provenance :: DistributionProvenance a
                              }
-  deriving (Show, Eq, Ord, Functor, Typeable)
+  deriving (Show, Eq, Ord, Typeable)
 
 inject :: a -> WithDistributionProvenance a
 inject a = WithDistributionProvenance a (Deterministic a)
@@ -159,9 +178,24 @@ instance Ordered a => Ordered (WithDistributionProvenance a) where
   a %== b = value a %== value b
   a %/= b = value a %/= value b
 
+instance (Show a, Eq a, Ord a, Typeable a)
+  => ListLike (WithDistributionProvenance [a]) where
+  type Elem       (WithDistributionProvenance [a]) =
+    WithDistributionProvenance (Elem [a])
+  type TestResult (WithDistributionProvenance [a]) = TestResult [a]
+
+  nil       = WithDistributionProvenance nil ListEmpty
+  cons x xs = WithDistributionProvenance
+                (cons (value x) (value xs))
+                (ListCons (provenance x) (provenance xs))
+  snoc xs x = WithDistributionProvenance
+                (snoc (value xs) (value x))
+                (ListSnoc (provenance xs) (provenance x))
+  isNil xs  = isNil (value xs)
+
 instance Numeric a     => Numeric     (WithDistributionProvenance a)
 instance FracNumeric a => FracNumeric (WithDistributionProvenance a)
-instance FuzziType a   => FuzziType   (WithDistributionProvenance a)
+instance {-# OVERLAPS #-} FuzziType a   => FuzziType   (WithDistributionProvenance a)
 
 instance MonadDist ConcreteDist where
   type NumDomain ConcreteDist = Double

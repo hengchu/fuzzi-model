@@ -17,13 +17,6 @@ class (Boolean (CmpResult a), Typeable a) => Ordered (a :: *) where
   (%==) :: a -> a -> CmpResult a
   (%/=) :: a -> a -> CmpResult a
 
-class (Typeable f, Boolean (CmpResult1 f)) => Listy (f :: * -> *) where
-  type CmpResult1 f :: *
-  nil   :: Typeable a => f a
-  cons  :: Typeable a => a -> f a -> f a
-  snoc  :: Typeable a => f a -> a -> f a
-  isNil :: Typeable a => f a -> CmpResult1 f
-
 class LiteIntegral (a :: *) where
   idiv :: a -> a -> a
   imod :: a -> a -> a
@@ -31,6 +24,18 @@ class LiteIntegral (a :: *) where
 instance LiteIntegral Int where
   idiv = div
   imod = mod
+
+class ( Boolean  (TestResult list)
+      , Typeable (Elem list)
+      , Typeable list
+      ) => ListLike list where
+  type Elem       list :: *
+  type TestResult list :: *
+
+  nil   :: list
+  cons  :: Elem list -> list -> list
+  snoc  :: list -> Elem list -> list
+  isNil :: list -> TestResult list
 
 -- |This constraint is only satisfied by numeric datatypes supported in Fuzzi.
 class (Ordered a, Num a, Typeable a) => Numeric (a :: *)
@@ -94,10 +99,24 @@ instance Ordered Int where
   (%==) a b = fromBool $ (==) a b
   (%/=) a b = fromBool $ (/=) a b
 
-instance FuzziType Double
-instance FuzziType Bool
-instance FuzziType Int
-instance (FuzziType a, Listy f, Show (f a)) => FuzziType (f a)
+instance Typeable a => ListLike [a] where
+  type Elem [a] = a
+  type TestResult [a] = Bool
+
+  nil = []
+  cons = (:)
+  snoc xs x = xs ++ [x]
+  isNil [] = True
+  isNil _  = False
+
+instance {-# OVERLAPS #-} FuzziType Double
+instance {-# OVERLAPS #-} FuzziType Bool
+instance {-# OVERLAPS #-} FuzziType Int
+instance {-# OVERLAPPABLE #-}
+  ( ListLike list
+  , FuzziType (Elem list)
+  , Typeable list
+  , Show list) => FuzziType list
 
 instance Numeric Double
 instance FracNumeric Double

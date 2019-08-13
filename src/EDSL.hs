@@ -64,6 +64,11 @@ data Fuzzi (a :: *) where
 
   InjectProvenance :: (FuzziType a) => Fuzzi a -> Fuzzi (WithDistributionProvenance a)
 
+  ListNil   :: (FuzziType (Elem list), ListLike list) => Fuzzi list
+  ListCons  :: (FuzziType (Elem list), ListLike list) => Fuzzi (Elem list) -> Fuzzi list -> Fuzzi list
+  ListSnoc  :: (FuzziType (Elem list), ListLike list) => Fuzzi list -> Fuzzi (Elem list) -> Fuzzi list
+  ListIsNil :: (FuzziType (Elem list), ListLike list, ConcreteBoolean (TestResult list)) => Fuzzi list -> Fuzzi (TestResult list)
+
 if_ :: (Syntactic a, ConcreteBoolean bool) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
 
@@ -128,12 +133,10 @@ subst v term filling =
 
     InjectProvenance a -> InjectProvenance (subst v a filling)
 
-{-
-    ListEmpty -> ListEmpty
-    ListCons x xs -> ListCons (subst v x filling) (subst v xs filling)
+    ListNil -> ListNil
+    ListCons x xs -> ListCons (subst v x filling)  (subst v xs filling)
     ListSnoc xs x -> ListSnoc (subst v xs filling) (subst v x filling)
-    IsListEmpty xs -> IsListEmpty (subst v xs filling)
--}
+    ListIsNil xs  -> ListIsNil (subst v xs filling)
 
 streamline :: Typeable a => Fuzzi a -> [Fuzzi a]
 streamline = streamlineAux 0
@@ -201,15 +204,13 @@ streamlineAux var (AssertFalseM cond a) =
   [AssertFalseM cond' a' | cond' <- streamlineAux var cond, a' <- streamlineAux var a]
 streamlineAux var (InjectProvenance a) =
   [InjectProvenance a' | a' <- streamlineAux var a]
-{-
-streamlineAux _ ListEmpty = [ListEmpty]
+streamlineAux _ ListNil = [ListNil]
 streamlineAux var (ListCons x xs) =
   [ListCons x' xs' | x' <- streamlineAux var x, xs' <- streamlineAux var xs]
 streamlineAux var (ListSnoc xs x) =
   [ListSnoc xs' x' | xs' <- streamlineAux var xs, x' <- streamlineAux var x]
-streamlineAux var (IsListEmpty x) =
-  [IsListEmpty x' | x' <- streamlineAux var x]
--}
+streamlineAux var (ListIsNil x) =
+  [ListIsNil x' | x' <- streamlineAux var x]
 
 ex1 :: (FuzziLang m a) => Mon m (Fuzzi a)
 ex1 = do
@@ -259,15 +260,19 @@ reportNoisyMax (x:xs) = do
   xNoised <- lap x 1.0
   reportNoisyMaxAux xs 0 0 xNoised
 
-{-
-smartSumAux :: (FuzziLang m a)
+
+smartSumAux :: ( FuzziLang m a
+               , ListLike listA
+               , Elem listA ~ a
+               , FuzziType listA
+               , ConcreteBoolean (TestResult listA))
             => [Fuzzi a] -- ^The inputs
             -> Fuzzi a   -- ^The next partial sum
             -> Fuzzi a   -- ^This partial sum
             -> Fuzzi Int -- ^Iteration index
             -> Fuzzi a   -- ^The un-noised raw sum
-            -> Fuzzi [a] -- ^The accumulated list
-            -> Mon m (Fuzzi [a])
+            -> Fuzzi listA -- ^The accumulated list
+            -> Mon m (Fuzzi listA)
 smartSumAux []     _    _ _ _   results = return results
 smartSumAux (x:xs) next n i sum results = do
   let sum' = sum + x
@@ -277,11 +282,14 @@ smartSumAux (x:xs) next n i sum results = do
       (do next' <- lap (next + x) 1.0
           smartSumAux xs next' n (i+1) sum' (results `snoc` next'))
 
-smartSum :: (FuzziLang m a)
+smartSum :: ( FuzziLang m a
+            , ListLike listA
+            , Elem listA ~ a
+            , FuzziType listA
+            , ConcreteBoolean (TestResult listA))
          => [Fuzzi a]
-         -> Mon m (Fuzzi [a])
+         -> Mon m (Fuzzi listA)
 smartSum xs = smartSumAux xs 0 0 0 0 nil
--}
 
 instance Applicative (Mon m) where
   pure a  = Mon $ \k -> k a
@@ -349,3 +357,14 @@ instance Boolean a => Boolean (Fuzzi a) where
   and = And
   or  = Or
   neg = Not
+
+instance ( ConcreteBoolean (TestResult list)
+         , FuzziType (Elem list)
+         , ListLike list
+         ) => ListLike (Fuzzi list) where
+  type Elem (Fuzzi list)       = Fuzzi (Elem list)
+  type TestResult (Fuzzi list) = Fuzzi (TestResult list)
+  nil   = ListNil
+  cons  = ListCons
+  snoc  = ListSnoc
+  isNil = ListIsNil

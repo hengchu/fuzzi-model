@@ -51,12 +51,7 @@ eval (AssertFalseM cond v) = do
   assertFalse (eval cond)
   eval v
 eval (InjectProvenance a) = inject (eval a)
-{-
-eval ListEmpty = []
-eval (ListCons x xs) = (eval x):(eval xs)
-eval (ListSnoc xs x) = (eval xs) ++ [eval x]
-eval (IsListEmpty xs) = fromBool $
-  case eval xs of
-    [] -> True
-    _  -> False
--}
+eval ListNil         = nil
+eval (ListCons x xs) = (eval x) `cons` (eval xs)
+eval (ListSnoc xs x) = (eval xs) `snoc` (eval x)
+eval (ListIsNil xs)  = isNil (eval xs)
