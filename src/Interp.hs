@@ -1,3 +1,5 @@
+{- HLINT ignore "Redundant bracket" -}
+
 module Interp where
 
 import Distribution (inject)
