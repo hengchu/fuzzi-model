@@ -65,7 +65,7 @@ class (Monad m, Typeable m, Boolean (BoolType m)) => MonadAssert m where
   assertFalse v = assertTrue (neg v)
 
 type Distribution m a    = (MonadDist m, NumDomain m ~ a, FuzziType a, FracNumeric a)
-type Assertion    m bool = (MonadAssert m, BoolType m ~ bool, IfCxt (ConcreteBoolean bool))
+type Assertion    m bool = (MonadAssert m, BoolType m ~ bool)--, IfCxt (ConcreteBoolean bool))
 type FuzziLang    m a    = (Distribution m a, Assertion m (CmpResult a))
 
 instance Boolean Bool where
