@@ -1,153 +1,134 @@
 module Symbol where
 
-import Text.Read (readMaybe)
-import Control.Monad.Reader
-import Control.Monad.State
-import Data.Coerce
-import SimpleSMT
-import Type.Reflection
+{- HLINT ignore "Use newtype instead of data" -}
+
 import Types
+import Control.Monad.IO.Class
+import System.IO.Unsafe
+import qualified Z3.Base as Z3
 
-newtype RealExpr = RealExpr { getRealExpr :: SExpr }
-  deriving (Show, Eq, Ord)
+_globalConfig :: Z3.Config
+{-# NOINLINE _globalConfig #-}
+_globalConfig = unsafePerformIO $ do
+  cfg <- Z3.mkConfig
+  return cfg
 
-newtype BoolExpr = BoolExpr { getBoolExpr :: SExpr }
-  deriving (Show, Eq, Ord)
+_globalContext :: Z3.Context
+{-# NOINLINE _globalContext #-}
+_globalContext = unsafePerformIO (Z3.mkContext _globalConfig)
 
-newtype SymbolicT m a = SymbolicT { runSymbolicT_ :: ReaderT Solver (StateT Int m) a }
-  deriving (Functor, Applicative, Monad, MonadIO) via (ReaderT Solver (StateT Int m))
-  deriving (MonadReader Solver)
-  deriving (MonadState Int)
-  deriving (Typeable)
+_realSort :: Z3.Sort
+{-# NOINLINE _realSort #-}
+_realSort = unsafePerformIO (Z3.mkRealSort _globalContext)
 
-defaultZ3Solver :: IO Solver
-defaultZ3Solver = do
-  logger <- newLogger 0
-  solver <- newSolver "z3" ["-smt2", "-in"] (Just logger)
-  setOption solver ":pp.decimal" "false"
-  return solver
+data RealExpr = RealExpr { getRealExpr :: !Z3.AST }
+data BoolExpr = BoolExpr { getBoolExpr :: !Z3.AST }
 
-runSymbolicT :: (MonadIO m) => SymbolicT m a -> m a
-runSymbolicT m = do
-  s <- liftIO defaultZ3Solver
-  evalStateT (runReaderT (runSymbolicT_ m) s) 0
+instance Show RealExpr where
+  show (RealExpr a) = unsafePerformIO $ Z3.astToString _globalContext a
 
-instance MonadTrans SymbolicT where
-  lift m = SymbolicT (lift (lift m))
+instance Show BoolExpr where
+  show (BoolExpr a) = unsafePerformIO $ Z3.astToString _globalContext a
 
-fresh :: (Monad m) => String -> SymbolicT m String
-fresh namePrefix = do
-  counter <- get
-  modify (+1)
-  return (namePrefix ++ show counter)
+instance Eq RealExpr where
+  (RealExpr a) == (RealExpr b) = unsafePerformIO $ Z3.isEqAST _globalContext a b
 
-nameOfReal :: RealExpr -> Maybe String
-nameOfReal (RealExpr x) =
-  case x of
-    Atom name -> Just name
-    _ -> Nothing
+instance Eq BoolExpr where
+  (BoolExpr a) == (BoolExpr b) = unsafePerformIO $ Z3.isEqAST _globalContext a b
 
-nameOfBool :: BoolExpr -> Maybe String
-nameOfBool (BoolExpr x) =
-  case x of
-    Atom name -> Just name
-    _ -> Nothing
+compareHash :: Z3.AST -> Z3.AST -> IO Ordering
+compareHash a b = do
+  hashA <- Z3.getASTHash _globalContext a
+  hashB <- Z3.getASTHash _globalContext b
+  return (compare hashA hashB)
 
-sRealNamed :: String -> RealExpr
-sRealNamed = RealExpr . Atom
+instance Ord RealExpr where
+  compare (RealExpr a) (RealExpr b) = unsafePerformIO (compareHash a b)
 
-sReal :: (MonadIO m) => String -> SymbolicT m RealExpr
-sReal name = do
-  solver <- ask
-  realSym <- liftIO $ declare solver name tReal
-  return (RealExpr realSym)
+instance Ord BoolExpr where
+  compare (BoolExpr a) (BoolExpr b) = unsafePerformIO (compareHash a b)
 
-getRealValue :: (MonadIO m) => String -> SymbolicT m (Maybe Rational)
-getRealValue name = do
-  solver <- ask
-  val <- liftIO $ getConst solver name
-  case val of
-    Real v -> return (Just v)
-    Other (Atom str) -> return (fmap (toRational @Double) (readMaybe str))
-    _ -> return Nothing
+sReal :: MonadIO m => String -> m RealExpr
+sReal name = liftIO $ do
+  sym <- Z3.mkStringSymbol _globalContext name
+  RealExpr <$> Z3.mkRealVar _globalContext sym
 
-sBool :: (MonadIO m) => String -> SymbolicT m BoolExpr
-sBool name = do
-  solver <- ask
-  realSym <- liftIO $ declare solver name tReal
-  return (BoolExpr realSym)
+laplaceSymbolic :: MonadIO m => RealExpr -> Double -> m RealExpr
+laplaceSymbolic c w = liftIO $
+  RealExpr <$> Z3.mkFreshRealVar _globalContext "lap"
 
-laplaceSymbolic :: (MonadIO m) => RealExpr -> Double -> SymbolicT m RealExpr
-laplaceSymbolic _ _ = do
-  name <- fresh "lap"
-  sReal name
-
-gaussianSymbolic :: (MonadIO m) => RealExpr -> Double -> SymbolicT m RealExpr
-gaussianSymbolic _ _ = do
-  name <- fresh "gauss"
-  sReal name
-
-assert :: (MonadIO m) => BoolExpr -> SymbolicT m ()
-assert (BoolExpr cond) = do
-  solver <- ask
-  liftIO $ SimpleSMT.assert solver cond
-
-assertAndTrack :: (MonadIO m) => String -> BoolExpr -> SymbolicT m ()
-assertAndTrack name (BoolExpr cond) = do
-  solver <- ask
-  liftIO $ SimpleSMT.assert solver (named name cond)
-
-check :: (MonadIO m) => SymbolicT m Result
-check = do
-  solver <- ask
-  liftIO $ SimpleSMT.check solver
-
-getUnsatCore :: (MonadIO m) => SymbolicT m [String]
-getUnsatCore = do
-  solver <- ask
-  liftIO $ SimpleSMT.getUnsatCore solver
-
-setLogic :: (MonadIO m) => String -> SymbolicT m ()
-setLogic logic = do
-  solver <- ask
-  liftIO $ SimpleSMT.setLogic solver logic
-
-instance (MonadIO m, Typeable m) => MonadDist (SymbolicT m) where
-  type NumDomain (SymbolicT m) = RealExpr
-  laplace  = laplaceSymbolic
-  gaussian = gaussianSymbolic
+gaussianSymbolic :: MonadIO m => RealExpr -> Double -> m RealExpr
+gaussianSymbolic c w = liftIO $
+  RealExpr <$> Z3.mkFreshRealVar _globalContext "gauss"
 
 instance Num RealExpr where
-  (+) = coerce add
-  (-) = coerce sub
-  (*) = coerce mul
-  abs = coerce SimpleSMT.abs
-  signum a = RealExpr
-             $ ite (getRealExpr a `gt` real 0)
-                   (real 1)
-                   (ite (getRealExpr a `eq` real 0)
-                        (real 0)
-                        (real (-1))
-                   )
-  fromInteger v = RealExpr (real (fromInteger v))
+  (RealExpr a) + (RealExpr b) = unsafePerformIO $ do
+    s <- Z3.mkAdd _globalContext [a,b]
+    return (RealExpr s)
+  (RealExpr a) - (RealExpr b) = unsafePerformIO $ do
+    s <- Z3.mkSub _globalContext [a,b]
+    return (RealExpr s)
+  (RealExpr a) * (RealExpr b) = unsafePerformIO $ do
+    s <- Z3.mkMul _globalContext [a,b]
+    return (RealExpr s)
+  abs (RealExpr a) = unsafePerformIO $ do
+    zero <- Z3.mkIntegral _globalContext 0 _realSort
+    cond <- Z3.mkGe _globalContext a zero
+    negA <- Z3.mkSub _globalContext [zero, a]
+    -- if a >= 0 then a else -a
+    expr <- Z3.mkIte _globalContext cond a negA
+    return (RealExpr expr)
+  signum (RealExpr a) = unsafePerformIO $ do
+    zero <- Z3.mkIntegral _globalContext 0 _realSort
+    one  <- Z3.mkIntegral _globalContext 1 _realSort
+    negOne <- Z3.mkIntegral _globalContext (-1) _realSort
+    condZero <- Z3.mkEq _globalContext a zero
+    condGt   <- Z3.mkGt _globalContext a zero
+    -- if a == 0 then 0 else (if a > 0 then 1 else -1)
+    subExpr <- Z3.mkIte _globalContext condGt one negOne
+    expr <- Z3.mkIte _globalContext condZero zero subExpr
+    return (RealExpr expr)
+  fromInteger v = unsafePerformIO $ do
+    a <- Z3.mkIntegral _globalContext v _realSort
+    return (RealExpr a)
 
 instance Fractional RealExpr where
-  (/) = coerce SimpleSMT.div
-  fromRational = RealExpr . real . fromRational
+  (RealExpr a) / (RealExpr b) = unsafePerformIO $ do
+    s <- Z3.mkDiv _globalContext a b
+    return (RealExpr s)
+  fromRational v = unsafePerformIO $ do
+    s <- Z3.mkRational _globalContext v
+    return (RealExpr s)
 
 instance Boolean BoolExpr where
-  and = coerce SimpleSMT.and
-  or  = coerce SimpleSMT.or
-  neg = coerce SimpleSMT.not
+  and (BoolExpr a) (BoolExpr b) = unsafePerformIO $ do
+    ab <- Z3.mkAnd _globalContext [a,b]
+    return (BoolExpr ab)
+  or (BoolExpr a) (BoolExpr b) = unsafePerformIO $ do
+    ab <- Z3.mkOr _globalContext [a,b]
+    return (BoolExpr ab)
+  neg (BoolExpr a) = unsafePerformIO $ do
+    notA <- Z3.mkNot _globalContext a
+    return (BoolExpr notA)
 
 instance Ordered RealExpr where
   type CmpResult RealExpr = BoolExpr
-  (%<)  = coerce lt
-  (%<=) = coerce leq
-  (%>)  = coerce gt
-  (%>=) = coerce geq
-  (%==) = coerce eq
-  a %/= b = Types.neg (a %== b)
+  (RealExpr a) %< (RealExpr b) = unsafePerformIO $ do
+    ab <- Z3.mkLt _globalContext a b
+    return (BoolExpr ab)
+  (RealExpr a) %<= (RealExpr b) = unsafePerformIO $ do
+    ab <- Z3.mkLe _globalContext a b
+    return (BoolExpr ab)
+  (RealExpr a) %> (RealExpr b) = unsafePerformIO $ do
+    ab <- Z3.mkGt _globalContext a b
+    return (BoolExpr ab)
+  (RealExpr a) %>= (RealExpr b) = unsafePerformIO $ do
+    ab <- Z3.mkGe _globalContext a b
+    return (BoolExpr ab)
+  (RealExpr a) %== (RealExpr b) = unsafePerformIO $ do
+    ab <- Z3.mkEq _globalContext a b
+    return (BoolExpr ab)
+  a %/= b = neg (a %== b)
 
 instance Numeric     RealExpr
 instance FracNumeric RealExpr

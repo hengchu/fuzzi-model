@@ -58,6 +58,7 @@ library
               , deepseq >= 1.4.4.0 && <1.5
               , containers >= 0.6.0.1 && <0.7
               , async >= 2.2.2 && <2.3
+              , z3 >= 408.0
   default-language: Haskell2010
   default-extensions:
                      DataKinds
@@ -94,6 +95,7 @@ library
                    , PolyKinds
                    , QuantifiedConstraints
                    , DerivingVia
+                   , BangPatterns
 
 executable fuzzi-model-exe
   main-is: Main.hs
