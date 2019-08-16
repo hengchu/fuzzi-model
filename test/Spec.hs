@@ -13,35 +13,10 @@ import Test
 import Test.QuickCheck
 import qualified Z3.Base as Z3
 import qualified Data.Map.Strict as M
-
-testSmtSimple :: IO Bool
-testSmtSimple = do
-  (_, r) <- S.runSymbolicT $ do
-    x <- S.freshSReal "x"
-    assert (x %< (x + 1)) True
-  return (r == Z3.Sat)
-
-testSmtSimple2 :: IO Bool
-testSmtSimple2 = do
-  (_, r) <- S.runSymbolicT $ do
-    x <- S.freshSReal "x"
-    assert (x %> (x + 1)) True
-  return (r == Z3.Unsat)
-
-testSmtSubstitute :: IO Bool
-testSmtSubstitute = do
-  (_, r) <- S.runSymbolicT $ do
-    x <- S.freshSReal "x"
-    y <- S.freshSReal "y"
-    let cond = x %> (y + 1)
-    assert (substituteB cond [(y, x)]) True
-  return (r == Z3.Unsat)
+import Control.Monad
 
 smtTests :: H.Test
 smtTests = H.TestList [
-  H.TestCase (H.assert testSmtSimple)
-  , H.TestCase (H.assert testSmtSimple2)
-  , H.TestCase (H.assert testSmtSubstitute)
   ]
 
 provenanceTests :: H.Test
@@ -75,13 +50,34 @@ prop_symbolCongruence a b =
      then sa == sb
      else sa /= sb
 
+prop_rnmLengthConstraints :: SmallList Double -> Bool
+prop_rnmLengthConstraints (SmallList xs) =
+  length (symExec @Int (reify (reportNoisyMax (map (fromRational . toRational) xs))))
+  == 2 ^ (length xs - 1)
+
+prop_all :: Property
+prop_all = prop_symbolCongruence
+           .&&. prop_rnmLengthConstraints
+
+newtype SmallList a = SmallList {
+  getSmallList :: [a]
+  } deriving (Show, Eq, Ord)
+
+instance Arbitrary a => Arbitrary (SmallList a) where
+  arbitrary = do
+    len <- elements [1..12]
+    xs <- replicateM len arbitrary
+    return (SmallList xs)
+
+  shrink xs = SmallList <$> shrink (getSmallList xs)
+
 main :: IO ()
 main = do
   putStrLn $
     "\n#######################################"
     ++ "\n#          QuickCheck Tests           #"
     ++ "\n#######################################"
-  quickCheckWith stdArgs{chatty=True, maxSuccess=500} prop_symbolCongruence
+  quickCheckWith stdArgs{chatty=True, maxSuccess=500} prop_all
   putStrLn $
     "\n#######################################"
     ++ "\n#              Unit Tests             #"
