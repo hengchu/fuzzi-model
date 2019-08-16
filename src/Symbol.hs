@@ -1,17 +1,24 @@
 module Symbol where
 
 {- HLINT ignore "Use newtype instead of data" -}
+{- HLINT ignore "Use camelCase" -}
+{- HLINT ignore "Use mapM" -}
 
-import Control.Monad.IO.Class
+import Control.Lens
+import Control.Monad.Except
 import Control.Monad.State.Class
-import Control.Monad.Trans.Class
 import Control.Monad.Trans.State hiding (gets, put, modify)
 import Data.Coerce
 import Data.Foldable
 import Type.Reflection
 import Types
 import qualified Data.Map.Strict as M
+import qualified Data.Sequence as S
+import qualified Distribution as D
 import qualified Z3.Base as Z3
+
+k_FLOAT_TOLERANCE :: Rational
+k_FLOAT_TOLERANCE = 1e-4
 
 data SymbolicExpr :: * where
   RealVar :: String -> SymbolicExpr
@@ -44,16 +51,56 @@ newtype RealExpr = RealExpr { getRealExpr :: SymbolicExpr }
 newtype BoolExpr = BoolExpr { getBoolExpr :: SymbolicExpr }
   deriving (Show, Eq, Ord)
 
+type ConcreteSampleSymbol = RealExpr
+type ConcreteCenterSymbol = RealExpr
+type SymbolicSampleSymbol = RealExpr
+type OpenSymbolTriple =
+  (ConcreteSampleSymbol, ConcreteCenterSymbol, SymbolicSampleSymbol)
+
 type NameMap = M.Map String Int
-data SymbolicState = SymbolicState {
-  nameMap :: NameMap
-  , assertions :: [(BoolExpr, Bool)]
+data SymbolicState r = SymbolicState {
+  _ssNameMap               :: NameMap
+  , _ssPathConstraints     :: S.Seq (BoolExpr, Bool)
+  , _ssCouplingConstraints :: S.Seq BoolExpr
+  , _ssCostSymbols         :: S.Seq RealExpr
+  , _ssOpenSymbols         :: S.Seq OpenSymbolTriple
+  , _ssBuckets             :: D.Buckets r
   } deriving (Show, Eq, Ord)
 
-newtype SymbolicT m a = SymbolicT { runSymbolicT_ :: StateT SymbolicState m a }
-  deriving (MonadTrans)                  via (StateT SymbolicState)
-  deriving (MonadState SymbolicState)    via (StateT SymbolicState m)
-  deriving (Functor, Applicative, Monad) via (StateT SymbolicState m)
+makeLensesWith abbreviatedFields ''SymbolicState
+
+data SymbolicConstraints = SymbolicConstraints {
+  _scPathConstraints     :: S.Seq (BoolExpr, Bool)
+  , _scCouplingConstraints :: S.Seq BoolExpr
+  , _scCostSymbols         :: S.Seq RealExpr
+  , _scOpenSymbols         :: S.Seq OpenSymbolTriple
+  } deriving (Show, Eq, Ord)
+
+makeLensesWith abbreviatedFields ''SymbolicConstraints
+
+data SymExecError =
+  UnbalancedLaplaceCalls
+  | MismatchingNoiseMechanism
+  | DifferentLaplaceWidth Double Double
+  | ResultDefinitelyNotEqual
+  | InternalError String
+  deriving (Show, Eq, Ord, Typeable)
+
+initialSymbolicState :: D.Buckets r -> SymbolicState r
+initialSymbolicState =
+  SymbolicState M.empty S.empty S.empty S.empty S.empty
+
+newtype SymbolicT r m a =
+  SymbolicT { runSymbolicT_ :: StateT (SymbolicState r) (ExceptT SymExecError m) a }
+  deriving (MonadState (SymbolicState r))
+  via (StateT (SymbolicState r) (ExceptT SymExecError m))
+  deriving (MonadError SymExecError)
+  via (StateT (SymbolicState r) (ExceptT SymExecError m))
+  deriving (Functor, Applicative, Monad)
+  via (StateT (SymbolicState r) (ExceptT SymExecError m))
+
+instance MonadTrans (SymbolicT r) where
+  lift = SymbolicT . lift . lift
 
 z3Init :: (MonadIO m) => m (Z3.Context, Z3.Solver)
 z3Init = do
@@ -61,6 +108,25 @@ z3Init = do
   ctx <- liftIO (Z3.mkContext cfg)
   solver <- liftIO (Z3.mkSolverForLogic ctx Z3.QF_NRA)
   return (ctx, solver)
+
+gatherConstraints :: (Monad m)
+                  => D.Buckets r
+                  -> SymbolicT r m a
+                  -> m (Either SymExecError (a, SymbolicConstraints))
+gatherConstraints buckets computation = do
+  errorOrA :: (Either SymExecError (a, SymbolicState r)) <- run computation
+  case errorOrA of
+    Left err -> return (Left err)
+    Right (a, st) ->
+      let pc = st ^. pathConstraints
+          cc = st ^. couplingConstraints
+          csyms = st ^. costSymbols
+          osyms = st ^. openSymbols
+      in return (Right (a, SymbolicConstraints pc cc csyms osyms))
+  where run =
+          runExceptT
+          . flip runStateT (initialSymbolicState buckets)
+          . runSymbolicT_
 
 symbolicExprToZ3AST :: (MonadIO m) => Z3.Context -> SymbolicExpr -> m Z3.AST
 symbolicExprToZ3AST ctx (RealVar name) = do
@@ -129,46 +195,103 @@ symbolicExprToZ3AST ctx (Substitute a fts) = do
   fts' <- mapM f fts
   liftIO (Z3.substitute ctx a' fts')
 
-runSymbolicT :: (MonadIO m) => SymbolicT m a -> m (a, Z3.Result)
-runSymbolicT (SymbolicT m) = do
-  (a, symbolicSt :: SymbolicState) <- runStateT m (SymbolicState M.empty [])
-  (ctx, solver) <- z3Init
-  for_ (assertions symbolicSt) $ \(boolExpr, positive) -> do
-    clause <- if positive
-              then symbolicExprToZ3AST ctx (getBoolExpr boolExpr)
-              else symbolicExprToZ3AST ctx (Not (getBoolExpr boolExpr))
-    liftIO $ Z3.solverAssertCnstr ctx solver clause
-  result <- liftIO $ Z3.solverCheck ctx solver
-  return (a, result)
-
 sReal :: String -> RealExpr
 sReal = RealExpr . RealVar
 
-freshSReal :: (Monad m) => String -> SymbolicT m RealExpr
+freshSReal :: (Monad m) => String -> SymbolicT r m RealExpr
 freshSReal name = do
-  maybeCounter <- gets (M.lookup name . nameMap)
+  maybeCounter <- gets (M.lookup name . (^. nameMap))
   case maybeCounter of
     Just c -> do
-      modify (\st -> st{nameMap = M.adjust (+1) name (nameMap st)})
+      modify (\st -> st & nameMap %~ M.adjust (+1) name)
       return (sReal $ name ++ show c)
     Nothing -> do
-      modify (\st -> st{nameMap = M.insert name 1 (nameMap st)})
+      modify (\st -> st & nameMap %~ M.insert name 1)
       return (sReal name)
 
-laplaceSymbolic :: (Monad m) => RealExpr -> Double -> SymbolicT m RealExpr
-laplaceSymbolic _ _ = freshSReal "lap"
+data PopTraceItem r =
+  PopTraceItem {
+    key      :: D.DistributionProvenance r
+    , popped :: [D.Trace Double]
+    , rest   :: [(r, S.Seq (D.Trace Double))]
+    }
 
-gaussianSymbolic :: (Monad m) => RealExpr -> Double -> SymbolicT m RealExpr
+type PopTraceAcc r = Either SymExecError [PopTraceItem r]
+
+bucketEntryToPopTraceAcc :: (Show r)
+                         => D.DistributionProvenance r
+                         -> [(r, S.Seq (D.Trace Double))]
+                         -> PopTraceAcc r
+bucketEntryToPopTraceAcc k [] =
+  Left (InternalError $ "found provenance " ++ show k ++ " with no trace")
+bucketEntryToPopTraceAcc k resultsAndTraces =
+  let results     = map fst resultsAndTraces
+      traces      = map snd resultsAndTraces
+      headAndRest = sequence (map split traces)
+      heads       = fmap (map fst) headAndRest
+      rests       = fmap (zip results . map snd) headAndRest
+  in (:[]) `fmap` (PopTraceItem <$> pure k <*> heads <*> rests)
+  where split :: S.Seq (D.Trace Double)
+              -> Either SymExecError (D.Trace Double, S.Seq (D.Trace Double))
+        split xs =
+          case xs of
+            x S.:<| xs -> Right (x, xs)
+            S.Empty    -> Left UnbalancedLaplaceCalls
+
+instance Monoid (PopTraceAcc r) where
+  mempty = Right []
+  mappend (Left e) _ = Left e
+  mappend _ (Left e) = Left e
+  mappend (Right xs) (Right ys) = Right (xs ++ ys)
+
+popTraces :: forall m r. (Monad m, Ord r, Show r) => SymbolicT r m [D.Trace Double]
+popTraces = do
+  bkts <- gets (^. buckets)
+  let remaining = fold (M.mapWithKey bucketEntryToPopTraceAcc bkts)
+  case remaining of
+    Left err -> throwError err
+    Right remaining' -> do
+      modify (\st -> st & buckets .~ rebuild remaining')
+      return (concatMap popped remaining')
+  where rebuild :: [PopTraceItem r] -> D.Buckets r
+        rebuild accs = M.fromList (map (\acc -> (key acc, rest acc)) accs)
+
+laplaceSymbolic :: (Monad m, Ord r, Show r)
+                => RealExpr -> Double -> SymbolicT r m RealExpr
+laplaceSymbolic c w = do
+  lapSym <- freshSReal "lap"
+  matchedTraces <- popTraces
+  -- Check the width of matching calls
+  forM_ matchedTraces $
+    \case
+      D.TrLaplace _ width _ ->
+        when (width /= w) $
+          throwError (DifferentLaplaceWidth width w)
+      D.TrGaussian{} ->
+        throwError MismatchingNoiseMechanism
+
+  concreteSampleSym <- freshSReal "concreteLap"
+  concreteCenterSym <- freshSReal "concreteCenter"
+
+  epsSym   <- freshSReal "eps"
+  shiftSym <- freshSReal "shift"
+
+  let shiftCond =
+        abs (concreteSampleSym + shiftSym - lapSym)
+        %<= fromRational k_FLOAT_TOLERANCE
+  modify (\st -> st & couplingConstraints %~ (S.|> shiftCond))
+  let costCond =
+        epsSym %>= (abs (c - concreteCenterSym + shiftSym)
+                    / (fromRational . toRational $ w))
+  modify (\st -> st & couplingConstraints %~ (S.|> costCond))
+
+  modify (\st -> st & costSymbols %~ (S.|> epsSym))
+  modify (\st -> st & openSymbols %~ (S.|> (concreteSampleSym, concreteCenterSym, lapSym)))
+
+  return lapSym
+
+gaussianSymbolic :: (Monad m) => RealExpr -> Double -> SymbolicT r m RealExpr
 gaussianSymbolic _ _ = freshSReal "gauss"
-
-assert :: (Monad m) => BoolExpr -> Bool -> SymbolicT m ()
-assert cond positive = modify (\st -> st{assertions=(cond,positive):(assertions st)})
-
-currentAssertions :: (Monad m) => SymbolicT m [(BoolExpr, Bool)]
-currentAssertions = gets assertions
-
-resetAssertions :: (Monad m) => [(BoolExpr, Bool)] -> SymbolicT m ()
-resetAssertions asserts = modify (\st -> st{assertions=asserts})
 
 substituteB :: BoolExpr -> [(RealExpr, RealExpr)] -> BoolExpr
 substituteB (BoolExpr a) fts =
@@ -216,12 +339,16 @@ instance Ordered RealExpr where
 instance Numeric     RealExpr
 instance FracNumeric RealExpr
 
-instance (Monad m, Typeable m) => MonadDist (SymbolicT m) where
-  type NumDomain (SymbolicT m) = RealExpr
+instance (Monad m, Typeable m, Typeable r, Ord r, Show r)
+  => MonadDist (SymbolicT r m) where
+  type NumDomain (SymbolicT r m) = RealExpr
   laplace  = laplaceSymbolic
   gaussian = gaussianSymbolic
 
-instance (Monad m, Typeable m) => MonadAssert (SymbolicT m) where
-  type BoolType (SymbolicT m) = BoolExpr
-  assertTrue  cond = assert cond True
-  assertFalse cond = assert cond False
+instance (Monad m, Typeable m, Typeable r)
+  => MonadAssert (SymbolicT r m) where
+  type BoolType (SymbolicT r m) = BoolExpr
+  assertTrue  cond =
+    modify (\st -> st & pathConstraints %~ (S.|> (cond, True)))
+  assertFalse cond =
+    modify (\st -> st & pathConstraints %~ (S.|> (cond, False)))

@@ -2,8 +2,8 @@ module Distribution where
 
 import Control.Monad
 import Control.Monad.State.Class
-import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Identity
+import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State hiding (modify)
 import Data.Functor.Classes
 import Data.Functor.Identity
@@ -14,6 +14,7 @@ import Data.Sequence
 import Type.Reflection
 import Types
 import qualified Control.Monad.Trans.Class as MT
+import qualified Data.Map.Strict as M
 import qualified Data.Random as R
 
 newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVar a }
@@ -27,6 +28,12 @@ data Trace :: * -> * where
 
 type Profile a = Seq (Trace a)
 type DProfile  = Profile Double
+type DProvenance k = DistributionProvenance k
+
+-- |Type parameter 'k' is the type of the result. 'Buckets' maps results
+-- identical up to provenance into the actual value of the result, paired with
+-- the profiled trace of that execution.
+type Buckets k = M.Map (DProvenance k) [(k, DProfile)]
 
 newtype TracedDist a =
   TracedDist { runTracedDist_ :: StateT DProfile RVar a }
@@ -96,14 +103,8 @@ data UOp = Abs | Sign
 data DistributionProvenance (a :: *) where
   Deterministic :: a
                 -> DistributionProvenance a
-  ListEmpty     :: DistributionProvenance [a]
-  ListCons      :: (Show a, Eq a, Ord a)
-                => DistributionProvenance a
-                -> DistributionProvenance [a]
-                -> DistributionProvenance [a]
-  ListSnoc      :: (Show a, Eq a, Ord a)
-                => DistributionProvenance [a]
-                -> DistributionProvenance a
+  List          :: (Show a, Eq a, Ord a)
+                => [DistributionProvenance a]
                 -> DistributionProvenance [a]
   Laplace       :: DistributionProvenance a
                 -> Double
@@ -172,13 +173,17 @@ instance (Show a, Eq a, Ord a, Typeable a)
     WithDistributionProvenance (Elem [a])
   type TestResult (WithDistributionProvenance [a]) = TestResult [a]
 
-  nil       = WithDistributionProvenance nil ListEmpty
-  cons x xs = WithDistributionProvenance
-                (cons (value x) (value xs))
-                (ListCons (provenance x) (provenance xs))
-  snoc xs x = WithDistributionProvenance
-                (snoc (value xs) (value x))
-                (ListSnoc (provenance xs) (provenance x))
+  nil       = WithDistributionProvenance nil (List [])
+  cons x xs = case provenance xs of
+                List xs' ->
+                  WithDistributionProvenance
+                    (cons (value x) (value xs))
+                    (List $ provenance x:xs')
+  snoc xs x = case provenance xs of
+                List xs' ->
+                  WithDistributionProvenance
+                    (snoc (value xs) (value x))
+                    (List $ xs' ++ [provenance x])
   isNil xs  = isNil (value xs)
 
 instance Numeric a     => Numeric     (WithDistributionProvenance a)
