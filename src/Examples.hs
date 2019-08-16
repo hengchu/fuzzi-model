@@ -42,7 +42,8 @@ reportNoisyMaxAux (x:xs) lastIdx maxIdx currMax = do
       (reportNoisyMaxAux xs (lastIdx + 1) (lastIdx+1) xNoised)
       (reportNoisyMaxAux xs (lastIdx + 1) maxIdx      currMax)
 
-reportNoisyMax :: (FuzziLang m a)
+reportNoisyMax :: forall m a.
+                  (FuzziLang m a)
                => [Fuzzi a]
                -> Mon m (Fuzzi Int)
 reportNoisyMax []     = error "reportNoisyMax received empty input"

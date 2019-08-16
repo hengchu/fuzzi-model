@@ -1,8 +1,10 @@
 module Test where
 
 import Control.Monad
+import Control.Monad.Identity
 import Control.Monad.Trans.Identity
 import Distribution
+import Symbol
 import EDSL
 import Interp
 import Type.Reflection
@@ -30,3 +32,10 @@ profile :: (Ord a)
 profile ntimes prog = do
   outputs <- replicateM ntimes ((sampleTraced . runIdentityT . eval) prog)
   return (buildMapAux outputs M.empty)
+
+symExec :: (Typeable r, Typeable a)
+        => Fuzzi (SymbolicT r Identity a)
+        -> [Either SymExecError (a, SymbolicConstraints)]
+symExec code =
+  let codes = streamline code
+  in map (runIdentity . gatherConstraints [] . eval) codes

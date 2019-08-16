@@ -9,7 +9,6 @@ import Control.Monad.Except
 import Control.Monad.State.Class
 import Control.Monad.Trans.State hiding (gets, put, modify)
 import Data.Coerce
-import Data.Foldable
 import Type.Reflection
 import Types
 import qualified Data.Map.Strict as M
@@ -57,14 +56,15 @@ type SymbolicSampleSymbol = RealExpr
 type OpenSymbolTriple =
   (ConcreteSampleSymbol, ConcreteCenterSymbol, SymbolicSampleSymbol)
 
-type NameMap = M.Map String Int
+type NameMap  = M.Map String Int
+type Bucket r = [(r, S.Seq (D.Trace Double))]
 data SymbolicState r = SymbolicState {
   _ssNameMap               :: NameMap
   , _ssPathConstraints     :: S.Seq (BoolExpr, Bool)
   , _ssCouplingConstraints :: S.Seq BoolExpr
   , _ssCostSymbols         :: S.Seq RealExpr
   , _ssOpenSymbols         :: S.Seq OpenSymbolTriple
-  , _ssBuckets             :: D.Buckets r
+  , _ssBucket              :: Bucket r
   } deriving (Show, Eq, Ord)
 
 makeLensesWith abbreviatedFields ''SymbolicState
@@ -86,7 +86,7 @@ data SymExecError =
   | InternalError String
   deriving (Show, Eq, Ord, Typeable)
 
-initialSymbolicState :: D.Buckets r -> SymbolicState r
+initialSymbolicState :: Bucket r -> SymbolicState r
 initialSymbolicState =
   SymbolicState M.empty S.empty S.empty S.empty S.empty
 
@@ -110,10 +110,10 @@ z3Init = do
   return (ctx, solver)
 
 gatherConstraints :: (Monad m)
-                  => D.Buckets r
+                  => Bucket r
                   -> SymbolicT r m a
                   -> m (Either SymExecError (a, SymbolicConstraints))
-gatherConstraints buckets computation = do
+gatherConstraints bucket computation = do
   errorOrA :: (Either SymExecError (a, SymbolicState r)) <- run computation
   case errorOrA of
     Left err -> return (Left err)
@@ -125,7 +125,7 @@ gatherConstraints buckets computation = do
       in return (Right (a, SymbolicConstraints pc cc csyms osyms))
   where run =
           runExceptT
-          . flip runStateT (initialSymbolicState buckets)
+          . flip runStateT (initialSymbolicState bucket)
           . runSymbolicT_
 
 symbolicExprToZ3AST :: (MonadIO m) => Z3.Context -> SymbolicExpr -> m Z3.AST
@@ -211,32 +211,15 @@ freshSReal name = do
 
 data PopTraceItem r =
   PopTraceItem {
-    key      :: D.DistributionProvenance r
-    , popped :: [D.Trace Double]
-    , rest   :: [(r, S.Seq (D.Trace Double))]
-    }
+    popped :: D.Trace Double
+    , rest :: (r, S.Seq (D.Trace Double))
+  }
 
 type PopTraceAcc r = Either SymExecError [PopTraceItem r]
 
-bucketEntryToPopTraceAcc :: (Show r)
-                         => D.DistributionProvenance r
-                         -> [(r, S.Seq (D.Trace Double))]
-                         -> PopTraceAcc r
-bucketEntryToPopTraceAcc k [] =
-  Left (InternalError $ "found provenance " ++ show k ++ " with no trace")
-bucketEntryToPopTraceAcc k resultsAndTraces =
-  let results     = map fst resultsAndTraces
-      traces      = map snd resultsAndTraces
-      headAndRest = sequence (map split traces)
-      heads       = fmap (map fst) headAndRest
-      rests       = fmap (zip results . map snd) headAndRest
-  in (:[]) `fmap` (PopTraceItem <$> pure k <*> heads <*> rests)
-  where split :: S.Seq (D.Trace Double)
-              -> Either SymExecError (D.Trace Double, S.Seq (D.Trace Double))
-        split xs =
-          case xs of
-            x S.:<| xs -> Right (x, xs)
-            S.Empty    -> Left UnbalancedLaplaceCalls
+bucketEntryToPopTraceAcc :: r -> S.Seq (D.Trace Double) -> PopTraceAcc r
+bucketEntryToPopTraceAcc _ S.Empty      = Left UnbalancedLaplaceCalls
+bucketEntryToPopTraceAcc r (x S.:<| xs) = Right [PopTraceItem x (r, xs)]
 
 instance Monoid (PopTraceAcc r) where
   mempty = Right []
@@ -244,19 +227,18 @@ instance Monoid (PopTraceAcc r) where
   mappend _ (Left e) = Left e
   mappend (Right xs) (Right ys) = Right (xs ++ ys)
 
-popTraces :: forall m r. (Monad m, Ord r, Show r) => SymbolicT r m [D.Trace Double]
+popTraces :: (Monad m) => SymbolicT r m [D.Trace Double]
 popTraces = do
-  bkts <- gets (^. buckets)
-  let remaining = fold (M.mapWithKey bucketEntryToPopTraceAcc bkts)
+  bkt <- gets (^. bucket)
+  let remaining = foldMap (uncurry bucketEntryToPopTraceAcc) bkt
   case remaining of
     Left err -> throwError err
     Right remaining' -> do
-      modify (\st -> st & buckets .~ rebuild remaining')
-      return (concatMap popped remaining')
-  where rebuild :: [PopTraceItem r] -> D.Buckets r
-        rebuild accs = M.fromList (map (\acc -> (key acc, rest acc)) accs)
+      modify (\st -> st & bucket .~ rebuild remaining')
+      return (map popped remaining')
+  where rebuild = map rest
 
-laplaceSymbolic :: (Monad m, Ord r, Show r)
+laplaceSymbolic :: (Monad m)
                 => RealExpr -> Double -> SymbolicT r m RealExpr
 laplaceSymbolic c w = do
   lapSym <- freshSReal "lap"
@@ -338,8 +320,10 @@ instance Ordered RealExpr where
 
 instance Numeric     RealExpr
 instance FracNumeric RealExpr
+instance FuzziType   RealExpr
+instance FuzziType   BoolExpr
 
-instance (Monad m, Typeable m, Typeable r, Ord r, Show r)
+instance (Monad m, Typeable m, Typeable r)
   => MonadDist (SymbolicT r m) where
   type NumDomain (SymbolicT r m) = RealExpr
   laplace  = laplaceSymbolic

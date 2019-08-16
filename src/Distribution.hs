@@ -103,8 +103,14 @@ data UOp = Abs | Sign
 data DistributionProvenance (a :: *) where
   Deterministic :: a
                 -> DistributionProvenance a
-  List          :: (Show a, Eq a, Ord a)
-                => [DistributionProvenance a]
+  ListEmpty     :: DistributionProvenance [a]
+  ListCons      :: (Show a, Eq a, Ord a)
+                => DistributionProvenance a
+                -> DistributionProvenance [a]
+                -> DistributionProvenance [a]
+  ListSnoc      :: (Show a, Eq a, Ord a)
+                => DistributionProvenance [a]
+                -> DistributionProvenance a
                 -> DistributionProvenance [a]
   Laplace       :: DistributionProvenance a
                 -> Double
@@ -173,17 +179,13 @@ instance (Show a, Eq a, Ord a, Typeable a)
     WithDistributionProvenance (Elem [a])
   type TestResult (WithDistributionProvenance [a]) = TestResult [a]
 
-  nil       = WithDistributionProvenance nil (List [])
-  cons x xs = case provenance xs of
-                List xs' ->
-                  WithDistributionProvenance
-                    (cons (value x) (value xs))
-                    (List $ provenance x:xs')
-  snoc xs x = case provenance xs of
-                List xs' ->
-                  WithDistributionProvenance
-                    (snoc (value xs) (value x))
-                    (List $ xs' ++ [provenance x])
+  nil       = WithDistributionProvenance nil ListEmpty
+  cons x xs = WithDistributionProvenance
+                (cons (value x) (value xs))
+                (ListCons (provenance x) (provenance xs))
+  snoc xs x = WithDistributionProvenance
+                (snoc (value xs) (value x))
+                (ListSnoc (provenance xs) (provenance x))
   isNil xs  = isNil (value xs)
 
 instance Numeric a     => Numeric     (WithDistributionProvenance a)
