@@ -167,6 +167,9 @@ assert cond positive = modify (\st -> st{assertions=(cond,positive):(assertions 
 currentAssertions :: (Monad m) => SymbolicT m [(BoolExpr, Bool)]
 currentAssertions = gets assertions
 
+resetAssertions :: (Monad m) => [(BoolExpr, Bool)] -> SymbolicT m ()
+resetAssertions asserts = modify (\st -> st{assertions=asserts})
+
 substituteB :: BoolExpr -> [(RealExpr, RealExpr)] -> BoolExpr
 substituteB (BoolExpr a) fts =
   let ftsAst = map (\(f, t) -> (getRealExpr f, getRealExpr t)) fts
