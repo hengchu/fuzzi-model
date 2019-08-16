@@ -4,64 +4,33 @@ import Control.Monad.Trans.Identity
 import Distribution
 import EDSL
 import Examples
-import SimpleSMT
 import Symbol as S
 import System.Exit
 import Test.HUnit (runTestTT, errors, failures)
 import Types
 import qualified Test.HUnit.Base as H
 import Test
+import Test.QuickCheck
+import qualified Z3.Base as Z3
 
-smtTest1 :: IO Bool
-smtTest1 = runSymbolicT $ do
-  x <- sReal "x"
-  y <- sReal "y"
-  S.assert ((x + y) %>= 0)
-  r <- S.check
-  return $ r == Sat
+testSmtSimple :: IO Bool
+testSmtSimple = do
+  (_, r) <- S.runSymbolicT $ do
+    x <- S.freshSReal "x"
+    assert (x %< (x + 1))
+  return (r == Z3.Sat)
 
-smtTest2 :: IO Bool
-smtTest2 = runSymbolicT @IO $ do
-  x <- sReal "x"
-  y <- sReal "y"
-  S.assert (x %== 1)
-  S.assert (y %== 1)
-  S.assert ((x + y) %== 3)
-  r <- S.check
-  return $ r == Unsat
-
-smtTest3 :: IO Bool
-smtTest3 = runSymbolicT @IO $ do
-  x <- sReal "x"
-  y <- sReal "y"
-  S.assert (x %>= 1)
-  S.assert (y %< 1)
-  S.assert ((x + y) %== 2)
-  r <- S.check
-  return $ r == Sat
-
-smtTest4 :: IO Bool
-smtTest4 = runSymbolicT @IO $ do
-  x <- sReal "x"
-  S.assert (x %== 1)
-  r <- S.check
-  v <- S.getRealValue "x"
-  case r of
-    Sat -> return $ v == Just 1
-    _   -> return False
-
-smtTest5 :: IO Bool
-smtTest5 = do
-  results <- mapConcurrently id [smtTest1, smtTest2, smtTest3, smtTest4]
-  return (all id results)
+testSmtSimple2 :: IO Bool
+testSmtSimple2 = do
+  (_, r) <- S.runSymbolicT $ do
+    x <- S.freshSReal "x"
+    assert (x %> (x + 1))
+  return (r == Z3.Unsat)
 
 smtTests :: H.Test
 smtTests = H.TestList [
-  H.TestCase (H.assert smtTest1)
-  , H.TestCase (H.assert smtTest2)
-  , H.TestCase (H.assert smtTest3)
-  , H.TestCase (H.assert smtTest4)
-  , H.TestCase (H.assert smtTest5)
+  H.TestCase (H.assert testSmtSimple)
+  , H.TestCase (H.assert testSmtSimple2)
   ]
 
 provenanceTests :: H.Test
@@ -82,12 +51,21 @@ testSmartSumProvenance = do
 
 allTests :: H.Test
 allTests = H.TestList [
+  H.TestLabel "Distribution" provenanceTests,
   H.TestLabel "Symbol" smtTests
-  , H.TestLabel "Distribution" provenanceTests
   ]
+
+prop_symbolCongruence :: Double -> Double -> Bool
+prop_symbolCongruence a b =
+  let sa = (fromRational . toRational) a :: S.RealExpr
+      sb = (fromRational . toRational) b :: S.RealExpr
+  in if a == b
+     then sa == sb
+     else sa /= sb
 
 main :: IO ()
 main = do
+  quickCheckWith stdArgs{chatty=True} prop_symbolCongruence
   r <- runTestTT allTests
   if errors r + failures r > 0
   then exitWith (ExitFailure 1)
