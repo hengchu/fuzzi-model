@@ -12,25 +12,36 @@ import qualified Test.HUnit.Base as H
 import Test
 import Test.QuickCheck
 import qualified Z3.Base as Z3
+import qualified Data.Map.Strict as M
 
 testSmtSimple :: IO Bool
 testSmtSimple = do
   (_, r) <- S.runSymbolicT $ do
     x <- S.freshSReal "x"
-    assert (x %< (x + 1))
+    assert (x %< (x + 1)) True
   return (r == Z3.Sat)
 
 testSmtSimple2 :: IO Bool
 testSmtSimple2 = do
   (_, r) <- S.runSymbolicT $ do
     x <- S.freshSReal "x"
-    assert (x %> (x + 1))
+    assert (x %> (x + 1)) True
+  return (r == Z3.Unsat)
+
+testSmtSubstitute :: IO Bool
+testSmtSubstitute = do
+  (_, r) <- S.runSymbolicT $ do
+    x <- S.freshSReal "x"
+    y <- S.freshSReal "y"
+    let cond = x %> (y + 1)
+    assert (substituteB cond [(y, x)]) True
   return (r == Z3.Unsat)
 
 smtTests :: H.Test
 smtTests = H.TestList [
   H.TestCase (H.assert testSmtSimple)
   , H.TestCase (H.assert testSmtSimple2)
+  , H.TestCase (H.assert testSmtSubstitute)
   ]
 
 provenanceTests :: H.Test
@@ -46,8 +57,9 @@ testSmartSumProvenance = do
       @_
       @(WithDistributionProvenance [Double])
       [1, 2, 3, 4, 5])
-  let provs = map (provenance . fst) results
-  return (all (== (head provs)) provs)
+  let k = M.keys results !! 0
+  return (M.size results == 1 &&
+          length (results M.! k) == 100)
 
 allTests :: H.Test
 allTests = H.TestList [
@@ -65,7 +77,15 @@ prop_symbolCongruence a b =
 
 main :: IO ()
 main = do
-  quickCheckWith stdArgs{chatty=True} prop_symbolCongruence
+  putStrLn $
+    "\n#######################################"
+    ++ "\n#          QuickCheck Tests           #"
+    ++ "\n#######################################"
+  quickCheckWith stdArgs{chatty=True, maxSuccess=500} prop_symbolCongruence
+  putStrLn $
+    "\n#######################################"
+    ++ "\n#              Unit Tests             #"
+    ++ "\n#######################################"
   r <- runTestTT allTests
   if errors r + failures r > 0
   then exitWith (ExitFailure 1)

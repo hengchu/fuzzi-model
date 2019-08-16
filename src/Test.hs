@@ -18,7 +18,18 @@ liftProvenance :: (Monad m, Typeable m, FuzziType a)
 liftProvenance prog =
   Bind prog (Return . InjectProvenance)
 
-profile :: Int -- ^The number of tries
+buildMapAux :: (Ord a)
+            => [(WithDistributionProvenance a, DProfile)]
+            -> M.Map (DistributionProvenance a) [(a, DProfile)]
+            -> M.Map (DistributionProvenance a) [(a, DProfile)]
+buildMapAux []                m = m
+buildMapAux ((k, profile):xs) m =
+  buildMapAux xs (M.insertWith (++) (provenance k) [(value k, profile)] m)
+
+profile :: (Ord a)
+        => Int -- ^The number of tries
         -> Fuzzi (IdentityT TracedDist (WithDistributionProvenance a))
-        -> IO [(WithDistributionProvenance a, DProfile)]
-profile ntimes prog = replicateM ntimes ((sampleTraced . runIdentityT . eval) prog)
+        -> IO (M.Map (DistributionProvenance a) [(a, DProfile)])
+profile ntimes prog = do
+  outputs <- replicateM ntimes ((sampleTraced . runIdentityT . eval) prog)
+  return (buildMapAux outputs M.empty)

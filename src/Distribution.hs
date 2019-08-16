@@ -145,16 +145,6 @@ data WithDistributionProvenance a =
 inject :: a -> WithDistributionProvenance a
 inject a = WithDistributionProvenance a (Deterministic a)
 
-{-
--- |The `Eq` instance only compares provenance.
-instance Eq a => Eq (WithDistributionProvenance a) where
-  a == b = provenance a == provenance b
-
--- |The `Ord` instance only compares provenance.
-instance Ord a => Ord (WithDistributionProvenance a) where
-  compare a b = compare (provenance a) (provenance b)
--}
-
 instance Num a => Num (WithDistributionProvenance a) where
   a + b = WithDistributionProvenance (value a + value b) (provenance a + provenance b)
   a * b = WithDistributionProvenance (value a * value b) (provenance a * provenance b)
