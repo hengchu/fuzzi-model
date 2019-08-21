@@ -70,7 +70,7 @@ data SymbolicState r = SymbolicState {
 makeLensesWith abbreviatedFields ''SymbolicState
 
 data SymbolicConstraints = SymbolicConstraints {
-  _scPathConstraints     :: S.Seq (BoolExpr, Bool)
+  _scPathConstraints       :: S.Seq (BoolExpr, Bool)
   , _scCouplingConstraints :: S.Seq BoolExpr
   , _scCostSymbols         :: S.Seq RealExpr
   , _scOpenSymbols         :: S.Seq OpenSymbolTriple
@@ -336,3 +336,6 @@ instance (Monad m, Typeable m, Typeable r)
     modify (\st -> st & pathConstraints %~ (S.|> (cond, True)))
   assertFalse cond =
     modify (\st -> st & pathConstraints %~ (S.|> (cond, False)))
+
+instance Matchable Float RealExpr where
+  match _ _ = True

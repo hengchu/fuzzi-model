@@ -224,3 +224,6 @@ instance MonadDist TracedDist where
   type NumDomain TracedDist = WithDistributionProvenance Double
   laplace  = laplaceTraced
   gaussian = gaussianTraced
+
+instance Matchable a b => Matchable (WithDistributionProvenance a) b where
+  match a b = match (value a) b

@@ -64,6 +64,9 @@ class (Monad m, Typeable m, Boolean (BoolType m)) => MonadAssert m where
   assertFalse :: BoolType m -> m ()
   assertFalse v = assertTrue (neg v)
 
+class Matchable concrete symbolic where
+  match :: concrete -> symbolic -> Bool
+
 type Distribution m a    = (MonadDist m, NumDomain m ~ a, FuzziType a, FracNumeric a)
 type Assertion    m bool = (MonadAssert m, BoolType m ~ bool)--, IfCxt (ConcreteBoolean bool))
 type FuzziLang    m a    = (Distribution m a, Assertion m (CmpResult a))
@@ -122,3 +125,22 @@ instance Numeric Double
 instance FracNumeric Double
 instance Numeric Int
 instance IntNumeric Int
+
+instance Matchable Int Int where
+  match a b = a == b
+
+instance Matchable Integer Integer where
+  match a b = a == b
+
+instance Matchable Bool Bool where
+  match a b = a == b
+
+instance ( Matchable a b
+         , Matchable c d
+         ) => Matchable (a,c) (b,d) where
+  match (a,b) (c,d) = match a c && match b d
+
+instance Matchable a b => Matchable [a] [b] where
+  match []     []     = True
+  match (x:xs) (y:ys) = match x y && match xs ys
+  match _      _      = False
