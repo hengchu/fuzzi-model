@@ -226,4 +226,4 @@ instance MonadDist TracedDist where
   gaussian = gaussianTraced
 
 instance Matchable a b => Matchable (WithDistributionProvenance a) b where
-  match a b = match (value a) b
+  match a = match (value a)

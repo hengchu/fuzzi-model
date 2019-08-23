@@ -73,7 +73,8 @@ smartSumAux (x:xs) next n i sum results = do
       (do next' <- lap (next + x) 1.0
           smartSumAux xs next' n (i+1) sum' (results `snoc` next'))
 
-smartSum :: ( FuzziLang m a
+smartSum :: forall m a listA.
+            ( FuzziLang m a
             , ListLike listA
             , Elem listA ~ a
             , FuzziType listA

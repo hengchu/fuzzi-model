@@ -14,6 +14,7 @@ import Test.QuickCheck
 import qualified Z3.Base as Z3
 import qualified Data.Map.Strict as M
 import Control.Monad
+import Data.Functor.Identity
 
 smtTests :: H.Test
 smtTests = H.TestList [
@@ -52,12 +53,30 @@ prop_symbolCongruence a b =
 
 prop_rnmLengthConstraints :: SmallList Double -> Bool
 prop_rnmLengthConstraints (SmallList xs) =
-  length (symExec @Int (reify (reportNoisyMax (map (fromRational . toRational) xs))))
-  == 2 ^ (length xs - 1)
+  let prog = liftProvenance (reify (reportNoisyMax (map (fromRational . toRational) xs)))
+  in fmap length (symExec @Int prog) == Right (2 ^ (length xs - 1))
+
+prop_rnmLengthConstraints2 :: SmallList Double -> Bool
+prop_rnmLengthConstraints2 (SmallList xs) =
+  let prog = liftProvenance (reify (reportNoisyMax (map (fromRational . toRational) xs)))
+  in fmap length (symExecGeneralize @Int prog) == Right (length xs)
+
+prop_smartSumConstraints :: SmallList Double -> Bool
+prop_smartSumConstraints (SmallList xs) =
+  let prog = reify (smartSumSpec (map (fromRational . toRational) xs))
+  in fmap length (symExecGeneralize prog) == Right 1
+
+smartSumSpec :: _
+smartSumSpec =
+  smartSum
+  @(SymbolicT (WithDistributionProvenance [RealExpr]) Identity)
+  @(WithDistributionProvenance RealExpr)
+  @(WithDistributionProvenance [RealExpr])
 
 prop_all :: Property
 prop_all = prop_symbolCongruence
            .&&. prop_rnmLengthConstraints
+           .&&. prop_rnmLengthConstraints2
 
 newtype SmallList a = SmallList {
   getSmallList :: [a]
@@ -69,7 +88,7 @@ instance Arbitrary a => Arbitrary (SmallList a) where
     xs <- replicateM len arbitrary
     return (SmallList xs)
 
-  shrink xs = SmallList <$> shrink (getSmallList xs)
+  shrink xs = SmallList <$> (filter (not . null) . shrink) (getSmallList xs)
 
 main :: IO ()
 main = do

@@ -9,12 +9,15 @@ import Control.Monad.Except
 import Control.Monad.State.Class
 import Control.Monad.Trans.State hiding (gets, put, modify)
 import Data.Coerce
+import Data.Foldable
+import Debug.Trace
 import Type.Reflection
 import Types
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
 import qualified Distribution as D
 import qualified Z3.Base as Z3
+import qualified Data.Map.Merge.Strict as MM
 
 k_FLOAT_TOLERANCE :: Rational
 k_FLOAT_TOLERANCE = 1e-4
@@ -239,8 +242,11 @@ popTraces = do
   where rebuild = map rest
 
 laplaceSymbolic :: (Monad m)
-                => RealExpr -> Double -> SymbolicT r m RealExpr
-laplaceSymbolic c w = do
+                => D.WithDistributionProvenance RealExpr
+                -> Double
+                -> SymbolicT r m (D.WithDistributionProvenance RealExpr)
+laplaceSymbolic centerWithProvenance w = do
+  let c = D.value centerWithProvenance
   lapSym <- freshSReal "lap"
   matchedTraces <- popTraces
   -- Check the width of matching calls
@@ -270,10 +276,14 @@ laplaceSymbolic c w = do
   modify (\st -> st & costSymbols %~ (S.|> epsSym))
   modify (\st -> st & openSymbols %~ (S.|> (concreteSampleSym, concreteCenterSym, lapSym)))
 
-  return lapSym
+  let provenance = D.Laplace (D.provenance centerWithProvenance) w
+  return (D.WithDistributionProvenance lapSym provenance)
 
-gaussianSymbolic :: (Monad m) => RealExpr -> Double -> SymbolicT r m RealExpr
-gaussianSymbolic _ _ = freshSReal "gauss"
+gaussianSymbolic :: (Monad m)
+                 => D.WithDistributionProvenance RealExpr
+                 -> Double
+                 -> SymbolicT r m (D.WithDistributionProvenance RealExpr)
+gaussianSymbolic _ _ = error "not yet implemented"
 
 substituteB :: BoolExpr -> [(RealExpr, RealExpr)] -> BoolExpr
 substituteB (BoolExpr a) fts =
@@ -284,6 +294,60 @@ substituteR :: RealExpr -> [(RealExpr, RealExpr)] -> RealExpr
 substituteR (RealExpr a) fts =
   let ftsAst = map (\(f, t) -> (getRealExpr f, getRealExpr t)) fts
   in RealExpr $ Substitute a ftsAst
+
+newtype GSC a =
+  GSC {
+    getGSC :: Either SymExecError a
+  } deriving (Show, Eq, Ord)
+    deriving (Functor, Applicative, Monad, MonadError SymExecError)
+    via (Either SymExecError)
+
+instance Semigroup (GSC SymbolicConstraints) where
+  (GSC (Left e)) <> _ = GSC (Left e)
+  _ <> (GSC (Left e)) = GSC (Left e)
+  (GSC (Right sc1)) <> (GSC (Right sc2)) = do
+    let sc1CC = sc1 ^. couplingConstraints
+    let sc2CC = sc2 ^. couplingConstraints
+    when (sc1CC /= sc2CC) $
+      throwError (InternalError $
+                    "coupling constraints mismatch:\n"
+                    ++ show sc1CC
+                    ++ "\n"
+                    ++ show sc2CC)
+    let sc1CSyms = sc1 ^. costSymbols
+    let sc2CSyms = sc2 ^. costSymbols
+    when (sc1CSyms /= sc2CSyms) $
+      throwError (InternalError $
+                    "cost symbols mismatch:\n"
+                    ++ show sc1CSyms
+                    ++ "\n"
+                    ++ show sc2CSyms)
+    let sc1Syms = sc1 ^. openSymbols
+    let sc2Syms = sc2 ^. openSymbols
+    when (sc1Syms /= sc2Syms) $
+      throwError (InternalError $
+                    "open symbols mismatch:\n"
+                    ++ show sc1Syms
+                    ++ "\n"
+                    ++ show sc2Syms)
+    let sc1PCs = (M.fromList . toList) (sc1 ^. pathConstraints)
+    let sc2PCs = (M.fromList . toList) (sc2 ^. pathConstraints)
+    merged <- MM.mergeA whenMissing whenMissing whenMatched sc1PCs sc2PCs
+    return (sc1 & pathConstraints .~ (S.fromList . M.toList) merged)
+    where whenMissing = MM.preserveMissing
+          whenMatched = MM.zipWithMaybeMatched
+            (\_ b1 b2 ->
+               if b1 == b2
+               then Just b1
+               else Nothing)
+
+generalize :: [SymbolicConstraints] -> Either SymExecError SymbolicConstraints
+generalize []     = Left (InternalError "generalizing an empty list of constraints?")
+generalize (x:xs) = getGSC (foldr merge (inject x) xs)
+  where
+    merge :: SymbolicConstraints -> GSC SymbolicConstraints -> GSC SymbolicConstraints
+    merge a b = inject a <> b
+    inject    = GSC . Right
 
 instance Num RealExpr where
   (+) = coerce Add
@@ -325,7 +389,7 @@ instance FuzziType   BoolExpr
 
 instance (Monad m, Typeable m, Typeable r)
   => MonadDist (SymbolicT r m) where
-  type NumDomain (SymbolicT r m) = RealExpr
+  type NumDomain (SymbolicT r m) = D.WithDistributionProvenance RealExpr
   laplace  = laplaceSymbolic
   gaussian = gaussianSymbolic
 
