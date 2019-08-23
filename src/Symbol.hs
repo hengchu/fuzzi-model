@@ -330,6 +330,19 @@ instance Semigroup (GSC SymbolicConstraints) where
                     ++ show sc1Syms
                     ++ "\n"
                     ++ show sc2Syms)
+    let sc1Len = length (sc1 ^. pathConstraints)
+    let sc2Len = length (sc2 ^. pathConstraints)
+    when (sc1Len /= sc2Len) $
+      traceShow (sc1 ^. pathConstraints) $
+      trace "=============" $
+      traceShow (sc2 ^. pathConstraints) $
+      trace "=============\n" $
+      throwError (InternalError $
+                  "path constraints have different sizes:\n"
+                  ++ show sc1Len
+                  ++
+                  "\n"
+                  ++ show sc2Len)
     let sc1PCs = (M.fromList . toList) (sc1 ^. pathConstraints)
     let sc2PCs = (M.fromList . toList) (sc2 ^. pathConstraints)
     merged <- MM.mergeA whenMissing whenMissing whenMatched sc1PCs sc2PCs
