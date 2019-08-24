@@ -132,9 +132,7 @@ gatherConstraints bucket code computation = do
           csyms = st ^. costSymbols
           osyms = st ^. openSymbols
           code'  = st ^. sourceCode
-      in if length pc == 4
-         then return (Right (a, SymbolicConstraints pc cc csyms osyms code'))
-         else return (Right (a, SymbolicConstraints pc cc csyms osyms code'))
+      in return (Right (a, SymbolicConstraints pc cc csyms osyms code'))
   where run =
           runExceptT
           . flip runStateT (initialSymbolicState bucket code)
