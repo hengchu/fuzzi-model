@@ -12,6 +12,7 @@ import Interp
 import Type.Reflection
 import Types
 import qualified Data.Map.Strict as M
+import qualified PrettyPrint as PP
 
 liftProvenance :: (Monad m, Typeable m, FuzziType a)
                => Fuzzi (m a)
@@ -40,7 +41,7 @@ symExec :: (Typeable r, Typeable a)
         -> Either SymExecError [(WithDistributionProvenance a, SymbolicConstraints)]
 symExec code =
   let codes = streamline code
-  in sequence $ map (runIdentity . gatherConstraints [] . eval) codes
+  in sequence $ map (\c -> (runIdentity . gatherConstraints [] (PP.MkSomeFuzzi c) . eval) c) codes
 
 bucketSymbolicConstraints :: (Ord a)
                           => [(WithDistributionProvenance a, SymbolicConstraints)]

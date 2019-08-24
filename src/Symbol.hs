@@ -18,6 +18,7 @@ import qualified Data.Sequence as S
 import qualified Distribution as D
 import qualified Z3.Base as Z3
 import qualified Data.Map.Merge.Strict as MM
+import qualified PrettyPrint as PP
 
 k_FLOAT_TOLERANCE :: Rational
 k_FLOAT_TOLERANCE = 1e-4
@@ -68,6 +69,7 @@ data SymbolicState r = SymbolicState {
   , _ssCostSymbols         :: S.Seq RealExpr
   , _ssOpenSymbols         :: S.Seq OpenSymbolTriple
   , _ssBucket              :: Bucket r
+  , _ssSourceCode          :: PP.SomeFuzzi
   } deriving (Show, Eq, Ord)
 
 makeLensesWith abbreviatedFields ''SymbolicState
@@ -77,6 +79,7 @@ data SymbolicConstraints = SymbolicConstraints {
   , _scCouplingConstraints :: S.Seq BoolExpr
   , _scCostSymbols         :: S.Seq RealExpr
   , _scOpenSymbols         :: S.Seq OpenSymbolTriple
+  , _scSourceCode          :: PP.SomeFuzzi
   } deriving (Show, Eq, Ord)
 
 makeLensesWith abbreviatedFields ''SymbolicConstraints
@@ -89,7 +92,7 @@ data SymExecError =
   | InternalError String
   deriving (Show, Eq, Ord, Typeable)
 
-initialSymbolicState :: Bucket r -> SymbolicState r
+initialSymbolicState :: Bucket r -> PP.SomeFuzzi -> SymbolicState r
 initialSymbolicState =
   SymbolicState M.empty S.empty S.empty S.empty S.empty
 
@@ -114,9 +117,10 @@ z3Init = do
 
 gatherConstraints :: (Monad m)
                   => Bucket r
+                  -> PP.SomeFuzzi
                   -> SymbolicT r m a
                   -> m (Either SymExecError (a, SymbolicConstraints))
-gatherConstraints bucket computation = do
+gatherConstraints bucket code computation = do
   errorOrA :: (Either SymExecError (a, SymbolicState r)) <- run computation
   case errorOrA of
     Left err -> return (Left err)
@@ -125,10 +129,11 @@ gatherConstraints bucket computation = do
           cc = st ^. couplingConstraints
           csyms = st ^. costSymbols
           osyms = st ^. openSymbols
-      in return (Right (a, SymbolicConstraints pc cc csyms osyms))
+          code'  = st ^. sourceCode
+      in return (Right (a, SymbolicConstraints pc cc csyms osyms code'))
   where run =
           runExceptT
-          . flip runStateT (initialSymbolicState bucket)
+          . flip runStateT (initialSymbolicState bucket code)
           . runSymbolicT_
 
 symbolicExprToZ3AST :: (MonadIO m) => Z3.Context -> SymbolicExpr -> m Z3.AST
@@ -336,6 +341,10 @@ instance Semigroup (GSC SymbolicConstraints) where
       traceShow (sc1 ^. pathConstraints) $
       trace "=============" $
       traceShow (sc2 ^. pathConstraints) $
+      trace "=============" $
+      traceShow (sc1 ^. sourceCode) $
+      trace "=============" $
+      traceShow (sc2 ^. sourceCode) $
       trace "=============\n" $
       throwError (InternalError $
                   "path constraints have different sizes:\n"

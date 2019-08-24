@@ -7,8 +7,10 @@ import EDSL
 import Text.PrettyPrint
 import qualified Data.Map.Strict as M
 
+{- HLINT ignore "Reduce duplication" -}
+
 type NameMap = M.Map String Int
-data PrettyPrintState = PrettyPrintState {
+newtype PrettyPrintState = PrettyPrintState {
   _ppsNameMap :: NameMap
   } deriving (Show, Eq, Ord)
 
@@ -19,12 +21,27 @@ newtype PrettyPrintM a = PrettyPrintM {
 } deriving (Functor, Applicative, Monad, MonadState PrettyPrintState)
   via (State PrettyPrintState)
 
+data SomeFuzzi :: * where
+  MkSomeFuzzi :: Fuzzi a -> SomeFuzzi
+
+instance Show SomeFuzzi where
+  show = prettySomeFuzzi
+
+instance Eq SomeFuzzi where
+  a == b = show a == show b
+
+instance Ord SomeFuzzi where
+  compare a b = compare (show a) (show b)
+
+prettySomeFuzzi :: SomeFuzzi -> String
+prettySomeFuzzi (MkSomeFuzzi a) = render $ runPrettyPrint (pretty a)
+
 runPrettyPrint :: PrettyPrintM a -> a
-runPrettyPrint = (flip evalState (PrettyPrintState M.empty)) . runPrettyPrintM
+runPrettyPrint = flip evalState (PrettyPrintState M.empty) . runPrettyPrintM
 
 globalFreshVar :: String -> PrettyPrintM String
 globalFreshVar hint = do
-  names <- gets (\st -> st ^. nameMap)
+  names <- gets (^. nameMap)
   case M.lookup hint names of
     Nothing -> do
       modify (\st -> st & nameMap %~ M.insert hint 1)
@@ -48,7 +65,13 @@ pretty (App f a) = do
 pretty (Return a) = do
   a' <- pretty a
   return (text "ret" <+> a')
-pretty (Bind a@(Laplace _ _ _) f) = do
+pretty (Sequence a b) = do
+  a' <- pretty a
+  b' <- pretty b
+  return $ vcat [ a'
+                , b'
+                ]
+pretty (Bind a@Laplace{} f) = do
   a' <- pretty a
   fv <- globalFreshVar "lap"
   f' <- pretty (f (PrettyPrintVariable fv))
@@ -56,7 +79,7 @@ pretty (Bind a@(Laplace _ _ _) f) = do
     text fv <+> text "<-" <+> a'
     , f'
     ]
-pretty (Bind a@(Gaussian _ _ _) f) = do
+pretty (Bind a@Gaussian{} f) = do
   a' <- pretty a
   fv <- globalFreshVar "gauss"
   f' <- pretty (f (PrettyPrintVariable fv))
@@ -160,19 +183,12 @@ pretty (Neq a b) = do
   a' <- pretty a
   b' <- pretty b
   return $ hsep [a', text "/=", b']
-pretty (AssertTrueM cond k) = do
+pretty (AssertTrueM cond) = do
   cond' <- pretty cond
-  k' <- pretty k
-  return $ vcat [ text "assertTrue" <+> cond'
-                , k'
-                ]
-pretty (AssertFalseM cond k) = do
+  return $ text "assertTrue" <+> cond'
+pretty (AssertFalseM cond) = do
   cond' <- pretty cond
-  k' <- pretty k
-  return $ vcat [ text "assertFalse" <+> cond'
-                , k'
-                ]
-
+  return $ text "assertFalse" <+> cond'
 pretty (InjectProvenance a) = do
   a' <- pretty a
   return $ hsep [ text "injectProvenance", a' ]

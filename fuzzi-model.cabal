@@ -101,6 +101,7 @@ library
                    , DuplicateRecordFields
                    , OverloadedLabels
                    , LambdaCase
+                   , TypeFamilyDependencies
 
 executable fuzzi-model-exe
   main-is: Main.hs

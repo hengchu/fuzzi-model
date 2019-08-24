@@ -70,8 +70,8 @@ data Fuzzi (a :: *) where
   Eq_         :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
   Neq         :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
 
-  AssertTrueM  :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a)
-  AssertFalseM :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a)
+  AssertTrueM  :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m ())
+  AssertFalseM :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m ())
 
   InjectProvenance :: (FuzziType a) => Fuzzi a -> Fuzzi (WithDistributionProvenance a)
 
@@ -105,6 +105,7 @@ subst v term filling =
     App f a -> App (subst v f filling) (subst v a filling)
 
     Return x -> Return $ subst v x filling
+    Sequence a b -> Sequence (subst v a filling) (subst v b filling)
     Bind a f -> Bind (subst v a filling) (\x -> subst v (f x) filling)
 
     Lit x -> Lit x
@@ -142,8 +143,8 @@ subst v term filling =
     Eq_  a b -> Eq_  (subst v a filling) (subst v b filling)
     Neq  a b -> Neq  (subst v a filling) (subst v b filling)
 
-    AssertTrueM cond a  -> AssertTrueM (subst v cond filling) (subst v a filling)
-    AssertFalseM cond a -> AssertFalseM (subst v cond filling) (subst v a filling)
+    AssertTrueM cond -> AssertTrueM (subst v cond filling)
+    AssertFalseM cond -> AssertFalseM (subst v cond filling)
 
     InjectProvenance a -> InjectProvenance (subst v a filling)
 
@@ -163,6 +164,8 @@ streamlineAux var (App f a) =
   [App f' a' | f' <- streamlineAux var f, a' <- streamlineAux var a]
 streamlineAux var (Return x) =
   [Return x' | x' <- streamlineAux var x]
+streamlineAux var (Sequence a b) =
+  [Sequence a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (Bind a (f :: Fuzzi a -> Fuzzi (m b))) =
   let bodies = streamlineAux (var + 1) (f (Variable var))
   in [Bind a' (subst @a var body') | a' <- streamlineAux var a, body' <- bodies]
@@ -171,8 +174,8 @@ streamlineAux var (If cond t f) =
   [If cond' t' f' | cond' <- streamlineAux var cond, t' <- streamlineAux var t, f' <- streamlineAux var f]
 streamlineAux var (IfM cond t f) =
   let conds = streamlineAux var cond
-  in [AssertTrueM cond' t' | cond' <- conds, t' <- streamlineAux var t]
-     ++ [AssertFalseM cond' f' | cond' <- conds, f' <- streamlineAux var f]
+  in [Sequence (AssertTrueM cond') t' | cond' <- conds, t' <- streamlineAux var t]
+     ++ [Sequence (AssertFalseM cond') f' | cond' <- conds, f' <- streamlineAux var f]
 streamlineAux var (Laplace tr c w) =
   [Laplace tr c' w | c' <- streamlineAux var c]
 streamlineAux var (Gaussian tr c w) =
@@ -213,10 +216,10 @@ streamlineAux var (Eq_ a b) =
   [Eq_ a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (Neq a b) =
   [Neq a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (AssertTrueM cond a) =
-  [AssertTrueM cond' a' | cond' <- streamlineAux var cond, a' <- streamlineAux var a]
-streamlineAux var (AssertFalseM cond a) =
-  [AssertFalseM cond' a' | cond' <- streamlineAux var cond, a' <- streamlineAux var a]
+streamlineAux var (AssertTrueM cond) =
+  [AssertTrueM cond' | cond' <- streamlineAux var cond]
+streamlineAux var (AssertFalseM cond) =
+  [AssertFalseM cond' | cond' <- streamlineAux var cond]
 streamlineAux var (InjectProvenance a) =
   [InjectProvenance a' | a' <- streamlineAux var a]
 streamlineAux _ ListNil = [ListNil]
@@ -253,15 +256,26 @@ instance ( Monad m
          , Syntactic a
          , FuzziType (DeepRepr a)
          , Typeable (DeepRepr a)
+         , Typeable a
          , Typeable m) => Syntactic (Mon m a) where
   type DeepRepr (Mon m a) = m (DeepRepr a)
   toDeepRepr (Mon m) = m (Return . toDeepRepr)
-  fromDeepRepr    m  = Mon $ \k -> Bind m (k . fromDeepRepr)
+  fromDeepRepr m = Mon $ \k -> Bind m (k . fromDeepRepr)
+  {-
+  -- a potential optimization?
+  fromDeepRepr (m :: Fuzzi (_ (DeepRepr a))) =
+    case ( eqTypeRep (typeRep @(DeepRepr a)) (typeRep @(()))
+         , eqTypeRep (typeRep @a) (typeRep @(()))) of
+      (Just HRefl, Just HRefl) ->
+        Mon $ \k -> Sequence m (k ())
+      _ ->
+        Mon $ \k -> Bind m (k . fromDeepRepr)
+  -}
 
 instance (Monad m, Typeable m) => Syntactic1 (Mon m) where
   type DeepRepr1 (Mon m) = m
   toDeepRepr1 (Mon m) = m (Return . toDeepRepr)
-  fromDeepRepr1 m     = Mon $ \k -> Bind m (k . fromDeepRepr)
+  fromDeepRepr1 m = Mon $ \k -> Bind m (k . fromDeepRepr)
 
 instance (FuzziType a, Numeric a) => Num (Fuzzi a) where
   (+) = coerce Add

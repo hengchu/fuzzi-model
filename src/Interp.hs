@@ -17,6 +17,7 @@ eval :: forall a. Fuzzi a -> a
 eval (Lam f) = eval . f . Lit
 eval (App f a) = (eval f) (eval a)
 eval (Return a) = return (eval a)
+eval (Sequence a b) = eval a >> (eval b)
 eval (Bind a f) = eval a >>= (eval . f . Lit)
 eval (Lit a) = a
 eval (If cond t f) = if toBool (eval cond) then eval t else eval f
@@ -49,12 +50,10 @@ eval (Gt a b) = (eval a) %> (eval b)
 eval (Ge a b) = (eval a) %>= (eval b)
 eval (Eq_ a b) = (eval a) %== (eval b)
 eval (Neq a b) = (eval a) %/= (eval b)
-eval (AssertTrueM cond v) = do
+eval (AssertTrueM cond) =
   assertTrue (eval cond)
-  eval v
-eval (AssertFalseM cond v) = do
+eval (AssertFalseM cond) =
   assertFalse (eval cond)
-  eval v
 eval (InjectProvenance a) = inject (eval a)
 eval ListNil         = nil
 eval (ListCons x xs) = (eval x) `cons` (eval xs)
