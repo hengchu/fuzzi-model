@@ -38,6 +38,7 @@ data Fuzzi (a :: *) where
   App         :: (Typeable a) => Fuzzi (a -> b) -> Fuzzi a -> Fuzzi b
 
   Return      :: (Monad m, Typeable a) => Fuzzi a -> Fuzzi (m a)
+  Sequence    :: (Monad m, Typeable m) => Fuzzi (m ()) -> Fuzzi (m a) -> Fuzzi (m a)
   Bind        :: (Monad m, Typeable m, FuzziType a) => Fuzzi (m a) -> (Fuzzi a -> Fuzzi (m b)) -> Fuzzi (m b)
   Lit         :: (FuzziType a) => a -> Fuzzi a
   If          :: (ConcreteBoolean bool) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
@@ -45,6 +46,8 @@ data Fuzzi (a :: *) where
   Laplace     :: (Distribution m a) => TypeRep m -> Fuzzi a -> Double -> Fuzzi (m a)
   Gaussian    :: (Distribution m a) => TypeRep m -> Fuzzi a -> Double -> Fuzzi (m a)
   Variable    :: (Typeable a) => Int -> Fuzzi a
+
+  PrettyPrintVariable :: (Typeable a) => String -> Fuzzi a
 
   And         :: (Boolean bool) => Fuzzi bool -> Fuzzi bool -> Fuzzi bool
   Or          :: (Boolean bool) => Fuzzi bool -> Fuzzi bool -> Fuzzi bool
@@ -115,6 +118,9 @@ subst v term filling =
         (True, Just HRefl) -> filling
         _                  -> Variable v'
 
+    PrettyPrintVariable v' ->
+      PrettyPrintVariable v'
+
     And a b -> And (subst v a filling) (subst v b filling)
     Or  a b -> Or  (subst v a filling) (subst v b filling)
     Not a   -> Not (subst v a filling)
@@ -172,6 +178,7 @@ streamlineAux var (Laplace tr c w) =
 streamlineAux var (Gaussian tr c w) =
   [Gaussian tr c' w | c' <- streamlineAux var c]
 streamlineAux _ v@(Variable _) = [v]
+streamlineAux _ v@(PrettyPrintVariable _) = [v]
 streamlineAux var (And a b) =
   [And a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (Or  a b) =

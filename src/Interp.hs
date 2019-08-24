@@ -28,7 +28,10 @@ eval (IfM (cond :: Fuzzi bool) t f) =
                 ++ " does not support concrete execution"))
 eval (Laplace _ c w) = laplace (eval c) w
 eval (Gaussian _ c w) = gaussian (eval c) w
-eval (Variable v) = error ("unexpected variable " ++ show v ++ " :: " ++ show (typeRep @a))
+eval (Variable v) =
+  error ("unexpected variable " ++ show v ++ " :: " ++ show (typeRep @a))
+eval (PrettyPrintVariable v) =
+  error ("unexpected variable " ++ v ++ " :: " ++ show (typeRep @a))
 eval (And a b) = and (eval a) (eval b)
 eval (Or a b) = or (eval a) (eval b)
 eval (Not a) = neg (eval a)
