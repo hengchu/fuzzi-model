@@ -105,6 +105,8 @@ newtype SymbolicT r m a =
   deriving (Functor, Applicative, Monad)
   via (StateT (SymbolicState r) (ExceptT SymExecError m))
 
+type Symbolic r a = SymbolicT r Identity a
+
 instance MonadTrans (SymbolicT r) where
   lift = SymbolicT . lift . lift
 
@@ -130,7 +132,9 @@ gatherConstraints bucket code computation = do
           csyms = st ^. costSymbols
           osyms = st ^. openSymbols
           code'  = st ^. sourceCode
-      in return (Right (a, SymbolicConstraints pc cc csyms osyms code'))
+      in if length pc == 4
+         then return (Right (a, SymbolicConstraints pc cc csyms osyms code'))
+         else return (Right (a, SymbolicConstraints pc cc csyms osyms code'))
   where run =
           runExceptT
           . flip runStateT (initialSymbolicState bucket code)
@@ -211,7 +215,7 @@ freshSReal name = do
   maybeCounter <- gets (M.lookup name . (^. nameMap))
   case maybeCounter of
     Just c -> do
-      modify (\st -> st & nameMap %~ M.adjust (+1) name)
+      modify (\st -> st & nameMap %~ M.insert name (c + 1))
       return (sReal $ name ++ show c)
     Nothing -> do
       modify (\st -> st & nameMap %~ M.insert name 1)
@@ -335,23 +339,6 @@ instance Semigroup (GSC SymbolicConstraints) where
                     ++ show sc1Syms
                     ++ "\n"
                     ++ show sc2Syms)
-    let sc1Len = length (sc1 ^. pathConstraints)
-    let sc2Len = length (sc2 ^. pathConstraints)
-    when (sc1Len /= sc2Len) $
-      traceShow (sc1 ^. pathConstraints) $
-      trace "=============" $
-      traceShow (sc2 ^. pathConstraints) $
-      trace "=============" $
-      traceShow (sc1 ^. sourceCode) $
-      trace "=============" $
-      traceShow (sc2 ^. sourceCode) $
-      trace "=============\n" $
-      throwError (InternalError $
-                  "path constraints have different sizes:\n"
-                  ++ show sc1Len
-                  ++
-                  "\n"
-                  ++ show sc2Len)
     let sc1PCs = (M.fromList . toList) (sc1 ^. pathConstraints)
     let sc2PCs = (M.fromList . toList) (sc2 ^. pathConstraints)
     merged <- MM.mergeA whenMissing whenMissing whenMatched sc1PCs sc2PCs
@@ -365,7 +352,8 @@ instance Semigroup (GSC SymbolicConstraints) where
 
 generalize :: [SymbolicConstraints] -> Either SymExecError SymbolicConstraints
 generalize []     = Left (InternalError "generalizing an empty list of constraints?")
-generalize (x:xs) = getGSC (foldr merge (inject x) xs)
+generalize (x:xs) =
+  getGSC (foldr merge (inject x) xs)
   where
     merge :: SymbolicConstraints -> GSC SymbolicConstraints -> GSC SymbolicConstraints
     merge a b = inject a <> b
@@ -397,9 +385,9 @@ instance Boolean BoolExpr where
 instance Ordered RealExpr where
   type CmpResult RealExpr = BoolExpr
 
-  (%<) = coerce Lt
+  (%<)  = coerce Lt
   (%<=) = coerce Le
-  (%>) = coerce Gt
+  (%>)  = coerce Gt
   (%>=) = coerce Ge
   (%==) = coerce Eq_
   a %/= b = neg (a %== b)
