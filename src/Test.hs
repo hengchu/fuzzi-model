@@ -2,8 +2,9 @@ module Test where
 
 {- HLINT ignore "Use mapM" -}
 
+import Data.Text (pack)
 import Control.Lens
-import Control.Concurrent.Async
+import UnliftIO.Async
 import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.Trans.Identity
@@ -21,6 +22,8 @@ import qualified PrettyPrint as PP
 import Data.Void
 import Control.Monad.Except
 import qualified Z3.Base as Z3
+import Control.Monad.Logger
+import Control.Monad.IO.Unlift
 
 data Result :: * where
   TestSuccess      :: Double -> Result
@@ -50,13 +53,27 @@ buildMapAux []                m = m
 buildMapAux ((k, profile):xs) m =
   buildMapAux xs (M.insertWith (++) (provenance k) [(value k, profile)] m)
 
-profile :: (Ord a)
+bucketsDistributions :: Buckets a
+                     -> M.Map (DProvenance a) Int
+bucketsDistributions m = M.map length m
+
+profile :: (Show a, Ord a, MonadIO m, MonadLogger m, MonadUnliftIO m)
         => Int -- ^The number of tries
         -> Fuzzi (TracedDist (WithDistributionProvenance a))
-        -> IO (Buckets a)
+        -> m (Buckets a)
 profile ntimes prog = do
-  outputs <- replicateConcurrently ntimes ((sampleTraced . eval) prog)
-  return (buildMapAux outputs M.empty)
+  outputs <- replicateConcurrently ntimes (liftIO $ (sampleTraced . eval) prog)
+  $(logInfo) ("collected " <> pack (show (length outputs)) <> " buckets")
+  let bucketsWithKey = (buildMapAux outputs M.empty)
+  $(logInfo) ("bucket distribution: "
+              <> (pack . show $ bucketsDistributions bucketsWithKey))
+  return bucketsWithKey
+
+profileIO :: (Show a, Ord a)
+          => Int -- ^The number of tries
+          -> Fuzzi (TracedDist (WithDistributionProvenance a))
+          -> IO (Buckets a)
+profileIO ntimes prog = runStderrLoggingT $ profile ntimes prog
 
 symExec :: ( Typeable concreteResult
            , Typeable symbolicResult
@@ -124,10 +141,10 @@ symExecGeneralize concreteBuckets prog = do
     merge bucket (symResult, constraints) =
       TestBundle constraints (value symResult) bucket
 
-runTestBundle :: (SEq concreteResult symbolicResult)
+runTestBundle :: (MonadIO m, MonadLogger m, SEq concreteResult symbolicResult)
               => Epsilon
               -> TestBundle concreteResult symbolicResult
-              -> IO (Either SymExecError Z3.Result)
+              -> m (Either SymExecError Z3.Result)
 runTestBundle eps (TestBundle sc sr bucket) =
   solve sr sc bucket eps
 
@@ -135,6 +152,6 @@ runTests :: (SEq concreteResult symbolicResult)
          => Epsilon
          -> [TestBundle concreteResult symbolicResult]
          -> IO (Either SymExecError [Z3.Result])
-runTests eps bundles = do
+runTests eps bundles = runStderrLoggingT $ do
   results <- mapConcurrently (runTestBundle eps) bundles
   return (sequence results)

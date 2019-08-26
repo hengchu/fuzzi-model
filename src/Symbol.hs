@@ -4,8 +4,10 @@ module Symbol where
 {- HLINT ignore "Use camelCase" -}
 {- HLINT ignore "Use mapM" -}
 
+import Data.Text ()
 import Control.Lens
 import Control.Monad.Except
+import Control.Monad.Logger
 import Control.Monad.State.Class
 import Control.Monad.Trans.State hiding (gets, put, modify)
 import Data.Bifunctor
@@ -117,11 +119,12 @@ type Symbolic r a = SymbolicT r Identity a
 instance MonadTrans (SymbolicT r) where
   lift = SymbolicT . lift . lift
 
-z3Init :: (MonadIO m) => m (Z3.Context, Z3.Solver)
+z3Init :: (MonadIO m, MonadLogger m) => m (Z3.Context, Z3.Solver)
 z3Init = do
   cfg <- liftIO Z3.mkConfig
   ctx <- liftIO (Z3.mkContext cfg)
   solver <- liftIO (Z3.mkSolverForLogic ctx Z3.QF_NRA)
+  $(logInfo) "initialized Z3 solver and context"
   return (ctx, solver)
 
 double :: Double -> RealExpr
@@ -185,29 +188,30 @@ buildFullConstraints sym sc bucket =
   forM (zip bucket [0..]) $ \((cr, traces), idx) ->
     fillConstraintTemplate idx sym sc cr traces
 
-solve_ :: [( [PathCondition]
+solve_ :: (MonadIO m, MonadLogger m)
+       => [( [PathCondition]
            , [CouplingCondition]
            , EqualityCondition)
           ]
        -> TotalSymbolicCost
        -> Epsilon
-       -> IO Z3.Result
+       -> m Z3.Result
 solve_ conditions symCost eps = do
   (cxt, solver) <- z3Init
-  let addToSolver = Z3.solverAssertCnstr cxt solver
-      toZ3        = symbolicExprToZ3AST cxt . getBoolExpr
+  let addToSolver = liftIO . (Z3.solverAssertCnstr cxt solver)
+      toZ3        = liftIO . (symbolicExprToZ3AST cxt . getBoolExpr)
   forM_ conditions $ \(pcs, cpls, eqCond) -> do
     forM_ pcs $ \pc -> (toZ3 pc) >>= addToSolver
     forM_ cpls $ \cpl -> (toZ3 cpl) >>= addToSolver
   toZ3 (symCost %<= double eps) >>= addToSolver
-  Z3.solverCheck cxt solver
+  liftIO $ Z3.solverCheck cxt solver
 
-solve :: (SEq concrete symbolic)
+solve :: (MonadIO m, MonadLogger m, SEq concrete symbolic)
       => symbolic
       -> SymbolicConstraints
       -> Bucket concrete
       -> Epsilon
-      -> IO (Either SymExecError Z3.Result)
+      -> m (Either SymExecError Z3.Result)
 solve sym sc bucket eps = do
   let totalCostExpr = foldr (+) (double 0) (sc ^. costSymbols)
   case buildFullConstraints sym sc bucket of

@@ -61,6 +61,10 @@ library
               , lens >= 4.17.1 && <4.18
               , z3 >= 408.0
               , pretty >= 1.1.3.6 && <1.2
+              , monad-logger >= 0.3.30 && <0.4
+              , text >= 1.2.3.1 && <1.3
+              , unliftio >= 0.2.12 && <0.3
+              , unliftio-core >= 0.1.2.0 && <0.2
   default-language: Haskell2010
   default-extensions:
                      DataKinds
@@ -102,6 +106,7 @@ library
                    , OverloadedLabels
                    , LambdaCase
                    , TypeFamilyDependencies
+                   , OverloadedStrings
 
 executable fuzzi-model-exe
   main-is: Main.hs
