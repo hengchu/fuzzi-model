@@ -8,17 +8,20 @@ import Control.Lens
 import Control.Monad.Except
 import Control.Monad.State.Class
 import Control.Monad.Trans.State hiding (gets, put, modify)
+import Data.Bifunctor
 import Data.Coerce
 import Data.Foldable
+import Data.Void
 import Debug.Trace
 import Type.Reflection
 import Types
+import qualified Data.Map.Merge.Strict as MM
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
 import qualified Distribution as D
-import qualified Z3.Base as Z3
-import qualified Data.Map.Merge.Strict as MM
+import qualified EDSL as EDSL
 import qualified PrettyPrint as PP
+import qualified Z3.Base as Z3
 
 k_FLOAT_TOLERANCE :: Rational
 k_FLOAT_TOLERANCE = 1e-4
@@ -26,7 +29,8 @@ k_FLOAT_TOLERANCE = 1e-4
 data SymbolicExpr :: * where
   RealVar :: String -> SymbolicExpr
 
-  Rat :: Rational     -> SymbolicExpr
+  Rat      :: Rational -> SymbolicExpr
+  JustBool :: Bool     -> SymbolicExpr
 
   Add :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
   Sub :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
@@ -47,6 +51,9 @@ data SymbolicExpr :: * where
 
   Substitute :: SymbolicExpr -> [(SymbolicExpr, SymbolicExpr)] -> SymbolicExpr
   deriving (Show, Eq, Ord)
+
+class Matchable a b => SEq a b where
+  symEq :: a -> b -> BoolExpr
 
 newtype RealExpr = RealExpr { getRealExpr :: SymbolicExpr }
   deriving (Show, Eq, Ord)
@@ -79,7 +86,7 @@ data SymbolicConstraints = SymbolicConstraints {
   , _scCouplingConstraints :: S.Seq BoolExpr
   , _scCostSymbols         :: S.Seq RealExpr
   , _scOpenSymbols         :: S.Seq OpenSymbolTriple
-  , _scSourceCode          :: PP.SomeFuzzi
+  , _scSourceCode          :: [PP.SomeFuzzi]
   } deriving (Show, Eq, Ord)
 
 makeLensesWith abbreviatedFields ''SymbolicConstraints
@@ -117,7 +124,101 @@ z3Init = do
   solver <- liftIO (Z3.mkSolverForLogic ctx Z3.QF_NRA)
   return (ctx, solver)
 
-gatherConstraints :: (Monad m)
+double :: Double -> RealExpr
+double = fromRational . toRational
+
+bool :: Bool -> BoolExpr
+bool = BoolExpr . JustBool
+
+runSymbolic :: Symbolic Void a -> Either SymExecError a
+runSymbolic = runExcept . (flip evalStateT initialSt) . runSymbolicT_
+  where initialSt =
+          SymbolicState
+            M.empty
+            S.empty
+            S.empty
+            S.empty
+            S.empty
+            []
+            (PP.MkSomeFuzzi $ EDSL.PrettyPrintVariable @Int "nope")
+
+type PathCondition     = BoolExpr
+type CouplingCondition = BoolExpr
+type EqualityCondition = BoolExpr
+type TotalSymbolicCost = RealExpr
+type Epsilon           = Double
+
+fillConstraintTemplate :: (SEq concrete symbolic)
+                       => Int
+                       -> symbolic
+                       -> SymbolicConstraints
+                       -> concrete
+                       -> S.Seq (D.Trace Double)
+                       -> Either SymExecError ([PathCondition], [CouplingCondition], EqualityCondition)
+fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
+  subst <- go idx (toList $ sc ^. openSymbols) (toList traces)
+  let pcs = (toList . fmap (simplify . (first $ flip substituteB subst))) (sc ^. pathConstraints)
+  let cpls = (toList . fmap (flip substituteB subst)) (sc ^. couplingConstraints)
+  let sc' = sc & pathConstraints     %~ (fmap (first $ flip substituteB subst))
+               & couplingConstraints %~ (fmap (flip substituteB subst))
+  let eqCond = substituteB (cr `symEq` sym) subst
+  return (pcs, cpls, eqCond)
+  where
+    simplify (cond, True)  = cond
+    simplify (cond, False) = neg cond
+
+    go idx []                  []                             = return []
+    go idx ((cs, cc, ss):syms) (D.TrLaplace cc' _ cs':traces) = do
+      ss' <- freshSReal $ "run_" ++ show idx ++ "_lap"
+      subst <- go idx syms traces
+      return $ (cs,double cs'):(cc,double cc'):(ss,ss'):subst
+
+buildFullConstraints :: (SEq concrete symbolic)
+                     => symbolic
+                     -> SymbolicConstraints
+                     -> Bucket concrete
+                     -> Either SymExecError [( [PathCondition]
+                                             , [CouplingCondition]
+                                             , EqualityCondition)
+                                            ]
+buildFullConstraints sym sc bucket =
+  forM (zip bucket [0..]) $ \((cr, traces), idx) ->
+    fillConstraintTemplate idx sym sc cr traces
+
+solve_ :: [( [PathCondition]
+           , [CouplingCondition]
+           , EqualityCondition)
+          ]
+       -> TotalSymbolicCost
+       -> Epsilon
+       -> IO Z3.Result
+solve_ conditions symCost eps = do
+  (cxt, solver) <- z3Init
+  let addToSolver = Z3.solverAssertCnstr cxt solver
+      toZ3        = symbolicExprToZ3AST cxt . getBoolExpr
+  forM_ conditions $ \(pcs, cpls, eqCond) -> do
+    forM_ pcs $ \pc -> (toZ3 pc) >>= addToSolver
+    forM_ cpls $ \cpl -> (toZ3 cpl) >>= addToSolver
+  toZ3 (symCost %<= double eps) >>= addToSolver
+  Z3.solverCheck cxt solver
+
+solve :: (SEq concrete symbolic)
+      => symbolic
+      -> SymbolicConstraints
+      -> Bucket concrete
+      -> Epsilon
+      -> IO (Either SymExecError Z3.Result)
+solve sym sc bucket eps = do
+  let totalCostExpr = foldr (+) (double 0) (sc ^. costSymbols)
+  case buildFullConstraints sym sc bucket of
+    Left err -> return (Left err)
+    Right conds -> do
+      r <- solve_ conds totalCostExpr eps
+      return (Right r)
+
+gatherConstraints :: ( Monad m
+                     , Matchable r a
+                     )
                   => Bucket r
                   -> PP.SomeFuzzi
                   -> SymbolicT r m a
@@ -127,12 +228,17 @@ gatherConstraints bucket code computation = do
   case errorOrA of
     Left err -> return (Left err)
     Right (a, st) ->
-      let pc = st ^. pathConstraints
-          cc = st ^. couplingConstraints
+      let pc    = st ^. pathConstraints
+          cc    = st ^. couplingConstraints
           csyms = st ^. costSymbols
           osyms = st ^. openSymbols
-          code'  = st ^. sourceCode
-      in return (Right (a, SymbolicConstraints pc cc csyms osyms code'))
+          code' = st ^. sourceCode
+      in
+        if any (\r -> not $ match r a) (map fst bucket)
+        then
+          return (Left ResultDefinitelyNotEqual)
+        else
+          return (Right (a, SymbolicConstraints pc cc csyms osyms [code']))
   where run =
           runExceptT
           . flip runStateT (initialSymbolicState bucket code)
@@ -144,6 +250,8 @@ symbolicExprToZ3AST ctx (RealVar name) = do
   liftIO (Z3.mkRealVar ctx sym)
 symbolicExprToZ3AST ctx (Rat v) =
   liftIO (Z3.mkRational ctx v)
+symbolicExprToZ3AST ctx (JustBool v) =
+  liftIO (Z3.mkBool ctx v)
 symbolicExprToZ3AST ctx (Add a b) = do
   a' <- symbolicExprToZ3AST ctx a
   b' <- symbolicExprToZ3AST ctx b
@@ -340,7 +448,8 @@ instance Semigroup (GSC SymbolicConstraints) where
     let sc1PCs = (M.fromList . toList) (sc1 ^. pathConstraints)
     let sc2PCs = (M.fromList . toList) (sc2 ^. pathConstraints)
     merged <- MM.mergeA whenMissing whenMissing whenMatched sc1PCs sc2PCs
-    return (sc1 & pathConstraints .~ (S.fromList . M.toList) merged)
+    return (sc1 & pathConstraints .~ (S.fromList . M.toList) merged
+                & sourceCode .~ (sc1 ^. sourceCode ++ sc2 ^. sourceCode))
     where whenMissing = MM.preserveMissing
           whenMatched = MM.zipWithMaybeMatched
             (\_ b1 b2 ->
@@ -409,5 +518,24 @@ instance (Monad m, Typeable m, Typeable r)
   assertFalse cond =
     modify (\st -> st & pathConstraints %~ (S.|> (cond, False)))
 
-instance Matchable Float RealExpr where
+instance Matchable Double RealExpr where
   match _ _ = True
+
+instance (Eq a, Matchable a a) => SEq a a where
+  symEq a b = (BoolExpr . JustBool) (a == b)
+
+instance SEq Double RealExpr where
+  symEq a b =
+    BoolExpr (Eq_ (getRealExpr . fromRational . toRational $ a) (getRealExpr b))
+
+instance (SEq a b, SEq c d) => SEq (a, c) (b, d) where
+  symEq (a, c) (b, d) =
+    BoolExpr (And (getBoolExpr (a `symEq` b)) (getBoolExpr (c `symEq` d)))
+
+instance SEq a b => SEq [a] [b] where
+  symEq [] []         = BoolExpr (JustBool True)
+  symEq (x:xs) (y:ys) =
+    BoolExpr $
+    And (getBoolExpr (x `symEq` y))
+        (getBoolExpr (xs `symEq` ys))
+  symEq _      _      = BoolExpr (JustBool False)

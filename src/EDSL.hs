@@ -13,6 +13,7 @@ module EDSL (
   , streamline
   ) where
 
+import IfCxt
 import Data.Coerce
 import Type.Reflection (TypeRep, Typeable, typeRep, eqTypeRep, (:~~:)(..))
 import Types

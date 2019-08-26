@@ -2,7 +2,6 @@ module Distribution where
 
 import Control.Monad
 import Control.Monad.State.Class
-import Control.Monad.Trans.Identity
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State hiding (modify)
 import Data.Functor.Classes
@@ -26,19 +25,17 @@ data Trace :: * -> * where
   TrGaussian :: a -> Double -> a -> Trace a
   deriving (Show, Eq, Ord, Functor)
 
-type Profile a = Seq (Trace a)
-type DProfile  = Profile Double
 type DProvenance k = DistributionProvenance k
 
 -- |Type parameter 'k' is the type of the result. 'Buckets' maps results
 -- identical up to provenance into the actual value of the result, paired with
 -- the profiled trace of that execution.
-type Buckets k = M.Map (DProvenance k) [(k, DProfile)]
+type Buckets k = M.Map (DProvenance k) [(k, Seq (Trace Double))]
 
 newtype TracedDist a =
-  TracedDist { runTracedDist_ :: StateT DProfile RVar a }
-  deriving (Functor, Applicative, Monad) via (StateT DProfile RVar)
-  deriving (MonadState DProfile) via (StateT DProfile RVar)
+  TracedDist { runTracedDist_ :: StateT (Seq (Trace Double)) RVar a }
+  deriving (Functor, Applicative, Monad) via (StateT (Seq (Trace Double)) RVar)
+  deriving (MonadState (Seq (Trace Double))) via (StateT (Seq (Trace Double)) RVar)
 
 laplaceConcrete :: Double -> Double -> ConcreteDist Double
 laplaceConcrete center width = ConcreteDist $ do
@@ -80,7 +77,7 @@ gaussianTraced center width = do
 sampleConcrete :: ConcreteDist a -> IO a
 sampleConcrete = R.sample . runConcreteDist
 
-sampleTraced :: TracedDist a -> IO (a, DProfile)
+sampleTraced :: TracedDist a -> IO (a, Seq (Trace Double))
 sampleTraced m = R.sample ((runStateT . runTracedDist_) m mempty)
 
 newtype NoRandomness a = NoRandomness { runNoRandomness :: a }
@@ -207,23 +204,31 @@ instance MonadDist m => MonadDist (MaybeT m) where
   laplace c w  = MT.lift $ laplace c w
   gaussian c w = MT.lift $ gaussian c w
 
+{-
 instance MonadDist m => MonadDist (IdentityT m) where
   type NumDomain (IdentityT m) = NumDomain m
   laplace c w = MT.lift $ laplace c w
   gaussian c w = MT.lift $ gaussian c w
+-}
 
 instance (Monad m, Typeable m) => MonadAssert (MaybeT m) where
   type BoolType (MaybeT m) = Bool
   assertTrue = guard
 
+{-
 instance (Monad m, Typeable m) => MonadAssert (IdentityT m) where
   type BoolType (IdentityT m) = Bool
   assertTrue _ = return ()
+-}
 
 instance MonadDist TracedDist where
   type NumDomain TracedDist = WithDistributionProvenance Double
   laplace  = laplaceTraced
   gaussian = gaussianTraced
 
-instance Matchable a b => Matchable (WithDistributionProvenance a) b where
-  match a = match (value a)
+instance MonadAssert TracedDist where
+  type BoolType TracedDist = Bool
+  assertTrue _ = return ()
+
+instance Matchable a b => Matchable a (WithDistributionProvenance b) where
+  match a b = match a (value b)

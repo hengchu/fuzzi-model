@@ -2,17 +2,39 @@ module Test where
 
 {- HLINT ignore "Use mapM" -}
 
+import Control.Lens
+import Control.Concurrent.Async
 import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.Trans.Identity
+import Data.Either
+import Debug.Trace
 import Distribution
-import Symbol
 import EDSL
 import Interp
+import Symbol
 import Type.Reflection
 import Types
 import qualified Data.Map.Strict as M
+import qualified Data.Sequence as S
 import qualified PrettyPrint as PP
+import Data.Void
+import Control.Monad.Except
+import qualified Z3.Base as Z3
+
+data Result :: * where
+  TestSuccess      :: Double -> Result
+  TestFailure      :: String -> Result
+  TestInconclusive :: Result
+  deriving (Show, Eq, Ord)
+
+data TestBundle concrete symbolic = TestBundle {
+  _tbConstraints :: SymbolicConstraints
+  , _tbSymbolicResult :: symbolic
+  , _tbBucket :: [(concrete, S.Seq (Trace Double))]
+  } deriving (Show, Eq, Ord)
+
+makeLensesWith abbreviatedFields ''TestBundle
 
 liftProvenance :: (Monad m, Typeable m, FuzziType a)
                => Fuzzi (m a)
@@ -21,7 +43,7 @@ liftProvenance prog =
   Bind prog (Return . InjectProvenance)
 
 buildMapAux :: (Ord a)
-            => [(WithDistributionProvenance a, DProfile)]
+            => [(WithDistributionProvenance a, S.Seq (Trace Double))]
             -> Buckets a
             -> Buckets a
 buildMapAux []                m = m
@@ -30,18 +52,37 @@ buildMapAux ((k, profile):xs) m =
 
 profile :: (Ord a)
         => Int -- ^The number of tries
-        -> Fuzzi (IdentityT TracedDist (WithDistributionProvenance a))
+        -> Fuzzi (TracedDist (WithDistributionProvenance a))
         -> IO (Buckets a)
 profile ntimes prog = do
-  outputs <- replicateM ntimes ((sampleTraced . runIdentityT . eval) prog)
+  outputs <- replicateConcurrently ntimes ((sampleTraced . eval) prog)
   return (buildMapAux outputs M.empty)
 
-symExec :: (Typeable r, Typeable a)
-        => Fuzzi (SymbolicT r Identity (WithDistributionProvenance a))
-        -> Either SymExecError [(WithDistributionProvenance a, SymbolicConstraints)]
-symExec code =
+symExec :: ( Typeable concreteResult
+           , Typeable symbolicResult
+           , Show symbolicResult
+           , Matchable
+               concreteResult
+               (WithDistributionProvenance symbolicResult))
+        => Buckets concreteResult
+        -> Fuzzi (Symbolic concreteResult (WithDistributionProvenance symbolicResult))
+        -> [(WithDistributionProvenance symbolicResult, SymbolicConstraints)]
+symExec buckets code =
   let codes = streamline code
-  in sequence $ map (\c -> (runIdentity . gatherConstraints [] (PP.MkSomeFuzzi c) . eval) c) codes
+      errorsAndPaths {-:: [([SymExecError], [_])]-} =
+        map
+        (\(bucket :: Bucket concreteResult) ->
+             partitionEithers $
+             map (go bucket) codes)
+        buckets'
+      -- maybe log the errors to console?
+      _errors = concatMap fst errorsAndPaths
+      paths  = concatMap snd errorsAndPaths
+  in paths
+  where
+    buckets' = map snd (M.toList buckets)
+    go bucket code =
+      (runIdentity . gatherConstraints bucket (PP.MkSomeFuzzi code) . eval) code
 
 bucketSymbolicConstraints :: (Ord a)
                           => [(WithDistributionProvenance a, SymbolicConstraints)]
@@ -57,17 +98,43 @@ bucketSymbolicConstraints []          m = m
 bucketSymbolicConstraints ((k,sc):xs) m =
   bucketSymbolicConstraints xs (M.insertWith (++) (provenance k) [(k, sc)] m)
 
-symExecGeneralize :: (Typeable r, Typeable a, Ord a)
-                  => Fuzzi (SymbolicT r Identity (WithDistributionProvenance a))
-                  -> Either SymExecError
-                            [( WithDistributionProvenance a
-                             , SymbolicConstraints)
-                            ]
-symExecGeneralize prog = do
-  paths <- symExec prog
-  let buckets  = bucketSymbolicConstraints paths M.empty
-  buckets' <- sequence $ M.map
+symExecGeneralize :: ( Typeable concreteResult
+                     , Typeable symbolicResult
+                     , Show symbolicResult
+                     , Ord symbolicResult
+                     , Matchable
+                         concreteResult
+                         (WithDistributionProvenance symbolicResult)
+                     )
+                  => Buckets concreteResult
+                  -> Fuzzi (Symbolic
+                              concreteResult
+                              (WithDistributionProvenance symbolicResult))
+                  -> Either SymExecError [TestBundle concreteResult symbolicResult]
+symExecGeneralize concreteBuckets prog = do
+  let paths = symExec concreteBuckets prog
+  let symBuckets = bucketSymbolicConstraints paths M.empty
+  symBuckets' <- sequence $ M.map
     (\xs -> let a = head (map fst xs)
             in do {sc <- generalize (map snd xs); return (a, sc)})
-    buckets
-  return $ (map snd . M.toList) buckets'
+    symBuckets
+  return $ zipWith merge (values concreteBuckets) (values symBuckets')
+  where
+    values = map snd . M.toList
+    merge bucket (symResult, constraints) =
+      TestBundle constraints (value symResult) bucket
+
+runTestBundle :: (SEq concreteResult symbolicResult)
+              => Epsilon
+              -> TestBundle concreteResult symbolicResult
+              -> IO (Either SymExecError Z3.Result)
+runTestBundle eps (TestBundle sc sr bucket) =
+  solve sr sc bucket eps
+
+runTests :: (SEq concreteResult symbolicResult)
+         => Epsilon
+         -> [TestBundle concreteResult symbolicResult]
+         -> IO (Either SymExecError [Z3.Result])
+runTests eps bundles = do
+  results <- mapConcurrently (runTestBundle eps) bundles
+  return (sequence results)
