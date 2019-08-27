@@ -1,4 +1,4 @@
-module Distribution where
+module Data.Fuzzi.Distribution where
 
 import Control.Monad
 import Control.Monad.State.Class
@@ -11,7 +11,7 @@ import Data.Random.Distribution.Uniform
 import Data.Random.RVar
 import Data.Sequence
 import Type.Reflection
-import Types
+import Data.Fuzzi.Types
 import qualified Control.Monad.Trans.Class as MT
 import qualified Data.Map.Strict as M
 import qualified Data.Random as R

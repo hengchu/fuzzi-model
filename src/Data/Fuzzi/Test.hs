@@ -1,4 +1,4 @@
-module Test where
+module Data.Fuzzi.Test where
 
 {- HLINT ignore "Use mapM" -}
 
@@ -10,15 +10,15 @@ import Control.Monad.Identity
 import Control.Monad.Trans.Identity
 import Data.Either
 import Debug.Trace
-import Distribution
-import EDSL
-import Interp
-import Symbol
+import Data.Fuzzi.Distribution
+import Data.Fuzzi.EDSL
+import Data.Fuzzi.Interp
+import Data.Fuzzi.Symbol
 import Type.Reflection
-import Types
+import Data.Fuzzi.Types
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
-import qualified PrettyPrint as PP
+import qualified Data.Fuzzi.PrettyPrint as PP
 import Data.Void
 import Control.Monad.Except
 import qualified Z3.Base as Z3
@@ -55,7 +55,7 @@ buildMapAux ((k, profile):xs) m =
 
 bucketsDistributions :: Buckets a
                      -> M.Map (DProvenance a) Int
-bucketsDistributions m = M.map length m
+bucketsDistributions = M.map length
 
 profile :: (Show a, Ord a, MonadIO m, MonadLogger m, MonadUnliftIO m)
         => Int -- ^The number of tries
@@ -64,16 +64,22 @@ profile :: (Show a, Ord a, MonadIO m, MonadLogger m, MonadUnliftIO m)
 profile ntimes prog = do
   outputs <- replicateConcurrently ntimes (liftIO $ (sampleTraced . eval) prog)
   $(logInfo) ("collected " <> pack (show (length outputs)) <> " buckets")
-  let bucketsWithKey = (buildMapAux outputs M.empty)
+  let bucketsWithKey = buildMapAux outputs M.empty
   $(logInfo) ("bucket distribution: "
               <> (pack . show $ bucketsDistributions bucketsWithKey))
   return bucketsWithKey
+
+profileIOVerbose :: (Show a, Ord a)
+                 => Int -- ^The number of tries
+                 -> Fuzzi (TracedDist (WithDistributionProvenance a))
+                 -> IO (Buckets a)
+profileIOVerbose ntimes prog = runStderrLoggingT $ profile ntimes prog
 
 profileIO :: (Show a, Ord a)
           => Int -- ^The number of tries
           -> Fuzzi (TracedDist (WithDistributionProvenance a))
           -> IO (Buckets a)
-profileIO ntimes prog = runStderrLoggingT $ profile ntimes prog
+profileIO ntimes prog = runNoLoggingT $ profile ntimes prog
 
 symExec :: ( Typeable concreteResult
            , Typeable symbolicResult
@@ -153,5 +159,5 @@ runTests :: (SEq concreteResult symbolicResult)
          -> [TestBundle concreteResult symbolicResult]
          -> IO (Either SymExecError [SolverResult])
 runTests eps bundles = runStderrLoggingT $ do
-  results <- mapM (runTestBundle eps) bundles
+  results <- mapConcurrently (runTestBundle eps) bundles
   return (sequence results)

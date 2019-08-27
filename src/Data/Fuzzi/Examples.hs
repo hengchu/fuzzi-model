@@ -1,6 +1,6 @@
-module Examples where
+module Data.Fuzzi.Examples where
 
-import Interface
+import Data.Fuzzi.Interface
 
 ex1 :: (FuzziLang m a) => Mon m (Fuzzi a)
 ex1 = do
@@ -49,7 +49,7 @@ reportNoisyMax :: forall m a.
 reportNoisyMax []     = error "reportNoisyMax received empty input"
 reportNoisyMax (x:xs) = do
   xNoised <- lap x 1.0
-  xsNoised <- mapM (\x -> lap x 1.0) xs
+  xsNoised <- mapM (`lap` 1.0) xs
   reportNoisyMaxAux xsNoised 0 0 xNoised
 
 smartSumAux :: ( FuzziLang m a

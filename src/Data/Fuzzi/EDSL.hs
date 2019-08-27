@@ -1,5 +1,5 @@
 {-# LANGUAGE DerivingVia #-}
-module EDSL (
+module Data.Fuzzi.EDSL (
   Fuzzi(..)
   , Syntactic
   , Syntactic1
@@ -13,11 +13,11 @@ module EDSL (
   , streamline
   ) where
 
-import IfCxt
+import Data.Fuzzi.IfCxt
 import Data.Coerce
 import Type.Reflection (TypeRep, Typeable, typeRep, eqTypeRep, (:~~:)(..))
-import Types
-import Distribution (WithDistributionProvenance)
+import Data.Fuzzi.Types
+import Data.Fuzzi.Distribution (WithDistributionProvenance)
 
 newtype Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
   deriving (Functor)--, Applicative, Monad)

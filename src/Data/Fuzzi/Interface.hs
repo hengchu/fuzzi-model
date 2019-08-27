@@ -1,4 +1,4 @@
-module Interface (
+module Data.Fuzzi.Interface (
   Fuzzi
   , Syntactic
   , Syntactic1
@@ -11,8 +11,8 @@ module Interface (
   , reify
   , streamline
 
-  , module Types
+  , module Data.Fuzzi.Types
   ) where
 
-import Types
-import EDSL
+import Data.Fuzzi.Types
+import Data.Fuzzi.EDSL

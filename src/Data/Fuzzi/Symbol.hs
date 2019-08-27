@@ -1,4 +1,4 @@
-module Symbol where
+module Data.Fuzzi.Symbol where
 
 {- HLINT ignore "Use newtype instead of data" -}
 {- HLINT ignore "Use camelCase" -}
@@ -16,13 +16,13 @@ import Data.Text (pack)
 import Data.Void
 import Debug.Trace
 import Type.Reflection
-import Types
+import Data.Fuzzi.Types
 import qualified Data.Map.Merge.Strict as MM
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
-import qualified Distribution as D
-import qualified EDSL as EDSL
-import qualified PrettyPrint as PP
+import qualified Data.Fuzzi.Distribution as D
+import qualified Data.Fuzzi.EDSL as EDSL
+import qualified Data.Fuzzi.PrettyPrint as PP
 import qualified Text.PrettyPrint as TPP
 import qualified Z3.Base as Z3
 
@@ -95,10 +95,10 @@ data SymbolicExpr :: * where
   deriving (Eq, Ord)
 
 instance Show SymbolicExpr where
-  show s = pretty s
+  show = pretty
 
 pretty :: SymbolicExpr -> String
-pretty = TPP.render . (prettySymbolic 0)
+pretty = TPP.render . prettySymbolic 0
 
 parensIf :: Bool -> TPP.Doc -> TPP.Doc
 parensIf True  = TPP.parens
@@ -115,79 +115,79 @@ prettySymbolic currPrec (Add x y) =
   let thisPrec = PP.precedence M.! "+" in
   let thisFixity = PP.fixity M.! "+" in
   parensIf (currPrec > thisPrec) $
-    (prettySymbolic thisPrec x)
+    prettySymbolic thisPrec x
     TPP.<+> TPP.text "+"
-    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic currPrec (Sub x y) =
   let thisPrec = PP.precedence M.! "-" in
   let thisFixity = PP.fixity M.! "-" in
   parensIf (currPrec > thisPrec) $
-    (prettySymbolic thisPrec x)
+    prettySymbolic thisPrec x
     TPP.<+> TPP.text "-"
-    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic currPrec (Mul x y) =
   let thisPrec = PP.precedence M.! "*" in
   let thisFixity = PP.fixity M.! "*" in
   parensIf (currPrec > thisPrec) $
-    (prettySymbolic thisPrec x)
+    prettySymbolic thisPrec x
     TPP.<+> TPP.text "*"
-    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic currPrec (Div x y) =
   let thisPrec = PP.precedence M.! "/" in
   let thisFixity = PP.fixity M.! "/" in
   parensIf (currPrec > thisPrec) $
-    (prettySymbolic thisPrec x)
+    prettySymbolic thisPrec x
     TPP.<+> TPP.text "/"
-    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic currPrec (Lt x y) =
   let thisPrec = PP.precedence M.! "<" in
   let thisFixity = PP.fixity M.! "<" in
   parensIf (currPrec > thisPrec) $
-    (prettySymbolic thisPrec x)
+    prettySymbolic thisPrec x
     TPP.<+> TPP.text "<"
-    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic currPrec (Le x y) =
   let thisPrec = PP.precedence M.! "<=" in
   let thisFixity = PP.fixity M.! "<=" in
   parensIf (currPrec > thisPrec) $
-    (prettySymbolic thisPrec x)
+    prettySymbolic thisPrec x
     TPP.<+> TPP.text "<="
-    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic currPrec (Gt x y) =
   let thisPrec = PP.precedence M.! ">" in
   let thisFixity = PP.fixity M.! ">" in
   parensIf (currPrec > thisPrec) $
-    (prettySymbolic thisPrec x)
+    prettySymbolic thisPrec x
     TPP.<+> TPP.text ">"
-    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic currPrec (Ge x y) =
   let thisPrec = PP.precedence M.! ">=" in
   let thisFixity = PP.fixity M.! ">=" in
   parensIf (currPrec > thisPrec) $
-    (prettySymbolic thisPrec x)
+    prettySymbolic thisPrec x
     TPP.<+> TPP.text ">="
-    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic currPrec (Eq_ x y) =
   let thisPrec = PP.precedence M.! "==" in
   let thisFixity = PP.fixity M.! "==" in
   parensIf (currPrec > thisPrec) $
-    (prettySymbolic thisPrec x)
+    prettySymbolic thisPrec x
     TPP.<+> TPP.text "=="
-    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic currPrec (And x y) =
   let thisPrec = PP.precedence M.! "&&" in
   let thisFixity = PP.fixity M.! "&&" in
   parensIf (currPrec > thisPrec) $
-    (prettySymbolic thisPrec x)
+    prettySymbolic thisPrec x
     TPP.<+> TPP.text "&&"
-    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic currPrec (Or x y) =
   let thisPrec = PP.precedence M.! "||" in
   let thisFixity = PP.fixity M.! "||" in
   parensIf (currPrec > thisPrec) $
-    (prettySymbolic thisPrec x)
+    prettySymbolic thisPrec x
     TPP.<+> TPP.text "||"
-    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic _ (Not x) =
   TPP.text "not" TPP.<> TPP.parens (prettySymbolic 0 x)
 prettySymbolic _ (Ite cond x y) =
@@ -203,7 +203,7 @@ prettySymbolic _ (Substitute x substs) =
   where prettyX       = prettySymbolic 0 x
         prettySubsts1 = map (first TPP.text . second (prettySymbolic 0)) substs
         prettySubsts2 =
-          foldr (\(f,t) acc -> (TPP.parens (f `commaSep` t)) `commaSep` acc)
+          foldr (\(f,t) acc -> TPP.parens (f `commaSep` t) `commaSep` acc)
                 TPP.empty
                 prettySubsts1
         prettySubsts3 = TPP.brackets prettySubsts2
@@ -278,7 +278,7 @@ bool :: Bool -> BoolExpr
 bool = BoolExpr . JustBool
 
 runSymbolic :: Symbolic Void a -> Either SymExecError a
-runSymbolic = runExcept . (flip evalStateT initialSt) . runSymbolicT_
+runSymbolic = runExcept . (`evalStateT` initialSt) . runSymbolicT_
   where initialSt =
           SymbolicState
             M.empty
@@ -305,7 +305,7 @@ fillConstraintTemplate :: (SEq concrete symbolic)
 fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
   subst <- go idx (toList $ sc ^. openSymbols) (toList traces)
   let pcs =
-        (toList . fmap (simplify . (first $ flip substituteB subst)))
+        (toList . fmap (simplify . first (`substituteB` subst)))
         (sc ^. pathConstraints)
   let cpls = (toList . fmap (reduceSubstB . flip substituteB subst)) (sc ^. couplingConstraints)
   let eqCond = reduceSubstB $ substituteB (cr `symEq` sym) subst
@@ -342,15 +342,14 @@ solve_ conditions symCost eps = do
   (cxt, solver) <- z3Init
   let addToSolver (label, ast) = do
         trackedBoolVar <- liftIO $ Z3.mkFreshBoolVar cxt label
-        r <- liftIO (Z3.solverAssertAndTrack cxt solver ast trackedBoolVar)
-        return r
+        liftIO (Z3.solverAssertAndTrack cxt solver ast trackedBoolVar)
       toZ3 cond = do
-        ast <- liftIO $ (symbolicExprToZ3AST cxt (getBoolExpr cond))
+        ast <- liftIO $ symbolicExprToZ3AST cxt (getBoolExpr cond)
         let prettyStr = pretty (getBoolExpr cond)
         return (prettyStr, ast)
   forM_ conditions $ \(pcs, cpls, eqCond) -> do
-    forM_ pcs $ \pc -> (toZ3 pc) >>= addToSolver
-    forM_ cpls $ \cpl -> (toZ3 cpl) >>= addToSolver
+    forM_ pcs $ toZ3 >=> addToSolver
+    forM_ cpls $ toZ3 >=> addToSolver
     toZ3 eqCond >>= addToSolver
   toZ3 (symCost %<= double eps) >>= addToSolver
   r <- liftIO $ Z3.solverCheck cxt solver
@@ -382,7 +381,7 @@ solve :: (MonadIO m, MonadLogger m, SEq concrete symbolic)
       -> Epsilon
       -> m (Either SymExecError SolverResult)
 solve sym sc bucket eps = do
-  let totalCostExpr = foldl1 (+) (sc ^. costSymbols)
+  let totalCostExpr = sum (sc ^. costSymbols)
   case buildFullConstraints sym sc bucket of
     Left err -> return (Left err)
     Right conds -> do
@@ -499,7 +498,7 @@ freshSReal name = do
       return (name ++ show c)
     Nothing -> do
       modify (\st -> st & nameMap %~ M.insert name 1)
-      return (name)
+      return name
 
 data PopTraceItem r =
   PopTraceItem {
@@ -558,7 +557,7 @@ laplaceSymbolic centerWithProvenance w = do
         %<= fromRational k_FLOAT_TOLERANCE
   modify (\st -> st & couplingConstraints %~ (S.|> shiftCond))
   let costCond =
-        (sReal epsSym) %>= (abs (c - sReal concreteCenterSym + sReal shiftSym)
+        sReal epsSym %>= (abs (c - sReal concreteCenterSym + sReal shiftSym)
                     / (fromRational . toRational $ w))
   modify (\st -> st & couplingConstraints %~ (S.|> costCond))
 

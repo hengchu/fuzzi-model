@@ -1,13 +1,13 @@
 {- HLINT ignore "Redundant bracket" -}
 
-module Interp where
+module Data.Fuzzi.Interp where
 
-import Distribution (inject)
+import Data.Fuzzi.Distribution (inject)
 import Data.Proxy
 import Prelude hiding (and, or)
-import IfCxt
-import EDSL
-import Types
+import Data.Fuzzi.IfCxt
+import Data.Fuzzi.EDSL
+import Data.Fuzzi.Types
 import Type.Reflection hiding (App)
 
 monadDistErrorMessage :: String

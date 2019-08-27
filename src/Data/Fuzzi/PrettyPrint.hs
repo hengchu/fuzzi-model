@@ -1,10 +1,10 @@
-module PrettyPrint where
+module Data.Fuzzi.PrettyPrint where
 
 import Data.Text (Text)
 import Prelude hiding ((<>))
 import Control.Lens
 import Control.Monad.State.Strict
-import EDSL
+import Data.Fuzzi.EDSL
 import Text.PrettyPrint
 import qualified Data.Map.Strict as M
 

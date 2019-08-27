@@ -1,4 +1,4 @@
-module IfCxt where
+module Data.Fuzzi.IfCxt where
 
 import Data.Kind
 

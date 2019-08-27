@@ -1,6 +1,6 @@
-module Types where
+module Data.Fuzzi.Types where
 
-import IfCxt
+import Data.Fuzzi.IfCxt
 import Type.Reflection
 
 -- |This constraint is only satisfied by first-class datatypes supported in

@@ -3,16 +3,16 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Identity
 import Data.Functor.Identity
-import Distribution
-import EDSL
-import Examples
-import Symbol as S
+import Data.Fuzzi.Distribution
+import Data.Fuzzi.EDSL
+import Data.Fuzzi.Examples
+import Data.Fuzzi.Test
+import Data.Fuzzi.Types
+import Data.Fuzzi.Symbol as S
 import System.Exit
-import Test
 import Test.HUnit (runTestTT, errors, failures)
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
-import Types
 import qualified Data.Map.Strict as M
 import qualified Test.HUnit.Base as H
 import qualified Z3.Base as Z3
@@ -28,7 +28,7 @@ provenanceTests = H.TestList [
 
 testSmartSumProvenance :: IO Bool
 testSmartSumProvenance = do
-  results <- (profile 100 . reify)
+  results <- (profileIO 100 . reify)
     (smartSum
       @(TracedDist)
       @_
@@ -56,7 +56,7 @@ prop_rnmLengthConstraints :: SmallList Double -> Property
 prop_rnmLengthConstraints (SmallList xs) = monadicIO $ do
   let prog1 = liftProvenance (reify (reportNoisyMax (map (fromRational . toRational) xs)))
   let prog2 = liftProvenance (reify (reportNoisyMax (map (fromRational . toRational) xs)))
-  buckets <- run $ profile 100 prog1
+  buckets <- run $ profileIO 100 prog1
   case symExecGeneralize buckets prog2 of
     Left  err -> run (print err) >> assert False
     Right constraints -> assert (length buckets == length constraints)
