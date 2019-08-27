@@ -231,6 +231,14 @@ data SolverResult = Ok      Epsilon Z3.Model
                   | Failed  [String]
                   | Unknown  String
 
+isOk :: SolverResult -> Bool
+isOk (Ok _ _) = True
+isOk _        = False
+
+isFailed :: SolverResult -> Bool
+isFailed (Failed _) = True
+isFailed _          = False
+
 instance Show SolverResult where
   show (Ok eps _)       = "Ok " ++ show eps
   show (Failed cores)   = "Failed " ++ show cores

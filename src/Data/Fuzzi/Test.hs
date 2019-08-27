@@ -159,5 +159,5 @@ runTests :: (SEq concreteResult symbolicResult)
          -> [TestBundle concreteResult symbolicResult]
          -> IO (Either SymExecError [SolverResult])
 runTests eps bundles = runStderrLoggingT $ do
-  results <- mapConcurrently (runTestBundle eps) bundles
+  results <- mapM (runTestBundle eps) bundles
   return (sequence results)

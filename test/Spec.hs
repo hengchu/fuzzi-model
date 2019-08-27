@@ -9,6 +9,7 @@ import Data.Fuzzi.Examples
 import Data.Fuzzi.Test
 import Data.Fuzzi.Types
 import Data.Fuzzi.Symbol as S
+import Data.Fuzzi.NeighborGen
 import System.Exit
 import Test.HUnit (runTestTT, errors, failures)
 import Test.QuickCheck
@@ -61,10 +62,28 @@ prop_rnmLengthConstraints (SmallList xs) = monadicIO $ do
     Left  err -> run (print err) >> assert False
     Right constraints -> assert (length buckets == length constraints)
 
-prop_smartSumConstraints :: SmallList Double -> Bool
-prop_smartSumConstraints (SmallList xs) =
-  let prog = reify (smartSumSpec (map (fromRational . toRational) xs))
-  in length (symExecGeneralize M.empty prog) == 1
+rnmPrivacyTest :: PairWiseL1List Double -> Property
+rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $ do
+  let xs1   = map (fromRational . toRational) (left xs)
+  let xs2   = map (fromRational . toRational) (right xs)
+  let prog1 = (liftProvenance . reify) (reportNoisyMax xs1)
+  let prog2 = (liftProvenance . reify) (reportNoisyMax xs2)
+  buckets <- run $ profileIO 100 prog1
+  let spec = symExecGeneralize buckets prog2
+  case spec of
+    Left err -> run (print err) >> assert False
+    Right bundles -> do
+      results <- run $ runTests 2.0 bundles
+      case results of
+        Left err -> run (print err) >> assert False
+        Right results' -> do
+          run (print results')
+          assert (length bundles == length buckets)
+          assert (all isOk results')
+
+prop_rnmIsDifferentiallyPrivate :: Property
+prop_rnmIsDifferentiallyPrivate =
+  forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 rnmPrivacyTest
 
 smartSumSpec :: _
 smartSumSpec =
@@ -86,12 +105,9 @@ instance Arbitrary a => Arbitrary (SmallList a) where
   shrink xs = SmallList <$> (filter (not . null) . shrink) (getSmallList xs)
 
 prop_all :: Property
-prop_all = label "congruence" prop_symbolCongruence
+prop_all = {-label "congruence" prop_symbolCongruence
   .&&. label "rnmLength1" prop_rnmLengthConstraints
-  {-
-  .&&. label "rnmLength2" prop_rnmLengthConstraints2
-  .&&. label "smartSum"   prop_smartSumConstraints
--}
+  .&&. -}label "rnmDP" prop_rnmIsDifferentiallyPrivate
 
 main :: IO ()
 main = do
