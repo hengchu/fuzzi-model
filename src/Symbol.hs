@@ -56,6 +56,18 @@ data SymbolicConstraints = SymbolicConstraints {
   , _scSourceCode          :: [PP.SomeFuzzi]
   } deriving (Show, Eq, Ord)
 
+data PathConstraintMergeResult = Keep Bool
+                               | Drop
+                               deriving (Show, Eq, Ord)
+
+data MergingSymbolicConstraints = MergingSymbolicConstraints {
+  _mscPathConstraints       :: S.Seq (BoolExpr, PathConstraintMergeResult)
+  , _mscCouplingConstraints :: S.Seq BoolExpr
+  , _mscCostSymbols         :: S.Seq RealExpr
+  , _mscOpenSymbols         :: S.Seq OpenSymbolTriple
+  , _mscSourceCode          :: [PP.SomeFuzzi]
+  } deriving (Show, Eq, Ord)
+
 data SymbolicExpr :: * where
   RealVar :: String -> SymbolicExpr
 
@@ -213,6 +225,7 @@ instance Show BoolExpr where
 
 makeLensesWith abbreviatedFields ''SymbolicState
 makeLensesWith abbreviatedFields ''SymbolicConstraints
+makeLensesWith abbreviatedFields ''MergingSymbolicConstraints
 
 data SolverResult = Ok      Epsilon Z3.Model
                   | Failed  [String]
@@ -301,13 +314,15 @@ fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
     simplify (cond, True)  = reduceSubstB cond
     simplify (cond, False) = reduceSubstB $ neg cond
 
-    go idx []                  []                             = return []
+    go _   []                  []                             = return []
     go idx ((cs, cc, ss):syms) (D.TrLaplace cc' _ cs':traces) = do
       ss' <- freshSReal $ "run_" ++ show idx ++ "_lap"
       subst <- go idx syms traces
       return $ (cs,double cs'):(cc,double cc'):(ss,sReal ss'):subst
     go idx ((cs, cc, ss):syms) (D.TrGaussian cc' _ cs':traces) =
       error "not implemented yet..."
+    go _    _                  _                               =
+      error "impossible: trace and symbol triples have different lengths..."
 
 buildFullConstraints :: (SEq concrete symbolic)
                      => symbolic
@@ -576,7 +591,7 @@ newtype GSC a =
     deriving (Functor, Applicative, Monad, MonadError SymExecError)
     via (Either SymExecError)
 
-instance Semigroup (GSC SymbolicConstraints) where
+instance Semigroup (GSC MergingSymbolicConstraints) where
   (GSC (Left e)) <> _ = GSC (Left e)
   _ <> (GSC (Left e)) = GSC (Left e)
   (GSC (Right sc1)) <> (GSC (Right sc2)) = do
@@ -610,20 +625,48 @@ instance Semigroup (GSC SymbolicConstraints) where
     return (sc1 & pathConstraints .~ (S.fromList . M.toList) merged
                 & sourceCode .~ (sc1 ^. sourceCode ++ sc2 ^. sourceCode))
     where whenMissing = MM.preserveMissing
-          whenMatched = MM.zipWithMaybeMatched
-            (\_ b1 b2 ->
-               if b1 == b2
-               then Just b1
-               else Nothing)
+          whenMatched = MM.zipWithMatched
+            (\_ r1 r2 ->
+               case (r1, r2) of
+                 (Keep b1, Keep b2) | b1 == b2  -> Keep b1
+                                    | otherwise -> Drop
+                 (Drop, _) -> Drop
+                 (_, Drop) -> Drop)
 
 generalize :: [SymbolicConstraints] -> Either SymExecError SymbolicConstraints
 generalize []     = Left (InternalError "generalizing an empty list of constraints?")
 generalize (x:xs) =
-  getGSC (foldr merge (inject x) xs)
+  fmap dropUselessPcs (getGSC (foldr merge (inject x) xs))
   where
-    merge :: SymbolicConstraints -> GSC SymbolicConstraints -> GSC SymbolicConstraints
+    merge :: SymbolicConstraints
+          -> GSC MergingSymbolicConstraints
+          -> GSC MergingSymbolicConstraints
     merge a b = inject a <> b
-    inject    = GSC . Right
+
+    inject :: SymbolicConstraints -> GSC MergingSymbolicConstraints
+    inject sc =
+      let pcs = fmap (second Keep) (sc ^. pathConstraints) in
+      GSC (Right (MergingSymbolicConstraints
+                    pcs
+                    (sc ^. couplingConstraints)
+                    (sc ^. costSymbols)
+                    (sc ^. openSymbols)
+                    (sc ^. sourceCode)
+                 )
+          )
+
+    dropUselessPcs :: MergingSymbolicConstraints -> SymbolicConstraints
+    dropUselessPcs sc =
+      let cc   = sc ^. couplingConstraints
+          cs   = sc ^. costSymbols
+          os   = sc ^. openSymbols
+          code = sc ^. sourceCode
+          pcs  = sc ^. pathConstraints
+      in SymbolicConstraints (go pcs) cc cs os code
+
+    go S.Empty                   = S.Empty
+    go ((cond, Keep b) S.:<| xs) = (cond, b) S.:<| go xs
+    go ((_,    Drop)   S.:<| xs) = go xs
 
 instance Num RealExpr where
   (+) = coerce Add
