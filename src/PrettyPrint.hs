@@ -1,5 +1,6 @@
 module PrettyPrint where
 
+import Data.Text (Text)
 import Prelude hiding ((<>))
 import Control.Lens
 import Control.Monad.State.Strict
@@ -204,3 +205,17 @@ pretty (ListSnoc xs x) = do
 pretty (ListIsNil xs) = do
   xs' <- pretty xs
   return $ hsep [text "isNil", xs']
+
+precedence :: M.Map Text Int
+precedence = M.fromList [("||", 0), ("&&", 1),
+                         ("==", 2),
+                         ("<", 3), ("<=", 3), (">", 3), (">=", 3),
+                         ("+", 4), ("-", 4), ("*", 5), ("/", 5)
+                        ]
+
+fixity :: M.Map Text Int
+fixity = M.fromList [("||", 0), ("&&", 1),
+                     ("==", 0),
+                     ("<", 0), ("<=", 0), (">", 0), (">=", 0),
+                     ("+", 1), ("-", 1), ("*", 1), ("/", 1)
+                    ]

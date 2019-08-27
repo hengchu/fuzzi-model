@@ -144,14 +144,14 @@ symExecGeneralize concreteBuckets prog = do
 runTestBundle :: (MonadIO m, MonadLogger m, SEq concreteResult symbolicResult)
               => Epsilon
               -> TestBundle concreteResult symbolicResult
-              -> m (Either SymExecError Z3.Result)
+              -> m (Either SymExecError SolverResult)
 runTestBundle eps (TestBundle sc sr bucket) =
   solve sr sc bucket eps
 
 runTests :: (SEq concreteResult symbolicResult)
          => Epsilon
          -> [TestBundle concreteResult symbolicResult]
-         -> IO (Either SymExecError [Z3.Result])
+         -> IO (Either SymExecError [SolverResult])
 runTests eps bundles = runStderrLoggingT $ do
-  results <- mapConcurrently (runTestBundle eps) bundles
+  results <- mapM (runTestBundle eps) bundles
   return (sequence results)

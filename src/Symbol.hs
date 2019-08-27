@@ -4,7 +4,6 @@ module Symbol where
 {- HLINT ignore "Use camelCase" -}
 {- HLINT ignore "Use mapM" -}
 
-import Data.Text ()
 import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Logger
@@ -13,6 +12,7 @@ import Control.Monad.Trans.State hiding (gets, put, modify)
 import Data.Bifunctor
 import Data.Coerce
 import Data.Foldable
+import Data.Text (pack)
 import Data.Void
 import Debug.Trace
 import Type.Reflection
@@ -23,10 +23,38 @@ import qualified Data.Sequence as S
 import qualified Distribution as D
 import qualified EDSL as EDSL
 import qualified PrettyPrint as PP
+import qualified Text.PrettyPrint as TPP
 import qualified Z3.Base as Z3
 
 k_FLOAT_TOLERANCE :: Rational
 k_FLOAT_TOLERANCE = 1e-4
+
+type ConcreteSampleSymbol = String
+type ConcreteCenterSymbol = String
+type SymbolicSampleSymbol = String
+type OpenSymbolTriple =
+  (ConcreteSampleSymbol, ConcreteCenterSymbol, SymbolicSampleSymbol)
+
+type NameMap  = M.Map String Int
+type Bucket r = [(r, S.Seq (D.Trace Double))]
+
+data SymbolicState r = SymbolicState {
+  _ssNameMap               :: NameMap
+  , _ssPathConstraints     :: S.Seq (BoolExpr, Bool)
+  , _ssCouplingConstraints :: S.Seq BoolExpr
+  , _ssCostSymbols         :: S.Seq RealExpr
+  , _ssOpenSymbols         :: S.Seq OpenSymbolTriple
+  , _ssBucket              :: Bucket r
+  , _ssSourceCode          :: PP.SomeFuzzi
+  } deriving (Show, Eq, Ord)
+
+data SymbolicConstraints = SymbolicConstraints {
+  _scPathConstraints       :: S.Seq (BoolExpr, Bool)
+  , _scCouplingConstraints :: S.Seq BoolExpr
+  , _scCostSymbols         :: S.Seq RealExpr
+  , _scOpenSymbols         :: S.Seq OpenSymbolTriple
+  , _scSourceCode          :: [PP.SomeFuzzi]
+  } deriving (Show, Eq, Ord)
 
 data SymbolicExpr :: * where
   RealVar :: String -> SymbolicExpr
@@ -51,8 +79,122 @@ data SymbolicExpr :: * where
 
   Ite :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr -> SymbolicExpr
 
-  Substitute :: SymbolicExpr -> [(SymbolicExpr, SymbolicExpr)] -> SymbolicExpr
-  deriving (Show, Eq, Ord)
+  Substitute :: SymbolicExpr -> [(String, SymbolicExpr)] -> SymbolicExpr
+  deriving (Eq, Ord)
+
+instance Show SymbolicExpr where
+  show s = pretty s
+
+pretty :: SymbolicExpr -> String
+pretty = TPP.render . (prettySymbolic 0)
+
+parensIf :: Bool -> TPP.Doc -> TPP.Doc
+parensIf True  = TPP.parens
+parensIf False = id
+
+commaSep :: TPP.Doc -> TPP.Doc -> TPP.Doc
+commaSep a b = a TPP.<> TPP.comma TPP.<+> b
+
+prettySymbolic :: Int -> SymbolicExpr -> TPP.Doc
+prettySymbolic _ (RealVar x) = TPP.text x
+prettySymbolic _ (Rat r) = TPP.double (fromRational r)
+prettySymbolic _ (JustBool b) = TPP.text (show b)
+prettySymbolic currPrec (Add x y) =
+  let thisPrec = PP.precedence M.! "+" in
+  let thisFixity = PP.fixity M.! "+" in
+  parensIf (currPrec > thisPrec) $
+    (prettySymbolic thisPrec x)
+    TPP.<+> TPP.text "+"
+    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+prettySymbolic currPrec (Sub x y) =
+  let thisPrec = PP.precedence M.! "-" in
+  let thisFixity = PP.fixity M.! "-" in
+  parensIf (currPrec > thisPrec) $
+    (prettySymbolic thisPrec x)
+    TPP.<+> TPP.text "-"
+    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+prettySymbolic currPrec (Mul x y) =
+  let thisPrec = PP.precedence M.! "*" in
+  let thisFixity = PP.fixity M.! "*" in
+  parensIf (currPrec > thisPrec) $
+    (prettySymbolic thisPrec x)
+    TPP.<+> TPP.text "*"
+    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+prettySymbolic currPrec (Div x y) =
+  let thisPrec = PP.precedence M.! "/" in
+  let thisFixity = PP.fixity M.! "/" in
+  parensIf (currPrec > thisPrec) $
+    (prettySymbolic thisPrec x)
+    TPP.<+> TPP.text "/"
+    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+prettySymbolic currPrec (Lt x y) =
+  let thisPrec = PP.precedence M.! "<" in
+  let thisFixity = PP.fixity M.! "<" in
+  parensIf (currPrec > thisPrec) $
+    (prettySymbolic thisPrec x)
+    TPP.<+> TPP.text "<"
+    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+prettySymbolic currPrec (Le x y) =
+  let thisPrec = PP.precedence M.! "<=" in
+  let thisFixity = PP.fixity M.! "<=" in
+  parensIf (currPrec > thisPrec) $
+    (prettySymbolic thisPrec x)
+    TPP.<+> TPP.text "<="
+    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+prettySymbolic currPrec (Gt x y) =
+  let thisPrec = PP.precedence M.! ">" in
+  let thisFixity = PP.fixity M.! ">" in
+  parensIf (currPrec > thisPrec) $
+    (prettySymbolic thisPrec x)
+    TPP.<+> TPP.text ">"
+    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+prettySymbolic currPrec (Ge x y) =
+  let thisPrec = PP.precedence M.! ">=" in
+  let thisFixity = PP.fixity M.! ">=" in
+  parensIf (currPrec > thisPrec) $
+    (prettySymbolic thisPrec x)
+    TPP.<+> TPP.text ">="
+    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+prettySymbolic currPrec (Eq_ x y) =
+  let thisPrec = PP.precedence M.! "==" in
+  let thisFixity = PP.fixity M.! "==" in
+  parensIf (currPrec > thisPrec) $
+    (prettySymbolic thisPrec x)
+    TPP.<+> TPP.text "=="
+    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+prettySymbolic currPrec (And x y) =
+  let thisPrec = PP.precedence M.! "&&" in
+  let thisFixity = PP.fixity M.! "&&" in
+  parensIf (currPrec > thisPrec) $
+    (prettySymbolic thisPrec x)
+    TPP.<+> TPP.text "&&"
+    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+prettySymbolic currPrec (Or x y) =
+  let thisPrec = PP.precedence M.! "||" in
+  let thisFixity = PP.fixity M.! "||" in
+  parensIf (currPrec > thisPrec) $
+    (prettySymbolic thisPrec x)
+    TPP.<+> TPP.text "||"
+    TPP.<+> (prettySymbolic (thisPrec + thisFixity) y)
+prettySymbolic _ (Not x) =
+  TPP.text "not" TPP.<> TPP.parens (prettySymbolic 0 x)
+prettySymbolic _ (Ite cond x y) =
+  TPP.text "ite" TPP.<> TPP.parens (prettyCond `commaSep`
+                                    prettyX    `commaSep`
+                                    prettyY)
+  where prettyX    = prettySymbolic 0 x
+        prettyY    = prettySymbolic 0 y
+        prettyCond = prettySymbolic 0 cond
+prettySymbolic _ (Substitute x substs) =
+  TPP.text "subst" TPP.<> TPP.parens (prettyX `commaSep`
+                                      prettySubsts3)
+  where prettyX       = prettySymbolic 0 x
+        prettySubsts1 = map (first TPP.text . second (prettySymbolic 0)) substs
+        prettySubsts2 =
+          foldr (\(f,t) acc -> (TPP.parens (f `commaSep` t)) `commaSep` acc)
+                TPP.empty
+                prettySubsts1
+        prettySubsts3 = TPP.brackets prettySubsts2
 
 class Matchable a b => SEq a b where
   symEq :: a -> b -> BoolExpr
@@ -63,35 +205,17 @@ newtype RealExpr = RealExpr { getRealExpr :: SymbolicExpr }
 newtype BoolExpr = BoolExpr { getBoolExpr :: SymbolicExpr }
   deriving (Show, Eq, Ord)
 
-type ConcreteSampleSymbol = RealExpr
-type ConcreteCenterSymbol = RealExpr
-type SymbolicSampleSymbol = RealExpr
-type OpenSymbolTriple =
-  (ConcreteSampleSymbol, ConcreteCenterSymbol, SymbolicSampleSymbol)
-
-type NameMap  = M.Map String Int
-type Bucket r = [(r, S.Seq (D.Trace Double))]
-data SymbolicState r = SymbolicState {
-  _ssNameMap               :: NameMap
-  , _ssPathConstraints     :: S.Seq (BoolExpr, Bool)
-  , _ssCouplingConstraints :: S.Seq BoolExpr
-  , _ssCostSymbols         :: S.Seq RealExpr
-  , _ssOpenSymbols         :: S.Seq OpenSymbolTriple
-  , _ssBucket              :: Bucket r
-  , _ssSourceCode          :: PP.SomeFuzzi
-  } deriving (Show, Eq, Ord)
-
 makeLensesWith abbreviatedFields ''SymbolicState
-
-data SymbolicConstraints = SymbolicConstraints {
-  _scPathConstraints       :: S.Seq (BoolExpr, Bool)
-  , _scCouplingConstraints :: S.Seq BoolExpr
-  , _scCostSymbols         :: S.Seq RealExpr
-  , _scOpenSymbols         :: S.Seq OpenSymbolTriple
-  , _scSourceCode          :: [PP.SomeFuzzi]
-  } deriving (Show, Eq, Ord)
-
 makeLensesWith abbreviatedFields ''SymbolicConstraints
+
+data SolverResult = Ok      Z3.Model
+                  | Failed  [String]
+                  | Unknown  String
+
+instance Show SolverResult where
+  show (Ok _)           = "Ok"
+  show (Failed cores)   = "Failed " ++ show cores
+  show (Unknown reason) = "Unknown " ++ reason
 
 data SymExecError =
   UnbalancedLaplaceCalls
@@ -123,6 +247,7 @@ z3Init :: (MonadIO m, MonadLogger m) => m (Z3.Context, Z3.Solver)
 z3Init = do
   cfg <- liftIO Z3.mkConfig
   ctx <- liftIO (Z3.mkContext cfg)
+  liftIO (Z3.setASTPrintMode ctx Z3.Z3_PRINT_SMTLIB2_COMPLIANT)
   solver <- liftIO (Z3.mkSolverForLogic ctx Z3.QF_NRA)
   $(logInfo) "initialized Z3 solver and context"
   return (ctx, solver)
@@ -160,60 +285,75 @@ fillConstraintTemplate :: (SEq concrete symbolic)
                        -> Either SymExecError ([PathCondition], [CouplingCondition], EqualityCondition)
 fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
   subst <- go idx (toList $ sc ^. openSymbols) (toList traces)
-  let pcs = (toList . fmap (simplify . (first $ flip substituteB subst))) (sc ^. pathConstraints)
-  let cpls = (toList . fmap (flip substituteB subst)) (sc ^. couplingConstraints)
-  let sc' = sc & pathConstraints     %~ (fmap (first $ flip substituteB subst))
-               & couplingConstraints %~ (fmap (flip substituteB subst))
-  let eqCond = substituteB (cr `symEq` sym) subst
+  let pcs =
+        (toList . fmap (simplify . (first $ flip substituteB subst)))
+        (sc ^. pathConstraints)
+  let cpls = (toList . fmap (reduceSubstB . flip substituteB subst)) (sc ^. couplingConstraints)
+  let eqCond = reduceSubstB $ substituteB (cr `symEq` sym) subst
   return (pcs, cpls, eqCond)
   where
-    simplify (cond, True)  = cond
-    simplify (cond, False) = neg cond
+    simplify (cond, True)  = reduceSubstB cond
+    simplify (cond, False) = reduceSubstB $ neg cond
 
     go idx []                  []                             = return []
     go idx ((cs, cc, ss):syms) (D.TrLaplace cc' _ cs':traces) = do
       ss' <- freshSReal $ "run_" ++ show idx ++ "_lap"
       subst <- go idx syms traces
-      return $ (cs,double cs'):(cc,double cc'):(ss,ss'):subst
+      return $ (cs,double cs'):(cc,double cc'):(ss,sReal ss'):subst
+    go idx ((cs, cc, ss):syms) (D.TrGaussian cc' _ cs':traces) =
+      error "not implemented yet..."
 
 buildFullConstraints :: (SEq concrete symbolic)
                      => symbolic
                      -> SymbolicConstraints
                      -> Bucket concrete
-                     -> Either SymExecError [( [PathCondition]
-                                             , [CouplingCondition]
-                                             , EqualityCondition)
-                                            ]
+                     -> Either SymExecError [([PathCondition], [CouplingCondition], EqualityCondition)]
 buildFullConstraints sym sc bucket =
   forM (zip bucket [0..]) $ \((cr, traces), idx) ->
     fillConstraintTemplate idx sym sc cr traces
 
 solve_ :: (MonadIO m, MonadLogger m)
-       => [( [PathCondition]
-           , [CouplingCondition]
-           , EqualityCondition)
-          ]
+       => [([PathCondition], [CouplingCondition], EqualityCondition)]
        -> TotalSymbolicCost
        -> Epsilon
-       -> m Z3.Result
+       -> m SolverResult
 solve_ conditions symCost eps = do
   (cxt, solver) <- z3Init
-  let addToSolver = liftIO . (Z3.solverAssertCnstr cxt solver)
-      toZ3        = liftIO . (symbolicExprToZ3AST cxt . getBoolExpr)
+  let addToSolver (label, ast) = do
+        trackedBoolVar <- liftIO $ Z3.mkFreshBoolVar cxt label
+        r <- liftIO (Z3.solverAssertAndTrack cxt solver ast trackedBoolVar)
+        return r
+      toZ3 cond = do
+        ast <- liftIO $ (symbolicExprToZ3AST cxt (getBoolExpr cond))
+        let prettyStr = pretty (getBoolExpr cond)
+        return (prettyStr, ast)
   forM_ conditions $ \(pcs, cpls, eqCond) -> do
     forM_ pcs $ \pc -> (toZ3 pc) >>= addToSolver
     forM_ cpls $ \cpl -> (toZ3 cpl) >>= addToSolver
+    toZ3 eqCond >>= addToSolver
   toZ3 (symCost %<= double eps) >>= addToSolver
-  liftIO $ Z3.solverCheck cxt solver
+  r <- liftIO $ Z3.solverCheck cxt solver
+  case r of
+    Z3.Sat -> do
+      model <- liftIO $ Z3.solverGetModel cxt solver
+      return (Ok model)
+    Z3.Unsat -> do
+      $(logInfo) "solver returned unsat, retrieving unsat core..."
+      cores <- liftIO $ Z3.solverGetUnsatCore cxt solver
+      strs <- liftIO $ mapM (Z3.astToString cxt) cores
+      return (Failed strs)
+    Z3.Undef -> do
+      reason <- liftIO $ Z3.solverGetReasonUnknown cxt solver
+      return (Unknown reason)
 
 solve :: (MonadIO m, MonadLogger m, SEq concrete symbolic)
       => symbolic
       -> SymbolicConstraints
       -> Bucket concrete
       -> Epsilon
-      -> m (Either SymExecError Z3.Result)
+      -> m (Either SymExecError SolverResult)
 solve sym sc bucket eps = do
-  let totalCostExpr = foldr (+) (double 0) (sc ^. costSymbols)
+  let totalCostExpr = foldl1 (+) (sc ^. costSymbols)
   case buildFullConstraints sym sc bucket of
     Left err -> return (Left err)
     Right conds -> do
@@ -310,7 +450,8 @@ symbolicExprToZ3AST ctx (Ite a b c) = do
   liftIO (Z3.mkIte ctx a' b' c')
 symbolicExprToZ3AST ctx (Substitute a fts) = do
   let f (from, to) = do
-        from' <- symbolicExprToZ3AST ctx from
+        fromSym <- liftIO $ Z3.mkStringSymbol ctx from
+        from' <- liftIO $ Z3.mkRealVar ctx fromSym
         to'   <- symbolicExprToZ3AST ctx to
         return (from', to')
   a'   <- symbolicExprToZ3AST ctx a
@@ -320,16 +461,16 @@ symbolicExprToZ3AST ctx (Substitute a fts) = do
 sReal :: String -> RealExpr
 sReal = RealExpr . RealVar
 
-freshSReal :: (Monad m) => String -> SymbolicT r m RealExpr
+freshSReal :: (Monad m) => String -> SymbolicT r m String
 freshSReal name = do
   maybeCounter <- gets (M.lookup name . (^. nameMap))
   case maybeCounter of
     Just c -> do
       modify (\st -> st & nameMap %~ M.insert name (c + 1))
-      return (sReal $ name ++ show c)
+      return (name ++ show c)
     Nothing -> do
       modify (\st -> st & nameMap %~ M.insert name 1)
-      return (sReal name)
+      return (name)
 
 data PopTraceItem r =
   PopTraceItem {
@@ -384,19 +525,19 @@ laplaceSymbolic centerWithProvenance w = do
   shiftSym <- freshSReal "shift"
 
   let shiftCond =
-        abs (concreteSampleSym + shiftSym - lapSym)
+        abs (sReal concreteSampleSym + sReal shiftSym - sReal lapSym)
         %<= fromRational k_FLOAT_TOLERANCE
   modify (\st -> st & couplingConstraints %~ (S.|> shiftCond))
   let costCond =
-        epsSym %>= (abs (c - concreteCenterSym + shiftSym)
+        (sReal epsSym) %>= (abs (c - sReal concreteCenterSym + sReal shiftSym)
                     / (fromRational . toRational $ w))
   modify (\st -> st & couplingConstraints %~ (S.|> costCond))
 
-  modify (\st -> st & costSymbols %~ (S.|> epsSym))
+  modify (\st -> st & costSymbols %~ (S.|> sReal epsSym))
   modify (\st -> st & openSymbols %~ (S.|> (concreteSampleSym, concreteCenterSym, lapSym)))
 
   let provenance = D.Laplace (D.provenance centerWithProvenance) w
-  return (D.WithDistributionProvenance lapSym provenance)
+  return (D.WithDistributionProvenance (sReal lapSym) provenance)
 
 gaussianSymbolic :: (Monad m)
                  => D.WithDistributionProvenance RealExpr
@@ -404,14 +545,14 @@ gaussianSymbolic :: (Monad m)
                  -> SymbolicT r m (D.WithDistributionProvenance RealExpr)
 gaussianSymbolic _ _ = error "not yet implemented"
 
-substituteB :: BoolExpr -> [(RealExpr, RealExpr)] -> BoolExpr
+substituteB :: BoolExpr -> [(String, RealExpr)] -> BoolExpr
 substituteB (BoolExpr a) fts =
-  let ftsAst = map (\(f, t) -> (getRealExpr f, getRealExpr t)) fts
+  let ftsAst = map (second getRealExpr) fts
   in BoolExpr $ Substitute a ftsAst
 
-substituteR :: RealExpr -> [(RealExpr, RealExpr)] -> RealExpr
+substituteR :: RealExpr -> [(String, RealExpr)] -> RealExpr
 substituteR (RealExpr a) fts =
-  let ftsAst = map (\(f, t) -> (getRealExpr f, getRealExpr t)) fts
+  let ftsAst = map (second getRealExpr) fts
   in RealExpr $ Substitute a ftsAst
 
 newtype GSC a =
@@ -543,3 +684,33 @@ instance SEq a b => SEq [a] [b] where
     And (getBoolExpr (x `symEq` y))
         (getBoolExpr (xs `symEq` ys))
   symEq _      _      = BoolExpr (JustBool False)
+
+reduceSubst :: SymbolicExpr -> SymbolicExpr
+reduceSubst e = doSubst e []
+
+reduceSubstB :: BoolExpr -> BoolExpr
+reduceSubstB = coerce reduceSubst
+
+doSubst :: SymbolicExpr -> [(String, SymbolicExpr)] -> SymbolicExpr
+doSubst (RealVar x) substs =
+  case find (\(f, _) -> f == x) substs of
+    Nothing -> RealVar x
+    Just (_, t) -> t
+doSubst e@(Rat _) _ = e
+doSubst e@(JustBool _) _ = e
+doSubst (Add x y)      substs = Add (doSubst x substs) (doSubst y substs)
+doSubst (Sub x y)      substs = Sub (doSubst x substs) (doSubst y substs)
+doSubst (Mul x y)      substs = Mul (doSubst x substs) (doSubst y substs)
+doSubst (Div x y)      substs = Div (doSubst x substs) (doSubst y substs)
+doSubst (Lt x y)       substs = Lt  (doSubst x substs) (doSubst y substs)
+doSubst (Le x y)       substs = Le  (doSubst x substs) (doSubst y substs)
+doSubst (Gt x y)       substs = Gt  (doSubst x substs) (doSubst y substs)
+doSubst (Ge x y)       substs = Ge  (doSubst x substs) (doSubst y substs)
+doSubst (Eq_ x y)      substs = Eq_ (doSubst x substs) (doSubst y substs)
+doSubst (And x y)      substs = And (doSubst x substs) (doSubst y substs)
+doSubst (Or x y)       substs = Or  (doSubst x substs) (doSubst y substs)
+doSubst (Not x)        substs = Not (doSubst x substs)
+doSubst (Ite cond x y) substs = Ite (doSubst cond substs)
+                                    (doSubst x substs)
+                                    (doSubst y substs)
+doSubst (Substitute x substs) substs' = doSubst x (substs ++ substs')
