@@ -144,7 +144,10 @@ data WithDistributionProvenance a =
   WithDistributionProvenance { value :: a
                              , provenance :: DistributionProvenance a
                              }
-  deriving (Show, Eq, Ord, Typeable)
+  deriving (Eq, Ord, Typeable)
+
+instance Show a => Show (WithDistributionProvenance a) where
+  show a = show (value a)
 
 inject :: a -> WithDistributionProvenance a
 inject a = WithDistributionProvenance a (Deterministic a)

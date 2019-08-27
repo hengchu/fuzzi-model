@@ -200,20 +200,26 @@ class Matchable a b => SEq a b where
   symEq :: a -> b -> BoolExpr
 
 newtype RealExpr = RealExpr { getRealExpr :: SymbolicExpr }
-  deriving (Show, Eq, Ord)
+  deriving (Eq, Ord)
+
+instance Show RealExpr where
+  show a = show (getRealExpr a)
 
 newtype BoolExpr = BoolExpr { getBoolExpr :: SymbolicExpr }
-  deriving (Show, Eq, Ord)
+  deriving (Eq, Ord)
+
+instance Show BoolExpr where
+  show a = show (getBoolExpr a)
 
 makeLensesWith abbreviatedFields ''SymbolicState
 makeLensesWith abbreviatedFields ''SymbolicConstraints
 
-data SolverResult = Ok      Z3.Model
+data SolverResult = Ok      Epsilon Z3.Model
                   | Failed  [String]
                   | Unknown  String
 
 instance Show SolverResult where
-  show (Ok _)           = "Ok"
+  show (Ok eps _)       = "Ok " ++ show eps
   show (Failed cores)   = "Failed " ++ show cores
   show (Unknown reason) = "Unknown " ++ reason
 
@@ -336,7 +342,15 @@ solve_ conditions symCost eps = do
   case r of
     Z3.Sat -> do
       model <- liftIO $ Z3.solverGetModel cxt solver
-      return (Ok model)
+      let getCostValue sym = do
+            ast <- liftIO $ symbolicExprToZ3AST cxt (getRealExpr sym)
+            liftIO $ Z3.evalReal cxt model ast
+      cost <- liftIO $ getCostValue symCost
+      case cost of
+        Just cost' ->
+          return (Ok (fromRational cost') model)
+        Nothing ->
+          error "failed to retrieve total privacy cost..."
     Z3.Unsat -> do
       $(logInfo) "solver returned unsat, retrieving unsat core..."
       cores <- liftIO $ Z3.solverGetUnsatCore cxt solver

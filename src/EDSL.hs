@@ -39,8 +39,8 @@ data Fuzzi (a :: *) where
   App         :: (Typeable a) => Fuzzi (a -> b) -> Fuzzi a -> Fuzzi b
 
   Return      :: (Monad m, Typeable a) => Fuzzi a -> Fuzzi (m a)
-  Sequence    :: (Monad m, Typeable m) => Fuzzi (m ()) -> Fuzzi (m a) -> Fuzzi (m a)
-  Bind        :: (Monad m, Typeable m, FuzziType a) => Fuzzi (m a) -> (Fuzzi a -> Fuzzi (m b)) -> Fuzzi (m b)
+  Sequence    :: (Monad m, Typeable m, Typeable a) => Fuzzi (m ()) -> Fuzzi (m a) -> Fuzzi (m a)
+  Bind        :: (Monad m, Typeable m, FuzziType a, Typeable b) => Fuzzi (m a) -> (Fuzzi a -> Fuzzi (m b)) -> Fuzzi (m b)
   Lit         :: (FuzziType a) => a -> Fuzzi a
   If          :: (ConcreteBoolean bool) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
   IfM         :: (FuzziType a, Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a) -> Fuzzi (m a)
@@ -97,7 +97,29 @@ gauss :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
 gauss c w = fromDeepRepr $ Gaussian (typeRep @m) c w --  Mon ((Bind (Gaussian c w)))
 
 reify :: (Syntactic a) => a -> Fuzzi (DeepRepr a)
-reify = toDeepRepr
+reify = optimize . toDeepRepr
+
+extensionallyEqualToReturn :: forall a b m. (Typeable a, Typeable b)
+                           => (Fuzzi a -> Fuzzi (m b)) -> Maybe (a :~~:b)
+extensionallyEqualToReturn f =
+  case eqTypeRep (typeRep @a) (typeRep @b) of
+    Just HRefl -> case f (Variable 0) of
+                    Return (Variable 0) -> Just HRefl
+                    _                   -> Nothing
+    _ -> Nothing
+
+optimize :: Fuzzi a -> Fuzzi a
+optimize e@(Bind _ _) = simplBindReturn e
+optimize e@(Sequence _ _) = simplBindReturn e
+
+simplBindReturn :: forall b m. (Typeable b, Typeable m, Monad m) => Fuzzi (m b) -> Fuzzi (m b)
+simplBindReturn e@(Bind a (f :: Fuzzi a -> Fuzzi (m b))) =
+  case extensionallyEqualToReturn f of
+    Just HRefl -> simplBindReturn a
+    Nothing    -> Bind (simplBindReturn a) (simplBindReturn . f)
+simplBindReturn (Sequence a b) =
+  Sequence (simplBindReturn a) (simplBindReturn b)
+simplBindReturn e = e
 
 subst :: forall varType a. (Typeable varType, Typeable a) => Int -> Fuzzi a -> Fuzzi varType -> Fuzzi a
 subst v term filling =
@@ -155,7 +177,7 @@ subst v term filling =
     ListIsNil xs  -> ListIsNil (subst v xs filling)
 
 streamline :: Typeable a => Fuzzi a -> [Fuzzi a]
-streamline = streamlineAux 0
+streamline = map optimize . streamlineAux 0
 
 streamlineAux :: Typeable a => Int -> Fuzzi a -> [Fuzzi a]
 streamlineAux var (Lam (f :: Fuzzi x -> Fuzzi y)) =

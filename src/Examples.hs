@@ -36,9 +36,8 @@ reportNoisyMaxAux :: (FuzziLang m a)
                   -> Fuzzi a
                   -> Mon m (Fuzzi Int)
 reportNoisyMaxAux []     _       maxIdx _       = return maxIdx
-reportNoisyMaxAux (x:xs) lastIdx maxIdx currMax = do
+reportNoisyMaxAux (xNoised:xs) lastIdx maxIdx currMax = do
   let thisIdx = lastIdx + 1
-  xNoised <- lap x 1.0
   ifM (xNoised %> currMax)
       (reportNoisyMaxAux xs thisIdx thisIdx xNoised)
       (reportNoisyMaxAux xs thisIdx maxIdx  currMax)
@@ -50,7 +49,8 @@ reportNoisyMax :: forall m a.
 reportNoisyMax []     = error "reportNoisyMax received empty input"
 reportNoisyMax (x:xs) = do
   xNoised <- lap x 1.0
-  reportNoisyMaxAux xs 0 0 xNoised
+  xsNoised <- mapM (\x -> lap x 1.0) xs
+  reportNoisyMaxAux xsNoised 0 0 xNoised
 
 smartSumAux :: ( FuzziLang m a
                , ListLike listA
