@@ -31,6 +31,7 @@ library
                -fprint-potential-instances
                -Wno-orphans
                -fwarn-redundant-constraints
+               -O2
   exposed-modules:
                   Data.Fuzzi
                 , Data.Fuzzi.EDSL
@@ -166,7 +167,7 @@ test-suite fuzzi-model-test
       Paths_fuzzi_model
   hs-source-dirs:
       test
-  ghc-options: -rtsopts
+  ghc-options: -O2 -rtsopts
   build-depends:
                 base >=4.7 && <5
               , HUnit >= 1.6.0.0 && <1.7

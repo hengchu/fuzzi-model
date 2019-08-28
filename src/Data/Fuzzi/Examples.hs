@@ -52,6 +52,16 @@ reportNoisyMax (x:xs) = do
   xsNoised <- mapM (`lap` 1.0) xs
   reportNoisyMaxAux xsNoised 0 0 xNoised
 
+reportNoisyMaxBuggy :: forall m a.
+                       (FuzziLang m a)
+                    => [Fuzzi a]
+                    -> Mon m (Fuzzi Int)
+reportNoisyMaxBuggy []     = error "reportNoisyMaxBuggy received empty input"
+reportNoisyMaxBuggy (x:xs) = do
+  xNoised <- lap x 1.0
+  xsNoised <- mapM (`lap` 1.0) xs
+  reportNoisyMaxAux xs 0 0 x
+
 smartSumAux :: ( FuzziLang m a
                , ListLike listA
                , Elem listA ~ a
@@ -69,9 +79,9 @@ smartSumAux (x:xs) next n i sum results = do
   let sum' = sum + x
   if_ (((i + 1) `imod` 2) %== 0)
       (do n' <- lap (n + sum') 1.0
-          smartSumAux xs n' n' (i+1) sum' (results `snoc` n'))
+          smartSumAux xs n'    n' (i+1) 0    (results `snoc` n'))
       (do next' <- lap (next + x) 1.0
-          smartSumAux xs next' n (i+1) sum' (results `snoc` next'))
+          smartSumAux xs next' n  (i+1) sum' (results `snoc` next'))
 
 smartSum :: forall m a listA.
             ( FuzziLang m a

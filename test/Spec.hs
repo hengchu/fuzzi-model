@@ -10,7 +10,7 @@ import Data.Fuzzi.Examples
 import Data.Fuzzi.NeighborGen
 import Data.Fuzzi.Symbol as S
 import Data.Fuzzi.Test
-import Data.Fuzzi.Types
+import Data.Fuzzi.Types hiding (or)
 import System.Exit
 import Test.HUnit (runTestTT, errors, failures)
 import Test.QuickCheck
@@ -63,6 +63,25 @@ prop_rnmLengthConstraints (SmallList xs) = monadicIO $ do
     Left  err -> run (print err) >> assert False
     Right constraints -> assert (length buckets == length constraints)
 
+smartSumPrivacyTest :: L1List Double -> Property
+smartSumPrivacyTest xs = label ("smartsum input size: " ++ show (length xs)) $ monadicIO $ do
+  let xs1 = map (fromRational . toRational) (left xs)
+  let xs2 = map (fromRational . toRational) (right xs)
+  let prog1 = reify (smartSum xs1) :: Fuzzi (TracedDist (WithDistributionProvenance [Double]))
+  let prog2 = reify (smartSum xs2) :: Fuzzi (Symbolic [Double] (WithDistributionProvenance [RealExpr]))
+  buckets <- run $ profileIO 100 prog1
+  let spec = symExecGeneralize buckets prog2
+  case spec of
+    Left err -> run (print err) >> assert False
+    Right bundles -> do
+      results <- run $ runNoLoggingT (runTests 2.0 bundles)
+      case results of
+        Left err -> run (print err) >> assert False
+        Right results' -> do
+          run (print results')
+          assert (length bundles == length buckets)
+          assert (all isOk results')
+
 rnmPrivacyTest :: PairWiseL1List Double -> Property
 rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $ do
   let xs1   = map (fromRational . toRational) (left xs)
@@ -82,9 +101,39 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $
           assert (length bundles == length buckets)
           assert (all isOk results')
 
+rnmNotPrivateTest :: Property
+rnmNotPrivateTest = monadicIO $ do
+  results <- forM [0..10] $ \_ -> do
+    (xs :: PairWiseL1List Double) <- pick (pairWiseL1 1.0)
+    let xs1   = map (fromRational . toRational) (left xs)
+    let xs2   = map (fromRational . toRational) (right xs)
+    let prog1 = (liftProvenance . reify) (reportNoisyMaxBuggy xs1)
+    let prog2 = (liftProvenance . reify) (reportNoisyMaxBuggy xs2)
+    buckets <- run $ runNoLoggingT (profile 300 prog1)
+    let spec = symExecGeneralize buckets prog2
+    case spec of
+      Left err -> run (print err) >> stop False
+      Right bundles -> do
+        results <- run $ runNoLoggingT (runTests 2.0 bundles)
+        case results of
+          Left err -> run (print err) >> stop False
+          Right results' -> do
+            run (print results')
+            case any isFailed results' of
+              True -> stop True
+              False -> return False
+  assert (or results)
+
 prop_rnmIsDifferentiallyPrivate :: Property
 prop_rnmIsDifferentiallyPrivate =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 rnmPrivacyTest
+
+prop_rnmBuggyIsNotDifferentiallyPrivate :: Property
+prop_rnmBuggyIsNotDifferentiallyPrivate = rnmNotPrivateTest
+
+prop_smartSumIsDifferentiallyPrivate :: Property
+prop_smartSumIsDifferentiallyPrivate =
+  forAll (l1List 1.0) smartSumPrivacyTest
 
 smartSumSpec :: _
 smartSumSpec =
@@ -105,10 +154,6 @@ instance Arbitrary a => Arbitrary (SmallList a) where
 
   shrink xs = SmallList <$> (filter (not . null) . shrink) (getSmallList xs)
 
-prop_all :: Property
-prop_all = {-label "congruence" prop_symbolCongruence
-  .&&. label "rnmLength1" prop_rnmLengthConstraints
-  .&&. -}label "rnmDP" prop_rnmIsDifferentiallyPrivate
 
 main :: IO ()
 main = do
@@ -116,8 +161,17 @@ main = do
     "\n#######################################"
     ++ "\n#          QuickCheck Tests           #"
     ++ "\n#######################################"
-
-  quickCheckWithResult stdArgs{chatty=True, maxSuccess=100} prop_all >>= print
+{-
+  quickCheckWithResult
+    stdArgs{maxSuccess=20}
+    prop_rnmIsDifferentiallyPrivate >>= print
+  quickCheckWithResult
+    stdArgs{maxSuccess=20}
+    prop_rnmBuggyIsNotDifferentiallyPrivate >>= print
+-}
+  quickCheckWithResult
+    stdArgs{maxSuccess=20}
+    prop_smartSumIsDifferentiallyPrivate >>= print
 
   putStrLn $
     "\n#######################################"

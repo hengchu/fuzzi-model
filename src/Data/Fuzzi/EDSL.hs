@@ -109,8 +109,9 @@ extensionallyEqualToReturn f =
     _ -> Nothing
 
 optimize :: Fuzzi a -> Fuzzi a
-optimize e@(Bind _ _) = simplBindReturn e
+optimize e@(Bind _ _)     = simplBindReturn e
 optimize e@(Sequence _ _) = simplBindReturn e
+optimize e                = e
 
 simplBindReturn :: forall b m. (Typeable b, Typeable m, Monad m) => Fuzzi (m b) -> Fuzzi (m b)
 simplBindReturn e@(Bind a (f :: Fuzzi a -> Fuzzi (m b))) =
