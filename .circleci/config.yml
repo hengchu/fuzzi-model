@@ -1,0 +1,12 @@
+version: 2
+jobs:
+  build:
+    docker:
+      - image: chewie123/ubuntu-z3:16.04_4.8.5_stack
+
+    steps:
+      - checkout
+
+      - run:
+          name: Build and Test
+          command: stack test
