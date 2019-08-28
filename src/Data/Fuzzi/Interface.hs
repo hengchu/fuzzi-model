@@ -8,6 +8,9 @@ module Data.Fuzzi.Interface (
   , ifM
   , lap
   , gauss
+  , fst_
+  , snd_
+  , pair
   , lit
   , reify
   , streamline

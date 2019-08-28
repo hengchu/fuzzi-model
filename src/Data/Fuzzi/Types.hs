@@ -39,8 +39,8 @@ class ( Boolean  (TestResult list)
 
 -- |This constraint is only satisfied by numeric datatypes supported in Fuzzi.
 class (Ordered a, Num a, Typeable a) => Numeric (a :: *)
-class (Numeric a, Fractional a) => FracNumeric (a :: *)
-class (Numeric a, LiteIntegral a) => IntNumeric (a :: *)
+class (Numeric a, Fractional a)      => FracNumeric (a :: *)
+class (Numeric a, LiteIntegral a)    => IntNumeric (a :: *)
 
 -- |Boolean operators in the semantic domain.
 class (Typeable a) => Boolean (a :: *) where

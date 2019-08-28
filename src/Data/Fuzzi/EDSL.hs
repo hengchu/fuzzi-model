@@ -9,6 +9,9 @@ module Data.Fuzzi.EDSL (
   , ifM
   , lap
   , gauss
+  , fst_
+  , snd_
+  , pair
   , lit
   , reify
   , streamline
@@ -82,6 +85,10 @@ data Fuzzi (a :: *) where
   ListSnoc  :: (FuzziType (Elem list), ListLike list) => Fuzzi list -> Fuzzi (Elem list) -> Fuzzi list
   ListIsNil :: (FuzziType (Elem list), ListLike list, ConcreteBoolean (TestResult list)) => Fuzzi list -> Fuzzi (TestResult list)
 
+  Pair      :: (Typeable a, Typeable b) => Fuzzi a -> Fuzzi b      -> Fuzzi (a, b)
+  Fst       :: (Typeable a, Typeable b) =>            Fuzzi (a, b) -> Fuzzi a
+  Snd       :: (Typeable a, Typeable b) =>            Fuzzi (a, b) -> Fuzzi b
+
 if_ :: (Syntactic a, ConcreteBoolean bool) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
 
@@ -96,6 +103,15 @@ lap c w = fromDeepRepr $ Laplace (typeRep @m) c w -- Mon ((Bind (Laplace c w)))
 
 gauss :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
 gauss c w = fromDeepRepr $ Gaussian (typeRep @m) c w --  Mon ((Bind (Gaussian c w)))
+
+pair :: (Syntactic a, Syntactic b) => a -> b -> (a, b)
+pair a b = fromDeepRepr $ Pair (toDeepRepr a) (toDeepRepr b)
+
+fst_ :: (Typeable a, Typeable b) => Fuzzi (a, b) -> Fuzzi a
+fst_ = Fst
+
+snd_ :: (Typeable a, Typeable b) => Fuzzi (a, b) -> Fuzzi b
+snd_ = Snd
 
 lit :: (FuzziType a) => a -> Fuzzi a
 lit = Lit
@@ -181,6 +197,10 @@ subst v term filling =
     ListSnoc xs x -> ListSnoc (subst v xs filling) (subst v x filling)
     ListIsNil xs  -> ListIsNil (subst v xs filling)
 
+    Pair a b -> Pair (subst v a filling) (subst v b filling)
+    Fst p -> Fst (subst v p filling)
+    Snd p -> Snd (subst v p filling)
+
 streamline :: Typeable a => Fuzzi a -> [Fuzzi a]
 streamline = map optimize . streamlineAux 0
 
@@ -257,6 +277,12 @@ streamlineAux var (ListSnoc xs x) =
   [ListSnoc xs' x' | xs' <- streamlineAux var xs, x' <- streamlineAux var x]
 streamlineAux var (ListIsNil x) =
   [ListIsNil x' | x' <- streamlineAux var x]
+streamlineAux var (Pair a b) =
+  [Pair a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
+streamlineAux var (Fst p) =
+  Fst <$> streamlineAux var p
+streamlineAux var (Snd p) =
+  Snd <$> streamlineAux var p
 
 instance Applicative (Mon m) where
   pure a  = Mon $ \k -> k a
@@ -265,6 +291,14 @@ instance Applicative (Mon m) where
 instance Monad (Mon m) where
   return a = Mon $ \k -> k a
   Mon m >>= f = Mon $ \k -> m (\a -> runMon (f a) k)
+
+instance ( Syntactic a
+         , Syntactic b
+         , Typeable (DeepRepr a)
+         , Typeable (DeepRepr b)) => Syntactic (a, b) where
+  type DeepRepr (a, b) = (DeepRepr a, DeepRepr b)
+  toDeepRepr   (a, b)  = Pair (toDeepRepr a) (toDeepRepr b)
+  fromDeepRepr pair    = (fromDeepRepr (Fst pair), fromDeepRepr (Snd pair))
 
 instance ( Syntactic a
          , Syntactic b

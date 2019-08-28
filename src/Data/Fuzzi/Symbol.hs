@@ -106,9 +106,6 @@ parensIf :: Bool -> TPP.Doc -> TPP.Doc
 parensIf True  = TPP.parens
 parensIf False = id
 
-commaSep :: TPP.Doc -> TPP.Doc -> TPP.Doc
-commaSep a b = a TPP.<> TPP.comma TPP.<+> b
-
 prettySymbolic :: Int -> SymbolicExpr -> TPP.Doc
 prettySymbolic _ (RealVar x) = TPP.text x
 prettySymbolic _ (Rat r) = TPP.double (fromRational r)
@@ -193,19 +190,19 @@ prettySymbolic currPrec (Or x y) =
 prettySymbolic _ (Not x) =
   TPP.text "not" TPP.<> TPP.parens (prettySymbolic 0 x)
 prettySymbolic _ (Ite cond x y) =
-  TPP.text "ite" TPP.<> TPP.parens (prettyCond `commaSep`
-                                    prettyX    `commaSep`
+  TPP.text "ite" TPP.<> TPP.parens (prettyCond `PP.commaSep`
+                                    prettyX    `PP.commaSep`
                                     prettyY)
   where prettyX    = prettySymbolic 0 x
         prettyY    = prettySymbolic 0 y
         prettyCond = prettySymbolic 0 cond
 prettySymbolic _ (Substitute x substs) =
-  TPP.text "subst" TPP.<> TPP.parens (prettyX `commaSep`
+  TPP.text "subst" TPP.<> TPP.parens (prettyX `PP.commaSep`
                                       prettySubsts3)
   where prettyX       = prettySymbolic 0 x
         prettySubsts1 = map (first TPP.text . second (prettySymbolic 0)) substs
         prettySubsts2 =
-          foldr (\(f,t) acc -> TPP.parens (f `commaSep` t) `commaSep` acc)
+          foldr (\(f,t) acc -> TPP.parens (f `PP.commaSep` t) `PP.commaSep` acc)
                 TPP.empty
                 prettySubsts1
         prettySubsts3 = TPP.brackets prettySubsts2

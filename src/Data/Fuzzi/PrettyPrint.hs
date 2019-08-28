@@ -40,6 +40,9 @@ prettySomeFuzzi (MkSomeFuzzi a) = render $ runPrettyPrint (pretty a)
 runPrettyPrint :: PrettyPrintM a -> a
 runPrettyPrint = flip evalState (PrettyPrintState M.empty) . runPrettyPrintM
 
+commaSep :: Doc -> Doc -> Doc
+commaSep a b = a <> comma <+> b
+
 globalFreshVar :: String -> PrettyPrintM String
 globalFreshVar hint = do
   names <- gets (^. nameMap)
@@ -205,6 +208,16 @@ pretty (ListSnoc xs x) = do
 pretty (ListIsNil xs) = do
   xs' <- pretty xs
   return $ hsep [text "isNil", xs']
+pretty (Pair a b) = do
+  a' <- pretty a
+  b' <- pretty b
+  return $ parens (a' `commaSep` b')
+pretty (Fst p) = do
+  p' <- pretty p
+  return $ text "fst" <+> p'
+pretty (Snd p) = do
+  p' <- pretty p
+  return $ text "snd" <+> p'
 
 precedence :: M.Map Text Int
 precedence = M.fromList [("||", 0), ("&&", 1),

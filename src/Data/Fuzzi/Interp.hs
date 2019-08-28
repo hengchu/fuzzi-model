@@ -59,3 +59,6 @@ eval ListNil         = nil
 eval (ListCons x xs) = (eval x) `cons` (eval xs)
 eval (ListSnoc xs x) = (eval xs) `snoc` (eval x)
 eval (ListIsNil xs)  = isNil (eval xs)
+eval (Pair a b) = ((,) $! eval a) $! eval b
+eval (Fst p)    = fst (eval p)
+eval (Snd p)    = snd (eval p)
