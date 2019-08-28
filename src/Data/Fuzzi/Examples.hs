@@ -83,6 +83,27 @@ smartSumAux (x:xs) next n i sum results = do
       (do next' <- lap (next + x) 1.0
           smartSumAux xs next' n  (i+1) sum' (results `snoc` next'))
 
+smartSumAuxBuggy :: ( FuzziLang m a
+                    , ListLike listA
+                    , Elem listA ~ a
+                    , FuzziType listA
+                    , ConcreteBoolean (TestResult listA))
+                 => [Fuzzi a] -- ^The inputs
+                 -> Fuzzi a   -- ^The next partial sum
+                 -> Fuzzi a   -- ^This partial sum
+                 -> Fuzzi Int -- ^Iteration index
+                 -> Fuzzi a   -- ^The un-noised raw sum
+                 -> Fuzzi listA -- ^The accumulated list
+                 -> Mon m (Fuzzi listA)
+smartSumAuxBuggy []     _    _ _ _   results = return results
+smartSumAuxBuggy (x:xs) next n i sum results = do
+  let sum' = sum + x
+  if_ (((i + 1) `imod` 2) %== 0)
+      (do n' <- lap (n + sum') 1.0
+          smartSumAuxBuggy xs n'    n' (i+1) sum' (results `snoc` n'))    -- here's the bug
+      (do next' <- lap (next + x) 1.0
+          smartSumAuxBuggy xs next' n  (i+1) sum' (results `snoc` next'))
+
 smartSum :: forall m a listA.
             ( FuzziLang m a
             , ListLike listA
@@ -93,3 +114,80 @@ smartSum :: forall m a listA.
          -> Mon m (Fuzzi listA)
 -- smartSum :: forall m a listA. _ => [Fuzzi a] -> Mon m (Fuzzi listA)
 smartSum xs = smartSumAux xs 0 0 0 0 nil
+
+smartSumBuggy :: forall m a listA.
+                 ( FuzziLang m a
+                 , ListLike listA
+                 , Elem listA ~ a
+                 , FuzziType listA
+                 , ConcreteBoolean (TestResult listA))
+              => [Fuzzi a]
+              -> Mon m (Fuzzi listA)
+-- smartSumBuggy :: forall m a listA. _ => [Fuzzi a] -> Mon m (Fuzzi listA)
+smartSumBuggy xs = smartSumAuxBuggy xs 0 0 0 0 nil
+
+sparseVector :: ( FuzziLang m a
+                , ListLike  listBool
+                , Elem      listBool ~ Bool
+                , FuzziType listBool
+                , ConcreteBoolean (TestResult listBool))
+             => [Fuzzi a] -- ^ input data
+             -> Int       -- ^ maximum number of above thresholds
+             -> Fuzzi a   -- ^ threshold
+             -> Mon m (Fuzzi listBool)
+sparseVector xs n threshold = do
+  noisedThreshold <- lap threshold 2.0
+  noisedXs <- mapM (`lap` (4.0 * fromIntegral n)) xs
+  sparseVectorAux noisedXs n noisedThreshold nil
+
+sparseVectorAux :: ( FuzziLang m a
+                   , ListLike  listBool
+                   , Elem      listBool ~ Bool
+                   , FuzziType listBool
+                   , ConcreteBoolean (TestResult listBool)
+                   )
+                => [Fuzzi a]
+                -> Int
+                -> Fuzzi a
+                -> Fuzzi listBool
+                -> Mon m (Fuzzi listBool)
+sparseVectorAux []     n threshold acc = return acc
+sparseVectorAux (x:xs) n threshold acc
+  | n <= 0    = return acc
+  | otherwise = do
+      ifM (x %> threshold)
+          (sparseVectorAux xs (n-1) threshold (acc `snoc` lit True))
+          (sparseVectorAux xs n     threshold (acc `snoc` lit False))
+
+sparseVectorBuggy :: ( FuzziLang m a
+                     , ListLike  listA
+                     , Elem      listA ~ a
+                     , FuzziType listA
+                     , ConcreteBoolean (TestResult listA))
+                  => [Fuzzi a] -- ^ input data
+                  -> Int       -- ^ maximum number of above thresholds
+                  -> Fuzzi a   -- ^ threshold
+                  -> Mon m (Fuzzi listA)
+sparseVectorBuggy xs n threshold = do
+  noisedThreshold <- lap threshold 2.0
+  noisedXs <- mapM (`lap` (4.0 * fromIntegral n)) xs
+  sparseVectorBuggyAux noisedXs n noisedThreshold nil
+
+sparseVectorBuggyAux :: ( FuzziLang m a
+                        , ListLike  listA
+                        , Elem      listA ~ a
+                        , FuzziType listA
+                        , ConcreteBoolean (TestResult listA)
+                        )
+                     => [Fuzzi a]
+                     -> Int
+                     -> Fuzzi a
+                     -> Fuzzi listA
+                     -> Mon m (Fuzzi listA)
+sparseVectorBuggyAux []     n threshold acc = return acc
+sparseVectorBuggyAux (x:xs) n threshold acc
+  | n <= 0    = return acc
+  | otherwise = do
+      ifM (x %> threshold)
+          (sparseVectorBuggyAux xs (n-1) threshold (acc `snoc` x))
+          (sparseVectorBuggyAux xs n     threshold (acc `snoc` 0))

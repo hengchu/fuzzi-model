@@ -383,7 +383,7 @@ solve_ conditions symCost eps = do
     Z3.Unsat -> do
       $(logInfo) "solver returned unsat, retrieving unsat core..."
       cores <- liftIO $ Z3.solverGetUnsatCore cxt solver
-      strs <- liftIO $ mapM ((liftIO . evaluate . force) <=< (Z3.astToString cxt)) cores
+      strs <- liftIO $ mapM ((liftIO . evaluate . force) <=< Z3.astToString cxt) cores
       return (Failed strs)
     Z3.Undef -> do
       $(logInfo) "solver returned undef, retrieving reason..."
@@ -738,8 +738,11 @@ instance (Monad m, Typeable m, Typeable r)
 instance Matchable Double RealExpr where
   match _ _ = True
 
-instance (Eq a, Matchable a a) => SEq a a where
-  symEq a b = (BoolExpr . JustBool) (a == b)
+instance SEq Int Int where
+  symEq a b = bool (a == b)
+
+instance SEq Bool Bool where
+  symEq a b = bool (a == b)
 
 instance SEq Double RealExpr where
   symEq a b =

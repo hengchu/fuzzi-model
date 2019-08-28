@@ -40,14 +40,14 @@ pairWiseL1 :: forall a.
            -> Gen (PairWiseL1List a)
 pairWiseL1 diff = do
   len <- choose (3, 7)
-  xs <- replicateM len (choose (0.0, 1.0))
+  xs <- replicateM len (choose (-1.0, 1.0))
   ds <- replicateM len (choose (-diff, diff))
   return (PairWiseL1List (zip xs ds) diff)
 
 shrinkPairWiseL1 :: PairWiseL1List a -> [PairWiseL1List a]
 shrinkPairWiseL1 (PairWiseL1List xs diff) =
-  filter (not . null . (view dataAndDiff)) $
-    PairWiseL1List <$> shrinkList (\x -> [x]) xs <*> pure diff
+  filter (not . null . view dataAndDiff) $
+    PairWiseL1List <$> shrinkList (:[]) xs <*> pure diff
 
 l1List :: forall a.
           ( Fractional a
@@ -68,21 +68,21 @@ l1List diff = do
 
 shrinkL1List :: L1List a -> [L1List a]
 shrinkL1List (L1List xs diff) =
-  filter (not . null . (view listData)) $
-    L1List <$> shrinkList (\x -> [x]) xs <*> pure diff
+  filter (not . null . view listData) $
+    L1List <$> shrinkList (:[]) xs <*> pure diff
 
 instance (Num a) => Neighbor (PairWiseL1List a) where
   type Element (PairWiseL1List a) = [a]
-  left  = map fst . (view dataAndDiff)
-  right = map (uncurry (+)) . (view dataAndDiff)
+  left  = map fst . view dataAndDiff
+  right = map (uncurry (+)) . view dataAndDiff
 
 instance Foldable PairWiseL1List where
   foldMap f xs = foldMap f (map fst $ xs ^. dataAndDiff)
 
 instance Neighbor (L1List a) where
   type Element (L1List a) = [a]
-  left  = map fst . (view listData)
-  right = map snd . (view listData)
+  left  = map fst . view listData
+  right = map snd . view listData
 
 instance Foldable L1List where
   foldMap f xs = foldMap f (map fst $ xs ^. listData)

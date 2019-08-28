@@ -9,6 +9,7 @@ module Data.Fuzzi.EDSL (
   , ifM
   , lap
   , gauss
+  , lit
   , reify
   , streamline
   ) where
@@ -95,6 +96,9 @@ lap c w = fromDeepRepr $ Laplace (typeRep @m) c w -- Mon ((Bind (Laplace c w)))
 
 gauss :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
 gauss c w = fromDeepRepr $ Gaussian (typeRep @m) c w --  Mon ((Bind (Gaussian c w)))
+
+lit :: (FuzziType a) => a -> Fuzzi a
+lit = Lit
 
 reify :: (Syntactic a) => a -> Fuzzi (DeepRepr a)
 reify = optimize . toDeepRepr

@@ -32,11 +32,11 @@ testSmartSumProvenance :: IO Bool
 testSmartSumProvenance = do
   results <- (profileIO 100 . reify)
     (smartSum
-      @(TracedDist)
+      @TracedDist
       @_
       @(WithDistributionProvenance [Double])
       [1, 2, 3, 4, 5])
-  let k = M.keys results !! 0
+  let k = head (M.keys results)
   return (M.size results == 1 &&
           length (results M.! k) == 100)
 
@@ -119,9 +119,75 @@ rnmNotPrivateTest = monadicIO $ do
           Left err -> run (print err) >> stop False
           Right results' -> do
             run (print results')
-            case any isFailed results' of
-              True -> stop True
-              False -> return False
+            if any isFailed results' then stop True else return False
+  assert (or results)
+
+smartSumNotPrivateTest :: Property
+smartSumNotPrivateTest = monadicIO $ do
+  results <- forM [0..50] $ \_ -> do
+    (xs :: L1List Double) <- pick (l1List 1.0)
+    let xs1   = map (fromRational . toRational) (left xs)
+    let xs2   = map (fromRational . toRational) (right xs)
+    let prog1 = reify (smartSumBuggy xs1)
+          :: Fuzzi (TracedDist (WithDistributionProvenance [Double]))
+    let prog2 = reify (smartSumBuggy xs2)
+          :: Fuzzi (Symbolic [Double] (WithDistributionProvenance [RealExpr]))
+    buckets <- run $ runNoLoggingT (profile 300 prog1)
+    let spec = symExecGeneralize buckets prog2
+    case spec of
+      Left err -> run (print err) >> stop False
+      Right bundles -> do
+        results <- run $ runNoLoggingT (runTests 2.0 bundles)
+        case results of
+          Left err -> run (print err) >> stop False
+          Right results' -> do
+            run (print results')
+            if any isFailed results' then stop True else return False
+  assert (or results)
+
+sparseVectorPrivacyTest :: PairWiseL1List Double -> Property
+sparseVectorPrivacyTest xs =
+  label ("sparseVector input length: " ++ show (length xs)) $ monadicIO $ do
+    let xs1 = map (fromRational . toRational) (left xs)
+    let xs2 = map (fromRational . toRational) (right xs)
+    let prog1 = (liftProvenance . reify) (sparseVector xs1 2 0)
+          :: Fuzzi (TracedDist (WithDistributionProvenance [Bool]))
+    let prog2 = (liftProvenance . reify) (sparseVector xs2 2 0)
+          :: Fuzzi (Symbolic [Bool] (WithDistributionProvenance [Bool]))
+    buckets <- run $ profileIO 100 prog1
+    let spec = symExecGeneralize buckets prog2
+    case spec of
+      Left err -> run (print err) >> assert False
+      Right bundles -> do
+        results <- run $ runNoLoggingT (runTests 1.0 bundles)
+        case results of
+          Left err -> run (print err) >> assert False
+          Right results' -> do
+            run (print results')
+            assert (length bundles == length buckets)
+            assert (all isOk results')
+
+sparseVectorNotPrivateTest :: Property
+sparseVectorNotPrivateTest = monadicIO $ do
+  results <- forM [0..50] $ \_ -> do
+    (xs :: L1List Double) <- pick (l1List 1.0)
+    let xs1   = map (fromRational . toRational) (left xs)
+    let xs2   = map (fromRational . toRational) (right xs)
+    let prog1 = reify (sparseVectorBuggy xs1 2 0)
+          :: Fuzzi (TracedDist (WithDistributionProvenance [Double]))
+    let prog2 = reify (sparseVectorBuggy xs2 2 0)
+          :: Fuzzi (Symbolic [Double] (WithDistributionProvenance [RealExpr]))
+    buckets <- run $ runNoLoggingT (profile 300 prog1)
+    let spec = symExecGeneralize buckets prog2
+    case spec of
+      Left err -> run (print err) >> stop False
+      Right bundles -> do
+        results <- run $ runNoLoggingT (runTests 1.0 bundles)
+        case results of
+          Left err -> run (print err) >> stop False
+          Right results' -> do
+            run (print results')
+            if any isFailed results' then stop True else return False
   assert (or results)
 
 prop_rnmIsDifferentiallyPrivate :: Property
@@ -135,12 +201,17 @@ prop_smartSumIsDifferentiallyPrivate :: Property
 prop_smartSumIsDifferentiallyPrivate =
   forAll (l1List 1.0) smartSumPrivacyTest
 
-smartSumSpec :: _
-smartSumSpec =
-  smartSum
-  @(SymbolicT ([Double]) Identity)
-  @(WithDistributionProvenance RealExpr)
-  @(WithDistributionProvenance [RealExpr])
+prop_smartSumBuggyIsNotDifferentiallyPrivate :: Property
+prop_smartSumBuggyIsNotDifferentiallyPrivate =
+  smartSumNotPrivateTest
+
+prop_sparseVectorIsDifferentiallyPrivate :: Property
+prop_sparseVectorIsDifferentiallyPrivate =
+  forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 sparseVectorPrivacyTest
+
+prop_sparseVectorBuggyIsNotDifferentiallyPrivate :: Property
+prop_sparseVectorBuggyIsNotDifferentiallyPrivate =
+  sparseVectorNotPrivateTest
 
 newtype SmallList a = SmallList {
   getSmallList :: [a]
@@ -161,17 +232,25 @@ main = do
     "\n#######################################"
     ++ "\n#          QuickCheck Tests           #"
     ++ "\n#######################################"
-{-
   quickCheckWithResult
     stdArgs{maxSuccess=20}
     prop_rnmIsDifferentiallyPrivate >>= print
   quickCheckWithResult
-    stdArgs{maxSuccess=20}
+    stdArgs{maxSuccess=5}
     prop_rnmBuggyIsNotDifferentiallyPrivate >>= print
--}
   quickCheckWithResult
     stdArgs{maxSuccess=20}
     prop_smartSumIsDifferentiallyPrivate >>= print
+  quickCheckWithResult
+    stdArgs{maxSuccess=5}
+    prop_smartSumBuggyIsNotDifferentiallyPrivate >>= print
+  quickCheckWithResult
+    stdArgs{maxSuccess=20}
+    prop_sparseVectorIsDifferentiallyPrivate >>= print
+  quickCheckWithResult
+    stdArgs{maxSuccess=5}
+    prop_sparseVectorBuggyIsNotDifferentiallyPrivate >>= print
+
 
   putStrLn $
     "\n#######################################"
