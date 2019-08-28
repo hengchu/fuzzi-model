@@ -4,6 +4,8 @@ module Data.Fuzzi.Symbol where
 {- HLINT ignore "Use camelCase" -}
 {- HLINT ignore "Use mapM" -}
 
+import Control.DeepSeq
+import Control.Exception
 import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Logger
@@ -12,17 +14,17 @@ import Control.Monad.Trans.State hiding (gets, put, modify)
 import Data.Bifunctor
 import Data.Coerce
 import Data.Foldable
+import Data.Fuzzi.Types
 import Data.Text (pack)
 import Data.Void
 import Debug.Trace
 import Type.Reflection
-import Data.Fuzzi.Types
-import qualified Data.Map.Merge.Strict as MM
-import qualified Data.Map.Strict as M
-import qualified Data.Sequence as S
 import qualified Data.Fuzzi.Distribution as D
 import qualified Data.Fuzzi.EDSL as EDSL
 import qualified Data.Fuzzi.PrettyPrint as PP
+import qualified Data.Map.Merge.Strict as MM
+import qualified Data.Map.Strict as M
+import qualified Data.Sequence as S
 import qualified Text.PrettyPrint as TPP
 import qualified Z3.Base as Z3
 
@@ -227,12 +229,12 @@ makeLensesWith abbreviatedFields ''SymbolicState
 makeLensesWith abbreviatedFields ''SymbolicConstraints
 makeLensesWith abbreviatedFields ''MergingSymbolicConstraints
 
-data SolverResult = Ok      Epsilon Z3.Model
+data SolverResult = Ok      Epsilon --Z3.Model
                   | Failed  [String]
                   | Unknown  String
 
 isOk :: SolverResult -> Bool
-isOk (Ok _ _) = True
+isOk (Ok _) = True
 isOk _        = False
 
 isFailed :: SolverResult -> Bool
@@ -240,7 +242,7 @@ isFailed (Failed _) = True
 isFailed _          = False
 
 instance Show SolverResult where
-  show (Ok eps _)       = "Ok " ++ show eps
+  show (Ok eps)       = "Ok " ++ show eps
   show (Failed cores)   = "Failed " ++ show cores
   show (Unknown reason) = "Unknown " ++ reason
 
@@ -351,34 +353,40 @@ solve_ conditions symCost eps = do
   let addToSolver (label, ast) = do
         trackedBoolVar <- liftIO $ Z3.mkFreshBoolVar cxt label
         liftIO (Z3.solverAssertAndTrack cxt solver ast trackedBoolVar)
+        --liftIO $ Z3.solverAssertCnstr cxt solver ast
       toZ3 cond = do
         ast <- liftIO $ symbolicExprToZ3AST cxt (getBoolExpr cond)
         let prettyStr = pretty (getBoolExpr cond)
         return (prettyStr, ast)
+  $(logInfo) "loading constraints..."
   forM_ conditions $ \(pcs, cpls, eqCond) -> do
     forM_ pcs $ toZ3 >=> addToSolver
     forM_ cpls $ toZ3 >=> addToSolver
     toZ3 eqCond >>= addToSolver
   toZ3 (symCost %<= double eps) >>= addToSolver
+  $(logInfo) "checking constraints..."
   r <- liftIO $ Z3.solverCheck cxt solver
   case r of
     Z3.Sat -> do
+      $(logInfo) "solver returned sat, retrieving total privacy cost..."
       model <- liftIO $ Z3.solverGetModel cxt solver
       let getCostValue sym = do
             ast <- liftIO $ symbolicExprToZ3AST cxt (getRealExpr sym)
             liftIO $ Z3.evalReal cxt model ast
       cost <- liftIO $ getCostValue symCost
       case cost of
-        Just cost' ->
-          return (Ok (fromRational cost') model)
+        Just cost' -> do
+          costForced <- liftIO $ evaluate (force cost')
+          return (Ok (fromRational costForced) )--model)
         Nothing ->
           error "failed to retrieve total privacy cost..."
     Z3.Unsat -> do
       $(logInfo) "solver returned unsat, retrieving unsat core..."
       cores <- liftIO $ Z3.solverGetUnsatCore cxt solver
-      strs <- liftIO $ mapM (Z3.astToString cxt) cores
+      strs <- liftIO $ mapM ((liftIO . evaluate . force) <=< (Z3.astToString cxt)) cores
       return (Failed strs)
     Z3.Undef -> do
+      $(logInfo) "solver returned undef, retrieving reason..."
       reason <- liftIO $ Z3.solverGetReasonUnknown cxt solver
       return (Unknown reason)
 

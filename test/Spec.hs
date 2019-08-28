@@ -1,15 +1,16 @@
 import Control.Concurrent.Async
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Logger
 import Control.Monad.Trans.Identity
 import Data.Functor.Identity
 import Data.Fuzzi.Distribution
 import Data.Fuzzi.EDSL
 import Data.Fuzzi.Examples
+import Data.Fuzzi.NeighborGen
+import Data.Fuzzi.Symbol as S
 import Data.Fuzzi.Test
 import Data.Fuzzi.Types
-import Data.Fuzzi.Symbol as S
-import Data.Fuzzi.NeighborGen
 import System.Exit
 import Test.HUnit (runTestTT, errors, failures)
 import Test.QuickCheck
@@ -73,7 +74,7 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $
   case spec of
     Left err -> run (print err) >> assert False
     Right bundles -> do
-      results <- run $ runTests 2.0 bundles
+      results <- run $ runNoLoggingT (runTests 2.0 bundles)
       case results of
         Left err -> run (print err) >> assert False
         Right results' -> do
@@ -116,7 +117,7 @@ main = do
     ++ "\n#          QuickCheck Tests           #"
     ++ "\n#######################################"
 
-  quickCheckWithResult stdArgs{chatty=True, maxSuccess=500} prop_all >>= print
+  quickCheckWithResult stdArgs{chatty=True, maxSuccess=100} prop_all >>= print
 
   putStrLn $
     "\n#######################################"

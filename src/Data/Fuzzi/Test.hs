@@ -147,17 +147,21 @@ symExecGeneralize concreteBuckets prog = do
     merge bucket (symResult, constraints) =
       TestBundle constraints (value symResult) bucket
 
-runTestBundle :: (MonadIO m, MonadLogger m, SEq concreteResult symbolicResult)
+runTestBundle :: ( MonadIO m
+                 , MonadLogger m
+                 , SEq concreteResult symbolicResult)
               => Epsilon
               -> TestBundle concreteResult symbolicResult
               -> m (Either SymExecError SolverResult)
 runTestBundle eps (TestBundle sc sr bucket) =
   solve sr sc bucket eps
 
-runTests :: (SEq concreteResult symbolicResult)
+runTests :: ( MonadIO m
+            , MonadLogger m
+            , SEq concreteResult symbolicResult)
          => Epsilon
          -> [TestBundle concreteResult symbolicResult]
-         -> IO (Either SymExecError [SolverResult])
-runTests eps bundles = runStderrLoggingT $ do
+         -> m (Either SymExecError [SolverResult])
+runTests eps bundles = do
   results <- mapM (runTestBundle eps) bundles
   return (sequence results)
