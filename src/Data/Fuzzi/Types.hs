@@ -165,6 +165,9 @@ split (PrivTreeNode1D dirs) = ( PrivTreeNode1D (dirs ++ [LeftDir])
                               , PrivTreeNode1D (dirs ++ [RightDir])
                               )
 
+emptyTree :: PrivTree1D count
+emptyTree = PrivTree1D M.empty
+
 update :: PrivTreeNode1D -> count -> PrivTree1D count -> PrivTree1D count
 update k v (PrivTree1D tree) = PrivTree1D $ M.insert k v tree
 

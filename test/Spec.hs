@@ -225,6 +225,23 @@ instance Arbitrary a => Arbitrary (SmallList a) where
 
   shrink xs = SmallList <$> (filter (not . null) . shrink) (getSmallList xs)
 
+instance Arbitrary PrivTreeNode1D where
+  arbitrary =
+    let genDir = frequency [(1, pure LeftDir), (1, pure RightDir)] in
+    PrivTreeNode1D <$> listOf genDir
+
+  shrink (PrivTreeNode1D dirs) =
+    PrivTreeNode1D <$> shrinkList (:[]) dirs
+
+prop_nodeSplit :: PrivTreeNode1D -> Bool
+prop_nodeSplit node =
+  let (left, right) = endpoints node
+      (leftSubNode, rightSubNode) = split node
+      (lleft, lright) = endpoints leftSubNode
+      (rleft, rright) = endpoints rightSubNode
+  in lleft == left && lright == rleft && rright == right
+
+
 printAndExitIfFailed :: Result -> IO ()
 printAndExitIfFailed r = do
   print r
@@ -237,6 +254,9 @@ main = do
     "\n#######################################"
     ++ "\n#          QuickCheck Tests           #"
     ++ "\n#######################################"
+  quickCheckWithResult
+    stdArgs{maxSuccess=2000}
+    prop_nodeSplit >>= printAndExitIfFailed
   quickCheckWithResult
     stdArgs{maxSuccess=20}
     prop_rnmIsDifferentiallyPrivate >>= printAndExitIfFailed
