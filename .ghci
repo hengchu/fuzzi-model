@@ -1,0 +1,7 @@
+:set -Wall
+:set -Wno-name-shadowing
+:set -fprint-potential-instances
+:set -Wno-orphans
+:set -fwarn-redundant-constraints
+:set -isrc:test
+:load Data.Fuzzi

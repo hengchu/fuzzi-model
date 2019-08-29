@@ -56,10 +56,10 @@ prop_symbolCongruence a b =
 
 prop_rnmLengthConstraints :: SmallList Double -> Property
 prop_rnmLengthConstraints (SmallList xs) = monadicIO $ do
-  let prog1 = liftProvenance (reify (reportNoisyMax (map (fromRational . toRational) xs)))
-  let prog2 = liftProvenance (reify (reportNoisyMax (map (fromRational . toRational) xs)))
-  buckets <- run $ profileIO 100 prog1
-  case symExecGeneralize buckets prog2 of
+  let prog1 = reify (reportNoisyMax (map (fromRational . toRational) xs))
+  let prog2 = reify (reportNoisyMax (map (fromRational . toRational) xs))
+  buckets <- run $ profileNoProvenanceIO 100 prog1
+  case symExecGeneralizeNoProvenance buckets prog2 of
     Left  err -> run (print err) >> assert False
     Right constraints -> assert (length buckets == length constraints)
 
@@ -86,10 +86,10 @@ rnmPrivacyTest :: PairWiseL1List Double -> Property
 rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $ do
   let xs1   = map (fromRational . toRational) (left xs)
   let xs2   = map (fromRational . toRational) (right xs)
-  let prog1 = (liftProvenance . reify) (reportNoisyMax xs1)
-  let prog2 = (liftProvenance . reify) (reportNoisyMax xs2)
-  buckets <- run $ profileIO 100 prog1
-  let spec = symExecGeneralize buckets prog2
+  let prog1 = reify (reportNoisyMax xs1)
+  let prog2 = reify (reportNoisyMax xs2)
+  buckets <- run $ profileNoProvenanceIO 100 prog1
+  let spec = symExecGeneralizeNoProvenance buckets prog2
   case spec of
     Left err -> run (print err) >> assert False
     Right bundles -> do
@@ -107,10 +107,10 @@ rnmNotPrivateTest = monadicIO $ do
     (xs :: PairWiseL1List Double) <- pick (pairWiseL1 1.0)
     let xs1   = map (fromRational . toRational) (left xs)
     let xs2   = map (fromRational . toRational) (right xs)
-    let prog1 = (liftProvenance . reify) (reportNoisyMaxBuggy xs1)
-    let prog2 = (liftProvenance . reify) (reportNoisyMaxBuggy xs2)
-    buckets <- run $ runNoLoggingT (profile 300 prog1)
-    let spec = symExecGeneralize buckets prog2
+    let prog1 = reify (reportNoisyMaxBuggy xs1)
+    let prog2 = reify (reportNoisyMaxBuggy xs2)
+    buckets <- run $ runNoLoggingT (profileNoProvenance 300 prog1)
+    let spec = symExecGeneralizeNoProvenance buckets prog2
     case spec of
       Left err -> run (print err) >> stop False
       Right bundles -> do
@@ -150,12 +150,12 @@ sparseVectorPrivacyTest xs =
   label ("sparseVector input length: " ++ show (length xs)) $ monadicIO $ do
     let xs1 = map (fromRational . toRational) (left xs)
     let xs2 = map (fromRational . toRational) (right xs)
-    let prog1 = (liftProvenance . reify) (sparseVector xs1 2 0)
-          :: Fuzzi (TracedDist (WithDistributionProvenance [Bool]))
-    let prog2 = (liftProvenance . reify) (sparseVector xs2 2 0)
-          :: Fuzzi (Symbolic [Bool] (WithDistributionProvenance [Bool]))
-    buckets <- run $ profileIO 100 prog1
-    let spec = symExecGeneralize buckets prog2
+    let prog1 = reify (sparseVector xs1 2 0)
+          :: Fuzzi (TracedDist [Bool])
+    let prog2 = reify (sparseVector xs2 2 0)
+          :: Fuzzi (Symbolic [Bool] [Bool])
+    buckets <- run $ profileNoProvenanceIO 100 prog1
+    let spec = symExecGeneralizeNoProvenance buckets prog2
     case spec of
       Left err -> run (print err) >> assert False
       Right bundles -> do
@@ -235,7 +235,7 @@ instance Arbitrary PrivTreeNode1D where
 
 prop_nodeSplit :: PrivTreeNode1D -> Bool
 prop_nodeSplit node =
-  let (left, right) = endpoints node
+  let (left, right) = endpoints @Double node
       (leftSubNode, rightSubNode) = split node
       (lleft, lright) = endpoints leftSubNode
       (rleft, rright) = endpoints rightSubNode

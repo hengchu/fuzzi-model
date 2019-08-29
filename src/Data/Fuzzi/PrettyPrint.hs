@@ -193,9 +193,6 @@ pretty (AssertTrueM cond) = do
 pretty (AssertFalseM cond) = do
   cond' <- pretty cond
   return $ text "assertFalse" <+> cond'
-pretty (InjectProvenance a) = do
-  a' <- pretty a
-  return $ hsep [ text "injectProvenance", a' ]
 pretty ListNil = return (text "[]")
 pretty (ListCons x xs) = do
   x' <- pretty x
@@ -208,6 +205,13 @@ pretty (ListSnoc xs x) = do
 pretty (ListIsNil xs) = do
   xs' <- pretty xs
   return $ hsep [text "isNil", xs']
+pretty (ListLength xs) = do
+  xs' <- pretty xs
+  return $ hsep [text "length", xs']
+pretty (ListFilter f xs) = do
+  f' <- pretty f
+  xs' <- pretty xs
+  return $ hsep [text "filter", f', xs']
 pretty (Pair a b) = do
   a' <- pretty a
   b' <- pretty b
@@ -218,6 +222,26 @@ pretty (Fst p) = do
 pretty (Snd p) = do
   p' <- pretty p
   return $ text "snd" <+> p'
+pretty (NumCast x) = do
+  x' <- pretty x
+  return $ hsep [text "fromIntegral", x']
+pretty EmptyPrivTree = return (text "emptyPrivTree")
+pretty (SplitPrivTreeNode node) = do
+  node' <- pretty node
+  return $ hsep [text "split", node']
+pretty (UpdatePrivTree node value tree) = do
+  node' <- pretty node
+  value' <- pretty value
+  tree' <- pretty tree
+  return $ hsep [text "update", node', value', tree']
+pretty (CountPointsPrivTree points node) = do
+  node' <- pretty node
+  points' <- pretty points
+  return $ hsep [text "countPoints", points', node']
+pretty (DepthPrivTree node tree) = do
+  node' <- pretty node
+  tree' <- pretty tree
+  return $ hsep [text "depth", node', tree']
 
 precedence :: M.Map Text Int
 precedence = M.fromList [("||", 0), ("&&", 1),

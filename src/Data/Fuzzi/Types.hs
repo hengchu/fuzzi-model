@@ -1,10 +1,11 @@
 module Data.Fuzzi.Types where
 
-import Data.Coerce
 import Data.Fuzzi.IfCxt
+import Data.Kind (Constraint)
+import GHC.TypeLits
 import Type.Reflection
-import qualified Data.Map.Strict as M
 import qualified Data.Map.Merge.Strict as MM
+import qualified Data.Map.Strict as M
 
 -- |This constraint is only satisfied by first-class datatypes supported in
 -- Fuzzi.
@@ -28,17 +29,21 @@ instance LiteIntegral Int where
   idiv = div
   imod = mod
 
-class ( Boolean  (TestResult list)
+class ( Typeable (LengthResult list)
       , Typeable (Elem list)
       , Typeable list
       ) => ListLike list where
-  type Elem       list :: *
-  type TestResult list :: *
+  type Elem         list :: *
+  type TestResult   list :: *
+  type LengthResult list :: *
 
   nil   :: list
   cons  :: Elem list -> list -> list
   snoc  :: list -> Elem list -> list
   isNil :: list -> TestResult list
+
+  length_  :: list -> LengthResult list
+  filter_  :: (Elem list -> TestResult list) -> list -> list
 
 -- |This constraint is only satisfied by numeric datatypes supported in Fuzzi.
 class (Ordered a, Num a, Typeable a) => Numeric (a :: *)
@@ -108,6 +113,7 @@ instance Ordered Int where
 instance Typeable a => ListLike [a] where
   type Elem [a] = a
   type TestResult [a] = Bool
+  type LengthResult [a] = Int
 
   nil = []
   cons = (:)
@@ -115,16 +121,14 @@ instance Typeable a => ListLike [a] where
   isNil [] = True
   isNil _  = False
 
-instance {-# OVERLAPS #-} FuzziType Double
-instance {-# OVERLAPS #-} FuzziType Bool
-instance {-# OVERLAPS #-} FuzziType Int
-instance {-# OVERLAPS #-} FuzziType a
-  => FuzziType (PrivTree1D a)
-instance {-# OVERLAPPABLE #-}
-  ( ListLike list
-  , FuzziType (Elem list)
-  , Typeable list
-  , Show list) => FuzziType list
+  filter_ = filter
+  length_ = length
+
+instance FuzziType Double
+instance FuzziType Bool
+instance FuzziType Int
+instance FuzziType a => FuzziType (PrivTree1D a)
+instance FuzziType a => FuzziType [a]
 
 instance Numeric Double
 instance FracNumeric Double
@@ -177,22 +181,30 @@ depth (PrivTreeNode1D dirs) _ = length dirs
 depth' :: (FracNumeric a) => PrivTreeNode1D -> PrivTree1D count -> a
 depth' node tree = fromIntegral (depth node tree)
 
-endpoints :: PrivTreeNode1D -> (Double, Double)
+endpoints :: (FracNumeric a) => PrivTreeNode1D -> (a, a)
 endpoints (PrivTreeNode1D dirs) = go dirs 0 1
   where go []            start end = (start, end)
         go (LeftDir:xs)  start end = go xs start               ((start + end) / 2)
         go (RightDir:xs) start end = go xs ((start + end) / 2) end
 
-countPoints :: [Double] -> PrivTreeNode1D -> Int
+countPoints :: ( FracNumeric (Elem listA)
+               , CmpResult   (Elem listA) ~ TestResult listA
+               , ListLike listA
+               ) => listA -> PrivTreeNode1D -> LengthResult listA
 countPoints points node =
-  length (filter (\x -> leftEnd <= x && x < rightEnd) points)
+  length_ (filter_ (\x -> (leftEnd %<= x) `Data.Fuzzi.Types.and` (x %< rightEnd)) points)
   where (leftEnd, rightEnd) = endpoints node
-
-countPoints' :: (FracNumeric a) => [Double] -> PrivTreeNode1D -> a
-countPoints' points node = fromIntegral (countPoints points node)
 
 instance Matchable a b => Matchable (PrivTree1D a) (PrivTree1D b) where
   match (PrivTree1D a) (PrivTree1D b) =
     all id (MM.merge whenMissing whenMissing whenMatched a b)
     where whenMissing = MM.mapMissing (\_ _ -> False)
           whenMatched = MM.zipWithMatched (\_ -> match)
+
+type family NotList (t :: *) :: Constraint where
+  NotList ([] a) = TypeError (
+                       'Text "The type "
+                       ':<>: 'ShowType ([] a)
+                       ':<>: 'Text " seems to be wrapped in a list type constructor,"
+                       ':<>: 'Text " please use cons/snoc to build List of provenances.")
+  NotList _      = ()

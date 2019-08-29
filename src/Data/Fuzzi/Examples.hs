@@ -66,6 +66,8 @@ smartSumAux :: ( FuzziLang m a
                , ListLike listA
                , Elem listA ~ a
                , FuzziType listA
+               , FuzziType (LengthResult listA)
+               , Numeric (LengthResult listA)
                , ConcreteBoolean (TestResult listA))
             => [Fuzzi a] -- ^The inputs
             -> Fuzzi a   -- ^The next partial sum
@@ -87,6 +89,8 @@ smartSumAuxBuggy :: ( FuzziLang m a
                     , ListLike listA
                     , Elem listA ~ a
                     , FuzziType listA
+                    , FuzziType (LengthResult listA)
+                    , Numeric (LengthResult listA)
                     , ConcreteBoolean (TestResult listA))
                  => [Fuzzi a] -- ^The inputs
                  -> Fuzzi a   -- ^The next partial sum
@@ -109,6 +113,8 @@ smartSum :: forall m a listA.
             , ListLike listA
             , Elem listA ~ a
             , FuzziType listA
+            , FuzziType (LengthResult listA)
+            , Numeric (LengthResult listA)
             , ConcreteBoolean (TestResult listA))
          => [Fuzzi a]
          -> Mon m (Fuzzi listA)
@@ -120,6 +126,8 @@ smartSumBuggy :: forall m a listA.
                  , ListLike listA
                  , Elem listA ~ a
                  , FuzziType listA
+                 , FuzziType (LengthResult listA)
+                 , Numeric (LengthResult listA)
                  , ConcreteBoolean (TestResult listA))
               => [Fuzzi a]
               -> Mon m (Fuzzi listA)
@@ -130,6 +138,8 @@ sparseVector :: ( FuzziLang m a
                 , ListLike  listBool
                 , Elem      listBool ~ Bool
                 , FuzziType listBool
+                , FuzziType (LengthResult listBool)
+                , Numeric (LengthResult listBool)
                 , ConcreteBoolean (TestResult listBool))
              => [Fuzzi a] -- ^ input data
              -> Int       -- ^ maximum number of above thresholds
@@ -144,6 +154,8 @@ sparseVectorAux :: ( FuzziLang m a
                    , ListLike  listBool
                    , Elem      listBool ~ Bool
                    , FuzziType listBool
+                   , FuzziType (LengthResult listBool)
+                   , Numeric (LengthResult listBool)
                    , ConcreteBoolean (TestResult listBool)
                    )
                 => [Fuzzi a]
@@ -163,6 +175,8 @@ sparseVectorBuggy :: ( FuzziLang m a
                      , ListLike  listA
                      , Elem      listA ~ a
                      , FuzziType listA
+                     , FuzziType (LengthResult listA)
+                     , Numeric (LengthResult listA)
                      , ConcreteBoolean (TestResult listA))
                   => [Fuzzi a] -- ^ input data
                   -> Int       -- ^ maximum number of above thresholds
@@ -177,6 +191,8 @@ sparseVectorBuggyAux :: ( FuzziLang m a
                         , ListLike  listA
                         , Elem      listA ~ a
                         , FuzziType listA
+                        , FuzziType (LengthResult listA)
+                        , Numeric (LengthResult listA)
                         , ConcreteBoolean (TestResult listA)
                         )
                      => [Fuzzi a]

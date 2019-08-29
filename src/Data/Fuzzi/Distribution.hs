@@ -31,6 +31,7 @@ type DProvenance k = DistributionProvenance k
 -- identical up to provenance into the actual value of the result, paired with
 -- the profiled trace of that execution.
 type Buckets k = M.Map (DProvenance k) [(k, Seq (Trace Double))]
+type BucketsNoProvenance k = M.Map k [(k, Seq (Trace Double))]
 
 newtype TracedDist a =
   TracedDist { runTracedDist_ :: StateT (Seq (Trace Double)) RVar a }
@@ -98,7 +99,7 @@ data UOp = Abs | Sign
   deriving (Show, Eq, Ord)
 
 data DistributionProvenance (a :: *) where
-  Deterministic :: a
+  Deterministic :: (NotList a) => a
                 -> DistributionProvenance a
   ListEmpty     :: DistributionProvenance [a]
   ListCons      :: (Show a, Eq a, Ord a)
@@ -109,17 +110,17 @@ data DistributionProvenance (a :: *) where
                 => DistributionProvenance [a]
                 -> DistributionProvenance a
                 -> DistributionProvenance [a]
-  Laplace       :: DistributionProvenance a
+  Laplace       :: (NotList a) => DistributionProvenance a
                 -> Double
                 -> DistributionProvenance a
-  Gaussian      :: DistributionProvenance a
+  Gaussian      :: (NotList a) => DistributionProvenance a
                 -> Double
                 -> DistributionProvenance a
-  Arith         :: DistributionProvenance a
+  Arith         :: (NotList a) => DistributionProvenance a
                 -> ArithOp
                 -> DistributionProvenance a
                 -> DistributionProvenance a
-  Unary         :: UOp
+  Unary         :: (NotList a) => UOp
                 -> DistributionProvenance a
                 -> DistributionProvenance a
 
@@ -128,7 +129,7 @@ deriving instance (Eq a) => Eq (DistributionProvenance a)
 deriving instance (Ord a) => Ord (DistributionProvenance a)
 deriving instance Typeable DistributionProvenance
 
-instance Num a => Num (DistributionProvenance a) where
+instance (NotList a, Num a) => Num (DistributionProvenance a) where
   a + b         = Arith a Add  b
   a * b         = Arith a Mult b
   a - b         = Arith a Sub  b
@@ -136,7 +137,7 @@ instance Num a => Num (DistributionProvenance a) where
   signum        = Unary Sign
   fromInteger v = Deterministic (fromInteger v)
 
-instance Fractional a => Fractional (DistributionProvenance a) where
+instance (NotList a, Fractional a) => Fractional (DistributionProvenance a) where
   a / b          = Arith a Div b
   fromRational v = Deterministic (fromRational v)
 
@@ -149,10 +150,7 @@ data WithDistributionProvenance a =
 instance Show a => Show (WithDistributionProvenance a) where
   show a = show (value a)
 
-inject :: a -> WithDistributionProvenance a
-inject a = WithDistributionProvenance a (Deterministic a)
-
-instance Num a => Num (WithDistributionProvenance a) where
+instance (NotList a, Num a) => Num (WithDistributionProvenance a) where
   a + b = WithDistributionProvenance (value a + value b) (provenance a + provenance b)
   a * b = WithDistributionProvenance (value a * value b) (provenance a * provenance b)
   a - b = WithDistributionProvenance (value a - value b) (provenance a - provenance b)
@@ -160,7 +158,7 @@ instance Num a => Num (WithDistributionProvenance a) where
   signum a = WithDistributionProvenance (signum (value a)) (signum (provenance a))
   fromInteger v = WithDistributionProvenance (fromInteger v) (fromInteger v)
 
-instance Fractional a => Fractional (WithDistributionProvenance a) where
+instance (NotList a, Fractional a) => Fractional (WithDistributionProvenance a) where
   a / b = WithDistributionProvenance (value a / value b) (provenance a / provenance b)
   fromRational v = WithDistributionProvenance (fromRational v) (fromRational v)
 
@@ -173,11 +171,18 @@ instance Ordered a => Ordered (WithDistributionProvenance a) where
   a %== b = value a %== value b
   a %/= b = value a %/= value b
 
+unsnoc :: [a] -> Maybe ([a], a)
+unsnoc xs =
+  case Prelude.reverse xs of
+    x:xs' -> Just (Prelude.reverse xs', x)
+    _     -> Nothing
+
 instance (Show a, Eq a, Ord a, Typeable a)
   => ListLike (WithDistributionProvenance [a]) where
   type Elem       (WithDistributionProvenance [a]) =
     WithDistributionProvenance (Elem [a])
-  type TestResult (WithDistributionProvenance [a]) = TestResult [a]
+  type TestResult (WithDistributionProvenance [a])   = TestResult [a]
+  type LengthResult (WithDistributionProvenance [a]) = LengthResult [a]
 
   nil       = WithDistributionProvenance nil ListEmpty
   cons x xs = WithDistributionProvenance
@@ -188,9 +193,30 @@ instance (Show a, Eq a, Ord a, Typeable a)
                 (ListSnoc (provenance xs) (provenance x))
   isNil xs  = isNil (value xs)
 
-instance Numeric a     => Numeric     (WithDistributionProvenance a)
-instance FracNumeric a => FracNumeric (WithDistributionProvenance a)
-instance {-# OVERLAPS #-} FuzziType a   => FuzziType   (WithDistributionProvenance a)
+  filter_ pred xs =
+    case (value xs, provenance xs) of
+      ([]  , ListEmpty)     -> xs
+      (x:xs, ListCons p ps) ->
+        if pred (WithDistributionProvenance x p)
+        then let rest = filter_ pred (WithDistributionProvenance xs ps)
+                 v'   = value rest
+                 p'   = provenance rest
+             in WithDistributionProvenance (x:v') (ListCons p p')
+        else filter_ pred (WithDistributionProvenance xs ps)
+      (unsnoc -> Just (xs, x), ListSnoc ps p) ->
+        let rest = filter_ pred (WithDistributionProvenance xs ps)
+        in if pred (WithDistributionProvenance x p)
+           then snoc rest (WithDistributionProvenance x p)
+           else rest
+      _ -> error $ "WithDistributionProvenance: list value "
+                   ++ "and provenance are not synchronized, "
+                   ++ "i.e. they are not built with cons and snoc"
+  length_ = length_ . value
+
+instance (NotList a, Numeric a)     => Numeric (WithDistributionProvenance a)
+instance (NotList a, FracNumeric a) => FracNumeric (WithDistributionProvenance a)
+instance {-# OVERLAPPABLE #-} FuzziType a   => FuzziType (WithDistributionProvenance a)
+instance {-# OVERLAPS #-}     FuzziType a   => FuzziType (WithDistributionProvenance [a])
 
 instance MonadDist ConcreteDist where
   type NumDomain ConcreteDist = Double

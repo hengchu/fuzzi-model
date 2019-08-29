@@ -13,15 +13,19 @@ module Data.Fuzzi.EDSL (
   , snd_
   , pair
   , lit
+  , fromIntegral_
+  , emptyPT
+  , updatePT
+  , splitPT
+  , countPointsPT
+  , depthPT
   , reify
   , streamline
   ) where
 
-import Data.Fuzzi.IfCxt
 import Data.Coerce
 import Type.Reflection (TypeRep, Typeable, typeRep, eqTypeRep, (:~~:)(..))
 import Data.Fuzzi.Types
-import Data.Fuzzi.Distribution (WithDistributionProvenance)
 
 newtype Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
   deriving (Functor)--, Applicative, Monad)
@@ -78,16 +82,48 @@ data Fuzzi (a :: *) where
   AssertTrueM  :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m ())
   AssertFalseM :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m ())
 
-  InjectProvenance :: (FuzziType a) => Fuzzi a -> Fuzzi (WithDistributionProvenance a)
-
-  ListNil   :: (FuzziType (Elem list), ListLike list) => Fuzzi list
-  ListCons  :: (FuzziType (Elem list), ListLike list) => Fuzzi (Elem list) -> Fuzzi list -> Fuzzi list
-  ListSnoc  :: (FuzziType (Elem list), ListLike list) => Fuzzi list -> Fuzzi (Elem list) -> Fuzzi list
-  ListIsNil :: (FuzziType (Elem list), ListLike list, ConcreteBoolean (TestResult list)) => Fuzzi list -> Fuzzi (TestResult list)
+  ListNil    :: (FuzziType (Elem list), ListLike list) => Fuzzi list
+  ListCons   :: (FuzziType (Elem list), ListLike list) => Fuzzi (Elem list) -> Fuzzi list -> Fuzzi list
+  ListSnoc   :: (FuzziType (Elem list), ListLike list) => Fuzzi list -> Fuzzi (Elem list) -> Fuzzi list
+  ListIsNil  :: (FuzziType (Elem list), ListLike list, ConcreteBoolean (TestResult list)) => Fuzzi list -> Fuzzi (TestResult list)
+  ListFilter :: (FuzziType (Elem list), ListLike list, ConcreteBoolean (TestResult list)) => Fuzzi (Elem list -> TestResult list) -> Fuzzi list -> Fuzzi list
+  ListLength :: (FuzziType (Elem list), ListLike list) => Fuzzi list -> Fuzzi (LengthResult list)
 
   Pair      :: (Typeable a, Typeable b) => Fuzzi a -> Fuzzi b      -> Fuzzi (a, b)
   Fst       :: (Typeable a, Typeable b) =>            Fuzzi (a, b) -> Fuzzi a
   Snd       :: (Typeable a, Typeable b) =>            Fuzzi (a, b) -> Fuzzi b
+
+  NumCast   :: (Typeable a, Typeable b, Integral a, Num b) => Fuzzi a -> Fuzzi b
+
+  EmptyPrivTree       :: (FuzziType a)   => Fuzzi (PrivTree1D a)
+  SplitPrivTreeNode   ::                    Fuzzi PrivTreeNode1D -> Fuzzi (PrivTreeNode1D, PrivTreeNode1D)
+  UpdatePrivTree      :: (FuzziType a)   => Fuzzi PrivTreeNode1D -> Fuzzi a                  -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
+  DepthPrivTree       :: (FracNumeric a, Typeable count) => Fuzzi PrivTreeNode1D -> Fuzzi (PrivTree1D count) -> Fuzzi a
+  CountPointsPrivTree :: (FracNumeric a, ListLike listA, Elem listA ~ a, CmpResult (Elem listA) ~ TestResult listA, ConcreteBoolean (CmpResult (Elem listA))) => Fuzzi listA      -> Fuzzi PrivTreeNode1D -> Fuzzi (LengthResult listA)
+
+fromIntegral_ :: (Typeable a, Typeable b, Integral a, Num b) => Fuzzi a -> Fuzzi b
+fromIntegral_ = NumCast
+
+emptyPT :: (FuzziType a) => Fuzzi (PrivTree1D a)
+emptyPT = EmptyPrivTree
+
+splitPT :: Fuzzi PrivTreeNode1D -> (Fuzzi PrivTreeNode1D, Fuzzi PrivTreeNode1D)
+splitPT node = fromDeepRepr (SplitPrivTreeNode node)
+
+updatePT :: (FuzziType a) => Fuzzi PrivTreeNode1D -> Fuzzi a -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
+updatePT = UpdatePrivTree
+
+depthPT :: (FracNumeric a, Typeable count) => Fuzzi PrivTreeNode1D -> Fuzzi (PrivTree1D count) -> Fuzzi a
+depthPT = DepthPrivTree
+
+countPointsPT :: ( FracNumeric a
+                 , ListLike listA
+                 , Elem listA ~ a
+                 , CmpResult (Elem listA) ~ TestResult listA
+                 , ConcreteBoolean (CmpResult (Elem listA))
+                 )
+              => Fuzzi listA -> Fuzzi PrivTreeNode1D -> Fuzzi (LengthResult listA)
+countPointsPT = CountPointsPrivTree
 
 if_ :: (Syntactic a, ConcreteBoolean bool) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
@@ -134,7 +170,7 @@ optimize e@(Sequence _ _) = simplBindReturn e
 optimize e                = e
 
 simplBindReturn :: forall b m. (Typeable b, Typeable m, Monad m) => Fuzzi (m b) -> Fuzzi (m b)
-simplBindReturn e@(Bind a (f :: Fuzzi a -> Fuzzi (m b))) =
+simplBindReturn (Bind a (f :: Fuzzi a -> Fuzzi (m b))) =
   case extensionallyEqualToReturn f of
     Just HRefl -> simplBindReturn a
     Nothing    -> Bind (simplBindReturn a) (simplBindReturn . f)
@@ -190,12 +226,25 @@ subst v term filling =
     AssertTrueM cond -> AssertTrueM (subst v cond filling)
     AssertFalseM cond -> AssertFalseM (subst v cond filling)
 
-    InjectProvenance a -> InjectProvenance (subst v a filling)
-
     ListNil -> ListNil
     ListCons x xs -> ListCons (subst v x filling)  (subst v xs filling)
     ListSnoc xs x -> ListSnoc (subst v xs filling) (subst v x filling)
     ListIsNil xs  -> ListIsNil (subst v xs filling)
+    ListLength xs -> ListLength (subst v xs filling)
+    ListFilter f xs -> ListFilter (subst v f filling) (subst v xs filling)
+
+    NumCast a -> NumCast (subst v a filling)
+
+    EmptyPrivTree -> EmptyPrivTree
+    SplitPrivTreeNode node -> SplitPrivTreeNode (subst v node filling)
+    UpdatePrivTree node value tree ->
+      UpdatePrivTree (subst v node filling)
+                     (subst v value filling)
+                     (subst v tree filling)
+    DepthPrivTree node tree ->
+      DepthPrivTree (subst v node filling) (subst v tree filling)
+    CountPointsPrivTree list node ->
+      CountPointsPrivTree (subst v list filling) (subst v node filling)
 
     Pair a b -> Pair (subst v a filling) (subst v b filling)
     Fst p -> Fst (subst v p filling)
@@ -268,8 +317,6 @@ streamlineAux var (AssertTrueM cond) =
   [AssertTrueM cond' | cond' <- streamlineAux var cond]
 streamlineAux var (AssertFalseM cond) =
   [AssertFalseM cond' | cond' <- streamlineAux var cond]
-streamlineAux var (InjectProvenance a) =
-  [InjectProvenance a' | a' <- streamlineAux var a]
 streamlineAux _ ListNil = [ListNil]
 streamlineAux var (ListCons x xs) =
   [ListCons x' xs' | x' <- streamlineAux var x, xs' <- streamlineAux var xs]
@@ -277,12 +324,28 @@ streamlineAux var (ListSnoc xs x) =
   [ListSnoc xs' x' | xs' <- streamlineAux var xs, x' <- streamlineAux var x]
 streamlineAux var (ListIsNil x) =
   [ListIsNil x' | x' <- streamlineAux var x]
+streamlineAux var (ListLength x) =
+  [ListLength x' | x' <- streamlineAux var x]
+streamlineAux var (ListFilter f xs) =
+  [ListFilter f' xs' | f' <- streamlineAux var f, xs' <- streamlineAux var xs]
 streamlineAux var (Pair a b) =
   [Pair a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (Fst p) =
   Fst <$> streamlineAux var p
 streamlineAux var (Snd p) =
   Snd <$> streamlineAux var p
+streamlineAux var (NumCast x) =
+  NumCast <$> streamlineAux var x
+streamlineAux _ EmptyPrivTree =
+  [EmptyPrivTree]
+streamlineAux var (DepthPrivTree node tree) =
+  [DepthPrivTree node' tree' | node' <- streamlineAux var node, tree' <- streamlineAux var tree]
+streamlineAux var (SplitPrivTreeNode node) =
+  [SplitPrivTreeNode node' | node' <- streamlineAux var node]
+streamlineAux var (UpdatePrivTree node value tree) =
+  [UpdatePrivTree node' value' tree' | node' <- streamlineAux var node, value' <- streamlineAux var value, tree' <- streamlineAux var tree]
+streamlineAux var (CountPointsPrivTree points node) =
+  [CountPointsPrivTree points' node' | points' <- streamlineAux var points, node' <- streamlineAux var node]
 
 instance Applicative (Mon m) where
   pure a  = Mon $ \k -> k a
@@ -318,7 +381,6 @@ instance ( Monad m
          , Syntactic a
          , FuzziType (DeepRepr a)
          , Typeable (DeepRepr a)
-         , Typeable a
          , Typeable m) => Syntactic (Mon m a) where
   type DeepRepr (Mon m a) = m (DeepRepr a)
   toDeepRepr (Mon m) = m (Return . toDeepRepr)
@@ -374,9 +436,12 @@ instance ( ConcreteBoolean (TestResult list)
          , FuzziType (Elem list)
          , ListLike list
          ) => ListLike (Fuzzi list) where
-  type Elem (Fuzzi list)       = Fuzzi (Elem list)
-  type TestResult (Fuzzi list) = Fuzzi (TestResult list)
+  type Elem (Fuzzi list)         = Fuzzi (Elem list)
+  type TestResult (Fuzzi list)   = Fuzzi (TestResult list)
+  type LengthResult (Fuzzi list) = Fuzzi (LengthResult list)
   nil   = ListNil
   cons  = ListCons
   snoc  = ListSnoc
   isNil = ListIsNil
+  filter_ f xs = ListFilter (toDeepRepr f) xs
+  length_ = ListLength

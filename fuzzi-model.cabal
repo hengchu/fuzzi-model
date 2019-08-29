@@ -81,7 +81,6 @@ library
                    , DeriveTraversable
                    , TypeOperators
                    , ApplicativeDo
-                   , ViewPatterns
                    , LambdaCase
                    , GeneralizedNewtypeDeriving
                    , TypeFamilies

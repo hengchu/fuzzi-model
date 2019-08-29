@@ -15,7 +15,6 @@ import Data.Bifunctor
 import Data.Coerce
 import Data.Foldable
 import Data.Fuzzi.Types
-import Data.Text (pack)
 import Data.Void
 import Debug.Trace
 import Type.Reflection

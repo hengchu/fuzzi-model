@@ -2,7 +2,6 @@
 
 module Data.Fuzzi.Interp where
 
-import Data.Fuzzi.Distribution (inject)
 import Data.Proxy
 import Prelude hiding (and, or)
 import Data.Fuzzi.IfCxt
@@ -54,11 +53,18 @@ eval (AssertTrueM cond) =
   assertTrue (eval cond)
 eval (AssertFalseM cond) =
   assertFalse (eval cond)
-eval (InjectProvenance a) = inject (eval a)
 eval ListNil         = nil
 eval (ListCons x xs) = (eval x) `cons` (eval xs)
 eval (ListSnoc xs x) = (eval xs) `snoc` (eval x)
 eval (ListIsNil xs)  = isNil (eval xs)
+eval (ListLength xs) = length_ (eval xs)
+eval (ListFilter f xs) = filter_ (eval f) (eval xs)
 eval (Pair a b) = ((,) $! eval a) $! eval b
 eval (Fst p)    = fst (eval p)
 eval (Snd p)    = snd (eval p)
+eval EmptyPrivTree = emptyTree
+eval (UpdatePrivTree node value tree) = update (eval node) (eval value) (eval tree)
+eval (DepthPrivTree node tree) = depth' (eval node) (eval tree)
+eval (CountPointsPrivTree points node) = countPoints (eval points) (eval node)
+eval (SplitPrivTreeNode node) = split (eval node)
+eval (NumCast a) = fromIntegral (eval a)
