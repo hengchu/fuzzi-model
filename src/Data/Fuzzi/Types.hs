@@ -1,7 +1,10 @@
 module Data.Fuzzi.Types where
 
+import Data.Coerce
 import Data.Fuzzi.IfCxt
 import Type.Reflection
+import qualified Data.Map.Strict as M
+import qualified Data.Map.Merge.Strict as MM
 
 -- |This constraint is only satisfied by first-class datatypes supported in
 -- Fuzzi.
@@ -115,6 +118,8 @@ instance Typeable a => ListLike [a] where
 instance {-# OVERLAPS #-} FuzziType Double
 instance {-# OVERLAPS #-} FuzziType Bool
 instance {-# OVERLAPS #-} FuzziType Int
+instance {-# OVERLAPS #-} FuzziType a
+  => FuzziType (PrivTree1D a)
 instance {-# OVERLAPPABLE #-}
   ( ListLike list
   , FuzziType (Elem list)
@@ -144,3 +149,47 @@ instance Matchable a b => Matchable [a] [b] where
   match []     []     = True
   match (x:xs) (y:ys) = match x y && match xs ys
   match _      _      = False
+
+data PrivTree1DDir = LeftDir | RightDir
+  deriving (Show, Eq, Ord)
+
+newtype PrivTreeNode1D = PrivTreeNode1D [PrivTree1DDir]
+  deriving (Show, Eq, Ord)
+
+newtype PrivTree1D count = PrivTree1D { getPrivTree1D :: M.Map PrivTreeNode1D count }
+  deriving (Show, Eq, Ord)     via (M.Map PrivTreeNode1D count)
+  deriving (Functor, Foldable) via (M.Map PrivTreeNode1D)
+
+split :: PrivTreeNode1D -> (PrivTreeNode1D, PrivTreeNode1D)
+split (PrivTreeNode1D dirs) = ( PrivTreeNode1D (dirs ++ [LeftDir])
+                              , PrivTreeNode1D (dirs ++ [RightDir])
+                              )
+
+update :: PrivTreeNode1D -> count -> PrivTree1D count -> PrivTree1D count
+update k v (PrivTree1D tree) = PrivTree1D $ M.insert k v tree
+
+depth :: PrivTreeNode1D -> PrivTree1D count -> Int
+depth (PrivTreeNode1D dirs) _ = length dirs
+
+depth' :: (FracNumeric a) => PrivTreeNode1D -> PrivTree1D count -> a
+depth' node tree = fromIntegral (depth node tree)
+
+endpoints :: PrivTreeNode1D -> (Double, Double)
+endpoints (PrivTreeNode1D dirs) = go dirs 0 1
+  where go []            start end = (start, end)
+        go (LeftDir:xs)  start end = go xs start               ((start + end) / 2)
+        go (RightDir:xs) start end = go xs ((start + end) / 2) end
+
+countPoints :: [Double] -> PrivTreeNode1D -> Int
+countPoints points node =
+  length (filter (\x -> leftEnd <= x && x < rightEnd) points)
+  where (leftEnd, rightEnd) = endpoints node
+
+countPoints' :: (FracNumeric a) => [Double] -> PrivTreeNode1D -> a
+countPoints' points node = fromIntegral (countPoints points node)
+
+instance Matchable a b => Matchable (PrivTree1D a) (PrivTree1D b) where
+  match (PrivTree1D a) (PrivTree1D b) =
+    all id (MM.merge whenMissing whenMissing whenMatched a b)
+    where whenMissing = MM.mapMissing (\_ _ -> False)
+          whenMatched = MM.zipWithMatched (\_ -> match)

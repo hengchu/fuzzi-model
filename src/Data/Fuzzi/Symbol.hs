@@ -757,6 +757,14 @@ instance SEq a b => SEq [a] [b] where
         (getBoolExpr (xs `symEq` ys))
   symEq _      _      = BoolExpr (JustBool False)
 
+instance SEq a b => SEq (PrivTree1D a) (PrivTree1D b) where
+  symEq (PrivTree1D a) (PrivTree1D b) =
+    case MM.mergeA whenMissing whenMissing whenMatched a b of
+      Nothing         -> bool False
+      Just equalities -> foldr Data.Fuzzi.Types.and (bool True) equalities
+    where whenMissing = MM.traverseMissing (\_ _ -> Nothing)
+          whenMatched = MM.zipWithAMatched (\_ c s -> Just (symEq c s))
+
 reduceSubst :: SymbolicExpr -> SymbolicExpr
 reduceSubst e = doSubst e []
 
