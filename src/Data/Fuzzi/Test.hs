@@ -25,12 +25,6 @@ import qualified Z3.Base as Z3
 import Control.Monad.Logger
 import Control.Monad.IO.Unlift
 
-data Result :: * where
-  TestSuccess      :: Double -> Result
-  TestFailure      :: String -> Result
-  TestInconclusive :: Result
-  deriving (Show, Eq, Ord)
-
 data TestBundle concrete symbolic = TestBundle {
   _tbConstraints :: SymbolicConstraints
   , _tbSymbolicResult :: symbolic

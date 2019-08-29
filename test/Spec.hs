@@ -225,6 +225,11 @@ instance Arbitrary a => Arbitrary (SmallList a) where
 
   shrink xs = SmallList <$> (filter (not . null) . shrink) (getSmallList xs)
 
+printAndExitIfFailed :: Result -> IO ()
+printAndExitIfFailed r = do
+  print r
+  when (not $ isSuccess r) $ do
+    exitWith (ExitFailure 1)
 
 main :: IO ()
 main = do
@@ -234,22 +239,22 @@ main = do
     ++ "\n#######################################"
   quickCheckWithResult
     stdArgs{maxSuccess=20}
-    prop_rnmIsDifferentiallyPrivate >>= print
+    prop_rnmIsDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     stdArgs{maxSuccess=5}
-    prop_rnmBuggyIsNotDifferentiallyPrivate >>= print
+    prop_rnmBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     stdArgs{maxSuccess=20}
-    prop_smartSumIsDifferentiallyPrivate >>= print
+    prop_smartSumIsDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     stdArgs{maxSuccess=5}
-    prop_smartSumBuggyIsNotDifferentiallyPrivate >>= print
+    prop_smartSumBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     stdArgs{maxSuccess=20}
-    prop_sparseVectorIsDifferentiallyPrivate >>= print
+    prop_sparseVectorIsDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     stdArgs{maxSuccess=5}
-    prop_sparseVectorBuggyIsNotDifferentiallyPrivate >>= print
+    prop_sparseVectorBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
 
 
   putStrLn $
