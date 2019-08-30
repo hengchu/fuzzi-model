@@ -18,6 +18,10 @@ import qualified Data.Random as R
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 
+class HasProvenance a where
+  type GetProvenance a :: *
+  getProvenance :: a -> GetProvenance a
+
 newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVarT IO a }
   deriving (Functor, Applicative, Monad) via (RVarT IO)
   deriving MonadIO via (RVarT IO)
@@ -241,8 +245,20 @@ instance MonadAssert TracedDist where
   type BoolType TracedDist = Bool
   assertTrue _ = return ()
 
-instance Matchable a b => Matchable a (WithDistributionProvenance b) where
-  match a b = match a (value b)
+instance Matchable a b => Matchable (WithDistributionProvenance a) (WithDistributionProvenance b) where
+  match a b = match (value a) (value b)
 
 instance MonadThrow TracedDist where
   throwM = liftIO . throwM
+
+instance HasProvenance (WithDistributionProvenance a) where
+  type GetProvenance (WithDistributionProvenance a) = DistributionProvenance a
+  getProvenance = provenance
+
+instance HasProvenance a => HasProvenance [a] where
+  type GetProvenance [a] = [GetProvenance a]
+  getProvenance = map getProvenance
+
+instance HasProvenance a => HasProvenance (PrivTree1D a) where
+  type GetProvenance (PrivTree1D a) = PrivTree1D (GetProvenance a)
+  getProvenance = fmap getProvenance

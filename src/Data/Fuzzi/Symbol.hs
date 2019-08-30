@@ -249,6 +249,7 @@ data SymExecError =
   | MismatchingNoiseMechanism
   | DifferentLaplaceWidth Double Double
   | ResultDefinitelyNotEqual
+  | AssertImpossible BoolExpr Bool
   | ComputationAborted AbortException
   | InternalError String
   deriving (Show, Eq, Ord, Typeable)
@@ -323,6 +324,11 @@ fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
     simplify (cond, True)  = reduceSubstB cond
     simplify (cond, False) = reduceSubstB $ neg cond
 
+    go _   syms                traces | length syms /= length traces =
+      error $ "impossible: trace and symbol triples have different lengths...\n"
+            ++ show traces
+            ++ "\n===========\n"
+            ++ show syms
     go _   []                  []                             = return []
     go idx ((cs, cc, ss):syms) (D.TrLaplace cc' _ cs':traces) = do
       ss' <- freshSReal $ "run_" ++ show idx ++ "_lap"
@@ -330,8 +336,11 @@ fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
       return $ (cs,double cs'):(cc,double cc'):(ss,sReal ss'):subst
     go idx ((cs, cc, ss):syms) (D.TrGaussian cc' _ cs':traces) =
       error "not implemented yet..."
-    go _    _                  _                               =
-      error "impossible: trace and symbol triples have different lengths..."
+    go _    syms                traces                         =
+      error $ "impossible: trace and symbol triples have different lengths...\n"
+            ++ show traces
+            ++ "\n===========\n"
+            ++ show syms
 
 buildFullConstraints :: (SEq concrete symbolic)
                      => symbolic
@@ -730,9 +739,20 @@ instance (Monad m, Typeable m, Typeable r)
   => MonadAssert (SymbolicT r m) where
   type BoolType (SymbolicT r m) = BoolExpr
   assertTrue  cond =
-    modify (\st -> st & pathConstraints %~ (S.|> (cond, True)))
+    case tryEvalBool cond of
+      Nothing ->
+        modify (\st -> st & pathConstraints %~ (S.|> (cond, True)))
+      Just True -> return ()
+      Just False ->
+        throwError (AssertImpossible cond True)
+
   assertFalse cond =
-    modify (\st -> st & pathConstraints %~ (S.|> (cond, False)))
+    case tryEvalBool cond of
+      Nothing ->
+        modify (\st -> st & pathConstraints %~ (S.|> (cond, False)))
+      Just False -> return ()
+      Just True ->
+        throwError (AssertImpossible cond False)
 
 instance Matchable Double RealExpr where
   match _ _ = True
@@ -746,6 +766,9 @@ instance SEq Bool Bool where
 instance SEq Double RealExpr where
   symEq a b =
     BoolExpr (Eq_ (getRealExpr . fromRational . toRational $ a) (getRealExpr b))
+
+instance SEq (D.WithDistributionProvenance Double) (D.WithDistributionProvenance RealExpr) where
+  symEq a b = symEq (D.value a) (D.value b)
 
 instance (SEq a b, SEq c d) => SEq (a, c) (b, d) where
   symEq (a, c) (b, d) =
@@ -796,6 +819,45 @@ doSubst (Ite cond x y) substs = Ite (doSubst cond substs)
                                     (doSubst x substs)
                                     (doSubst y substs)
 doSubst (Substitute x substs) substs' = doSubst x (substs ++ substs')
+
+tryEvalBool :: BoolExpr -> Maybe Bool
+tryEvalBool = tryEvalBool' . getBoolExpr
+
+tryEvalBool' :: SymbolicExpr -> Maybe Bool
+tryEvalBool' (JustBool b) = Just b
+tryEvalBool' (Lt a b)  = (<)  <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalBool' (Le a b)  = (<=) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalBool' (Gt a b)  = (>)  <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalBool' (Ge a b)  = (>=) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalBool' (Eq_ a b) =
+  case (==) <$> tryEvalReal' a <*> tryEvalReal' b of
+    Just a -> Just a
+    Nothing -> (==) <$> tryEvalBool' a <*> tryEvalBool' b
+tryEvalBool' (And a b) = (&&) <$> tryEvalBool' a <*> tryEvalBool' b
+tryEvalBool' (Or  a b) = (||) <$> tryEvalBool' a <*> tryEvalBool' b
+tryEvalBool' (Not a)   = not <$> tryEvalBool' a
+tryEvalBool' (Ite cond a b) = do
+  cond' <- tryEvalBool' cond
+  if cond'
+  then tryEvalBool' a
+  else tryEvalBool' b
+tryEvalBool' _ = Nothing
+
+tryEvalReal :: RealExpr -> Maybe Rational
+tryEvalReal = tryEvalReal' . getRealExpr
+
+tryEvalReal' :: SymbolicExpr -> Maybe Rational
+tryEvalReal' (Rat v) = Just v
+tryEvalReal' (Add a b) = (+) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalReal' (Sub a b) = (-) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalReal' (Mul a b) = (*) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalReal' (Div a b) = (/) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalReal' (Ite cond a b) = do
+  cond' <- tryEvalBool' cond
+  if cond'
+  then tryEvalReal' a
+  else tryEvalReal' b
+tryEvalReal' _ = Nothing
 
 instance Monad m => MonadThrow (SymbolicT r m) where
   throwM (exc :: e) =
