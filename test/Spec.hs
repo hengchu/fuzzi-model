@@ -235,7 +235,7 @@ instance Arbitrary PrivTreeNode1D where
 
 prop_nodeSplit :: PrivTreeNode1D -> Bool
 prop_nodeSplit node =
-  let (left, right) = endpoints @Double node
+  let (left, right) = endpoints node
       (leftSubNode, rightSubNode) = split node
       (lleft, lright) = endpoints leftSubNode
       (rleft, rright) = endpoints rightSubNode

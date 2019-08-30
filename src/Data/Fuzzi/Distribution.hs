@@ -15,10 +15,12 @@ import Data.Fuzzi.Types
 import qualified Control.Monad.Trans.Class as MT
 import qualified Data.Map.Strict as M
 import qualified Data.Random as R
+import Control.Monad.Catch
+import Control.Monad.IO.Class
 
-newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVar a }
-  deriving (Functor, Applicative, Monad)
-  via RVar
+newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVarT IO a }
+  deriving (Functor, Applicative, Monad) via (RVarT IO)
+  deriving MonadIO via (RVarT IO)
 
 data Trace :: * -> * where
   TrLaplace  :: a -> Double -> a -> Trace a
@@ -34,13 +36,15 @@ type Buckets k = M.Map (DProvenance k) [(k, Seq (Trace Double))]
 type BucketsNoProvenance k = M.Map k [(k, Seq (Trace Double))]
 
 newtype TracedDist a =
-  TracedDist { runTracedDist_ :: StateT (Seq (Trace Double)) RVar a }
-  deriving (Functor, Applicative, Monad) via (StateT (Seq (Trace Double)) RVar)
-  deriving (MonadState (Seq (Trace Double))) via (StateT (Seq (Trace Double)) RVar)
+  TracedDist { runTracedDist_ :: StateT (Seq (Trace Double)) ConcreteDist a }
+  deriving (Functor, Applicative, Monad)
+    via (StateT (Seq (Trace Double)) ConcreteDist)
+  deriving (MonadIO, MonadState (Seq (Trace Double)))
+    via (StateT (Seq (Trace Double)) ConcreteDist)
 
 laplaceConcrete :: Double -> Double -> ConcreteDist Double
 laplaceConcrete center width = ConcreteDist $ do
-  r <- uniform (-0.5) 0.5
+  r <- uniformT (-0.5) 0.5
   let positive = r > 0
   let sample = if positive
                then width * log (1 - 2 * abs r)
@@ -57,7 +61,7 @@ laplaceTraced :: WithDistributionProvenance Double
 laplaceTraced center width = do
   let centerValue = value center
   lapSample <- (TracedDist . MT.lift)
-    (runConcreteDist (laplaceConcrete centerValue width))
+    ((laplaceConcrete centerValue width))
   let prov  = Laplace (provenance center) width
   let trace = TrLaplace centerValue width lapSample
   modify (|> trace)
@@ -69,7 +73,7 @@ gaussianTraced :: WithDistributionProvenance Double
 gaussianTraced center width = do
   let centerValue = value center
   gaussSample <- (TracedDist . MT.lift)
-    (runConcreteDist (gaussianConcrete centerValue width))
+    ((gaussianConcrete centerValue width))
   let prov  = Gaussian (provenance center) width
   let trace = TrGaussian centerValue width gaussSample
   modify (|> trace)
@@ -79,7 +83,7 @@ sampleConcrete :: ConcreteDist a -> IO a
 sampleConcrete = R.sample . runConcreteDist
 
 sampleTraced :: TracedDist a -> IO (a, Seq (Trace Double))
-sampleTraced m = R.sample ((runStateT . runTracedDist_) m mempty)
+sampleTraced = R.sample . runConcreteDist . flip runStateT mempty . runTracedDist_
 
 newtype NoRandomness a = NoRandomness { runNoRandomness :: a }
   deriving (Functor, Applicative, Monad, Show1)
@@ -233,22 +237,9 @@ instance MonadDist m => MonadDist (MaybeT m) where
   laplace c w  = MT.lift $ laplace c w
   gaussian c w = MT.lift $ gaussian c w
 
-{-
-instance MonadDist m => MonadDist (IdentityT m) where
-  type NumDomain (IdentityT m) = NumDomain m
-  laplace c w = MT.lift $ laplace c w
-  gaussian c w = MT.lift $ gaussian c w
--}
-
 instance (Monad m, Typeable m) => MonadAssert (MaybeT m) where
   type BoolType (MaybeT m) = Bool
   assertTrue = guard
-
-{-
-instance (Monad m, Typeable m) => MonadAssert (IdentityT m) where
-  type BoolType (IdentityT m) = Bool
-  assertTrue _ = return ()
--}
 
 instance MonadDist TracedDist where
   type NumDomain TracedDist = WithDistributionProvenance Double
@@ -261,3 +252,6 @@ instance MonadAssert TracedDist where
 
 instance Matchable a b => Matchable a (WithDistributionProvenance b) where
   match a b = match a (value b)
+
+instance MonadThrow TracedDist where
+  throwM = liftIO . throwM

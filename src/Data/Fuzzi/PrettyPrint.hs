@@ -225,34 +225,23 @@ pretty (Snd p) = do
 pretty (NumCast x) = do
   x' <- pretty x
   return $ hsep [text "fromIntegral", x']
-pretty EmptyPrivTree = return (text "emptyPrivTree")
-pretty (SplitPrivTreeNode node) = do
-  node' <- pretty node
-  return $ hsep [text "split", node']
-pretty (UpdatePrivTree node value tree) = do
-  node' <- pretty node
-  value' <- pretty value
-  tree' <- pretty tree
-  return $ hsep [text "update", node', value', tree']
-pretty (CountPointsPrivTree points node) = do
-  node' <- pretty node
-  points' <- pretty points
-  return $ hsep [text "countPoints", points', node']
-pretty (DepthPrivTree node tree) = do
-  node' <- pretty node
-  tree' <- pretty tree
-  return $ hsep [text "depth", node', tree']
 
 precedence :: M.Map Text Int
 precedence = M.fromList [("||", 0), ("&&", 1),
                          ("==", 2),
                          ("<", 3), ("<=", 3), (">", 3), (">=", 3),
-                         ("+", 4), ("-", 4), ("*", 5), ("/", 5)
+                         ("+", 4), ("-", 4),
+                         ("*", 5), ("/", 5),
+                         ("app", 1000000) -- function application
                         ]
 
 fixity :: M.Map Text Int
-fixity = M.fromList [("||", 0), ("&&", 1),
+fixity = M.fromList [("||", 0),
+                     ("&&", 1),
                      ("==", 0),
-                     ("<", 0), ("<=", 0), (">", 0), (">=", 0),
-                     ("+", 1), ("-", 1), ("*", 1), ("/", 1)
+                     ("<", 0), ("<=", 0),
+                     (">", 0), (">=", 0),
+                     ("+", 1), ("-", 1),
+                     ("*", 1), ("/", 1),
+                     ("app", 1) -- function application
                     ]

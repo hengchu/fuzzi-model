@@ -110,9 +110,9 @@ instance Ordered Int where
   (%==) a b = fromBool $ (==) a b
   (%/=) a b = fromBool $ (/=) a b
 
-instance Typeable a => ListLike [a] where
-  type Elem [a] = a
-  type TestResult [a] = Bool
+instance (Typeable a) => ListLike [a] where
+  type Elem         [a] = a
+  type TestResult   [a] = Bool
   type LengthResult [a] = Int
 
   nil = []
@@ -178,21 +178,15 @@ update k v (PrivTree1D tree) = PrivTree1D $ M.insert k v tree
 depth :: PrivTreeNode1D -> PrivTree1D count -> Int
 depth (PrivTreeNode1D dirs) _ = length dirs
 
-depth' :: (FracNumeric a) => PrivTreeNode1D -> PrivTree1D count -> a
-depth' node tree = fromIntegral (depth node tree)
-
-endpoints :: (FracNumeric a) => PrivTreeNode1D -> (a, a)
+endpoints :: PrivTreeNode1D -> (Double, Double)
 endpoints (PrivTreeNode1D dirs) = go dirs 0 1
   where go []            start end = (start, end)
         go (LeftDir:xs)  start end = go xs start               ((start + end) / 2)
         go (RightDir:xs) start end = go xs ((start + end) / 2) end
 
-countPoints :: ( FracNumeric (Elem listA)
-               , CmpResult   (Elem listA) ~ TestResult listA
-               , ListLike listA
-               ) => listA -> PrivTreeNode1D -> LengthResult listA
+countPoints :: [Double] -> PrivTreeNode1D -> Int
 countPoints points node =
-  length_ (filter_ (\x -> (leftEnd %<= x) `Data.Fuzzi.Types.and` (x %< rightEnd)) points)
+  length (filter (\x -> leftEnd <= x && x < rightEnd) points)
   where (leftEnd, rightEnd) = endpoints node
 
 instance Matchable a b => Matchable (PrivTree1D a) (PrivTree1D b) where

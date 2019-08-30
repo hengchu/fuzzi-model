@@ -13,12 +13,8 @@ module Data.Fuzzi.EDSL (
   , snd_
   , pair
   , lit
+  , abort
   , fromIntegral_
-  , emptyPT
-  , updatePT
-  , splitPT
-  , countPointsPT
-  , depthPT
   , reify
   , streamline
   ) where
@@ -26,6 +22,7 @@ module Data.Fuzzi.EDSL (
 import Data.Coerce
 import Type.Reflection (TypeRep, Typeable, typeRep, eqTypeRep, (:~~:)(..))
 import Data.Fuzzi.Types
+import Control.Monad.Catch
 
 newtype Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
   deriving (Functor)--, Applicative, Monad)
@@ -95,35 +92,22 @@ data Fuzzi (a :: *) where
 
   NumCast   :: (Typeable a, Typeable b, Integral a, Num b) => Fuzzi a -> Fuzzi b
 
-  EmptyPrivTree       :: (FuzziType a)   => Fuzzi (PrivTree1D a)
-  SplitPrivTreeNode   ::                    Fuzzi PrivTreeNode1D -> Fuzzi (PrivTreeNode1D, PrivTreeNode1D)
-  UpdatePrivTree      :: (FuzziType a)   => Fuzzi PrivTreeNode1D -> Fuzzi a                  -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
-  DepthPrivTree       :: (FracNumeric a, Typeable count) => Fuzzi PrivTreeNode1D -> Fuzzi (PrivTree1D count) -> Fuzzi a
-  CountPointsPrivTree :: (FracNumeric a, ListLike listA, Elem listA ~ a, CmpResult (Elem listA) ~ TestResult listA, ConcreteBoolean (CmpResult (Elem listA))) => Fuzzi listA      -> Fuzzi PrivTreeNode1D -> Fuzzi (LengthResult listA)
+  Abort     :: (FuzziType a, Typeable m, MonadThrow m) => String -> Fuzzi (m a)
+
+abort :: ( FuzziType a
+         , Typeable m
+         , MonadThrow m
+         ) => String -> Mon m (Fuzzi a)
+abort reason = fromDeepRepr $ Abort reason
+
+true :: Fuzzi Bool
+true = Lit True
+
+false :: Fuzzi Bool
+false = Lit False
 
 fromIntegral_ :: (Typeable a, Typeable b, Integral a, Num b) => Fuzzi a -> Fuzzi b
 fromIntegral_ = NumCast
-
-emptyPT :: (FuzziType a) => Fuzzi (PrivTree1D a)
-emptyPT = EmptyPrivTree
-
-splitPT :: Fuzzi PrivTreeNode1D -> (Fuzzi PrivTreeNode1D, Fuzzi PrivTreeNode1D)
-splitPT node = fromDeepRepr (SplitPrivTreeNode node)
-
-updatePT :: (FuzziType a) => Fuzzi PrivTreeNode1D -> Fuzzi a -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
-updatePT = UpdatePrivTree
-
-depthPT :: (FracNumeric a, Typeable count) => Fuzzi PrivTreeNode1D -> Fuzzi (PrivTree1D count) -> Fuzzi a
-depthPT = DepthPrivTree
-
-countPointsPT :: ( FracNumeric a
-                 , ListLike listA
-                 , Elem listA ~ a
-                 , CmpResult (Elem listA) ~ TestResult listA
-                 , ConcreteBoolean (CmpResult (Elem listA))
-                 )
-              => Fuzzi listA -> Fuzzi PrivTreeNode1D -> Fuzzi (LengthResult listA)
-countPointsPT = CountPointsPrivTree
 
 if_ :: (Syntactic a, ConcreteBoolean bool) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
@@ -235,17 +219,6 @@ subst v term filling =
 
     NumCast a -> NumCast (subst v a filling)
 
-    EmptyPrivTree -> EmptyPrivTree
-    SplitPrivTreeNode node -> SplitPrivTreeNode (subst v node filling)
-    UpdatePrivTree node value tree ->
-      UpdatePrivTree (subst v node filling)
-                     (subst v value filling)
-                     (subst v tree filling)
-    DepthPrivTree node tree ->
-      DepthPrivTree (subst v node filling) (subst v tree filling)
-    CountPointsPrivTree list node ->
-      CountPointsPrivTree (subst v list filling) (subst v node filling)
-
     Pair a b -> Pair (subst v a filling) (subst v b filling)
     Fst p -> Fst (subst v p filling)
     Snd p -> Snd (subst v p filling)
@@ -336,16 +309,6 @@ streamlineAux var (Snd p) =
   Snd <$> streamlineAux var p
 streamlineAux var (NumCast x) =
   NumCast <$> streamlineAux var x
-streamlineAux _ EmptyPrivTree =
-  [EmptyPrivTree]
-streamlineAux var (DepthPrivTree node tree) =
-  [DepthPrivTree node' tree' | node' <- streamlineAux var node, tree' <- streamlineAux var tree]
-streamlineAux var (SplitPrivTreeNode node) =
-  [SplitPrivTreeNode node' | node' <- streamlineAux var node]
-streamlineAux var (UpdatePrivTree node value tree) =
-  [UpdatePrivTree node' value' tree' | node' <- streamlineAux var node, value' <- streamlineAux var value, tree' <- streamlineAux var tree]
-streamlineAux var (CountPointsPrivTree points node) =
-  [CountPointsPrivTree points' node' | points' <- streamlineAux var points, node' <- streamlineAux var node]
 
 instance Applicative (Mon m) where
   pure a  = Mon $ \k -> k a
