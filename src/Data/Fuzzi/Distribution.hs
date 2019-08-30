@@ -177,7 +177,7 @@ unsnoc xs =
     x:xs' -> Just (Prelude.reverse xs', x)
     _     -> Nothing
 
-instance (Show a, Eq a, Ord a, Typeable a)
+instance (Show a, Eq a, Ord a, Typeable a, Inhabited a)
   => ListLike (WithDistributionProvenance [a]) where
   type Elem       (WithDistributionProvenance [a]) =
     WithDistributionProvenance (Elem [a])

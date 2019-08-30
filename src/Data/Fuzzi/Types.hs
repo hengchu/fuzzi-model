@@ -11,6 +11,9 @@ import qualified Data.Map.Strict as M
 -- Fuzzi.
 class (Typeable a, Show a) => FuzziType (a :: *)
 
+class Embed f where
+  embed :: (FuzziType a) => a -> f a
+
 -- |Order operators in the semantic domain.
 class (Boolean (CmpResult a), Typeable a) => Ordered (a :: *) where
   type CmpResult a :: *
@@ -29,6 +32,14 @@ instance LiteIntegral Int where
   idiv = div
   imod = mod
 
+-- | 'Option' is necessary because 'Maybe' is not a 'Representable' functor, so
+-- we use the extra field to store whether a value exists in this 'Option' or
+-- not.
+data OptionF f a = OptionF {
+  isSome :: f Bool
+  , fromSome :: a
+  }
+
 class ( Typeable (LengthResult list)
       , Typeable (Elem list)
       , Typeable list
@@ -44,6 +55,8 @@ class ( Typeable (LengthResult list)
 
   length_  :: list -> LengthResult list
   filter_  :: (Elem list -> TestResult list) -> list -> list
+
+  uncons :: (Embed f) => list -> OptionF f (Elem list, list)
 
 -- |This constraint is only satisfied by numeric datatypes supported in Fuzzi.
 class (Ordered a, Num a, Typeable a) => Numeric (a :: *)
@@ -110,9 +123,9 @@ instance Ordered Int where
   (%==) a b = fromBool $ (==) a b
   (%/=) a b = fromBool $ (/=) a b
 
-instance Typeable a => ListLike [a] where
-  type Elem [a] = a
-  type TestResult [a] = Bool
+instance (Inhabited a, Typeable a) => ListLike [a] where
+  type Elem         [a] = a
+  type TestResult   [a] = Bool
   type LengthResult [a] = Int
 
   nil = []
@@ -123,6 +136,9 @@ instance Typeable a => ListLike [a] where
 
   filter_ = filter
   length_ = length
+
+  uncons []     = OptionF (embed False) (inhabitant, [])
+  uncons (x:xs) = OptionF (embed True)  (x, xs)
 
 instance FuzziType Double
 instance FuzziType Bool
@@ -208,3 +224,21 @@ type family NotList (t :: *) :: Constraint where
                        ':<>: 'Text " seems to be wrapped in a list type constructor,"
                        ':<>: 'Text " please use cons/snoc to build List of provenances.")
   NotList _      = ()
+
+class Inhabited a where
+  inhabitant :: a
+
+instance Inhabited Int where
+  inhabitant = 0
+
+instance Inhabited Double where
+  inhabitant = 0
+
+instance Inhabited Bool where
+  inhabitant = False
+
+instance Inhabited [a] where
+  inhabitant = []
+
+instance Inhabited b => Inhabited (a -> b) where
+  inhabitant = const inhabitant

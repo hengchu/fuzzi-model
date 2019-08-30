@@ -19,6 +19,10 @@ module Data.Fuzzi.EDSL (
   , splitPT
   , countPointsPT
   , depthPT
+  , some
+  , none
+  , option
+  , Option
   , reify
   , streamline
   ) where
@@ -101,6 +105,18 @@ data Fuzzi (a :: *) where
   DepthPrivTree       :: (FracNumeric a, Typeable count) => Fuzzi PrivTreeNode1D -> Fuzzi (PrivTree1D count) -> Fuzzi a
   CountPointsPrivTree :: (FracNumeric a, ListLike listA, Elem listA ~ a, CmpResult (Elem listA) ~ TestResult listA, ConcreteBoolean (CmpResult (Elem listA))) => Fuzzi listA      -> Fuzzi PrivTreeNode1D -> Fuzzi (LengthResult listA)
 
+true :: Fuzzi Bool
+true = Lit True
+
+false :: Fuzzi Bool
+false = Lit False
+
+some :: a -> Option a
+some = OptionF true
+
+none :: forall a. (Syntactic a, Inhabited (Fuzzi (DeepRepr a))) => Option a
+none = OptionF false (fromDeepRepr inhabitant)
+
 fromIntegral_ :: (Typeable a, Typeable b, Integral a, Num b) => Fuzzi a -> Fuzzi b
 fromIntegral_ = NumCast
 
@@ -151,6 +167,10 @@ snd_ = Snd
 
 lit :: (FuzziType a) => a -> Fuzzi a
 lit = Lit
+
+option :: (Syntactic a, Syntactic b) => b -> (a -> b) -> Option a -> b
+option noneCase someCase opt =
+  if_ (isSome opt) (someCase (fromSome opt)) noneCase
 
 reify :: (Syntactic a) => a -> Fuzzi (DeepRepr a)
 reify = optimize . toDeepRepr
@@ -445,3 +465,53 @@ instance ( ConcreteBoolean (TestResult list)
   isNil = ListIsNil
   filter_ f xs = ListFilter (toDeepRepr f) xs
   length_ = ListLength
+
+type Option = OptionF Fuzzi
+
+instance Syntactic a => Syntactic (Option a) where
+  type DeepRepr (Option a)    = (Bool, DeepRepr a)
+  fromDeepRepr m              = OptionF (Fst m) (fromDeepRepr (Snd m))
+  toDeepRepr (OptionF cond v) = Pair cond (toDeepRepr v)
+
+instance Functor Option where
+  fmap f (OptionF b a) = OptionF b (f a)
+
+instance Applicative Option where
+  pure a = OptionF true a
+  (OptionF b1 f) <*> (OptionF b2 a) =
+    OptionF (b1 `Data.Fuzzi.Types.and` b2) (f a)
+
+instance Monad Option where
+  opt >>= f =
+    b { isSome = if_ (isSome opt) (isSome b) false }
+    where b = f (fromSome opt)
+
+instance Inhabited (Fuzzi Int) where
+  inhabitant = 0
+
+instance Inhabited (Fuzzi Double) where
+  inhabitant = 0
+
+instance Inhabited (Fuzzi Bool) where
+  inhabitant = false
+
+instance ( FuzziType (Elem list)
+         , ListLike list
+         ) => Inhabited (Fuzzi list) where
+  inhabitant = ListNil
+
+instance ( Typeable a
+         , Typeable b
+         , Inhabited (Fuzzi a)
+         , Inhabited (Fuzzi b)
+         ) => Inhabited (Fuzzi (a, b)) where
+  inhabitant = Pair inhabitant inhabitant
+
+instance ( FuzziType a
+         , Typeable b
+         , Inhabited (Fuzzi b)
+         ) => Inhabited (Fuzzi (a -> b)) where
+  inhabitant = Lam (const inhabitant)
+
+instance Embed Fuzzi where
+  embed = Lit

@@ -18,6 +18,10 @@ module Data.Fuzzi.Interface (
   , splitPT
   , countPointsPT
   , depthPT
+  , some
+  , none
+  , option
+  , Option
   , reify
   , streamline
 
