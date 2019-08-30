@@ -251,7 +251,9 @@ privTreeAux points queue leafNodes tree
             (do let (left, right) = split thisNode
                 let leafNodes' =
                       S.insert right (S.insert left (S.delete thisNode leafNodes))
-                privTreeAux points (more++[left,right]) leafNodes' updatedTree
+                if length leafNodes' <= length points
+                then privTreeAux points (more++[left,right]) leafNodes' updatedTree
+                else return updatedTree
             )
             (privTreeAux
                points
