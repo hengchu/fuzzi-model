@@ -13,15 +13,6 @@ module Data.Fuzzi.Interface (
   , pair
   , lit
   , fromIntegral_
-  , emptyPT
-  , updatePT
-  , splitPT
-  , countPointsPT
-  , depthPT
-  , some
-  , none
-  , option
-  , Option
   , reify
   , streamline
 

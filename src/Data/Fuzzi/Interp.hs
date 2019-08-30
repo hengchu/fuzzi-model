@@ -8,9 +8,13 @@ import Data.Fuzzi.IfCxt
 import Data.Fuzzi.EDSL
 import Data.Fuzzi.Types
 import Type.Reflection hiding (App)
+import Control.Monad.Catch
 
-monadDistErrorMessage :: String
-monadDistErrorMessage = "encoding MonadDist and interpretation MonadDist are different"
+newtype AbortException = AbortException {
+  getAbortReason :: String
+  } deriving (Show, Eq, Ord)
+
+instance Exception AbortException
 
 eval :: forall a. Fuzzi a -> a
 eval (Lam f) = eval . f . Lit
@@ -62,9 +66,5 @@ eval (ListFilter f xs) = filter_ (eval f) (eval xs)
 eval (Pair a b) = ((,) $! eval a) $! eval b
 eval (Fst p)    = fst (eval p)
 eval (Snd p)    = snd (eval p)
-eval EmptyPrivTree = emptyTree
-eval (UpdatePrivTree node value tree) = update (eval node) (eval value) (eval tree)
-eval (DepthPrivTree node tree) = depth' (eval node) (eval tree)
-eval (CountPointsPrivTree points node) = countPoints (eval points) (eval node)
-eval (SplitPrivTreeNode node) = split (eval node)
 eval (NumCast a) = fromIntegral (eval a)
+eval (Abort reason) = throwM (AbortException reason)

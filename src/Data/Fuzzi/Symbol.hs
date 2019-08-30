@@ -14,6 +14,7 @@ import Control.Monad.Trans.State hiding (gets, put, modify)
 import Data.Bifunctor
 import Data.Coerce
 import Data.Foldable
+import Data.Fuzzi.Interp
 import Data.Fuzzi.Types
 import Data.Void
 import Debug.Trace
@@ -26,6 +27,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
 import qualified Text.PrettyPrint as TPP
 import qualified Z3.Base as Z3
+import Control.Monad.Catch
 
 k_FLOAT_TOLERANCE :: Rational
 k_FLOAT_TOLERANCE = 1e-4
@@ -247,6 +249,7 @@ data SymExecError =
   | MismatchingNoiseMechanism
   | DifferentLaplaceWidth Double Double
   | ResultDefinitelyNotEqual
+  | ComputationAborted AbortException
   | InternalError String
   deriving (Show, Eq, Ord, Typeable)
 
@@ -257,11 +260,11 @@ initialSymbolicState =
 newtype SymbolicT r m a =
   SymbolicT { runSymbolicT_ :: StateT (SymbolicState r) (ExceptT SymExecError m) a }
   deriving (MonadState (SymbolicState r))
-  via (StateT (SymbolicState r) (ExceptT SymExecError m))
+    via (StateT (SymbolicState r) (ExceptT SymExecError m))
   deriving (MonadError SymExecError)
-  via (StateT (SymbolicState r) (ExceptT SymExecError m))
+    via (StateT (SymbolicState r) (ExceptT SymExecError m))
   deriving (Functor, Applicative, Monad)
-  via (StateT (SymbolicState r) (ExceptT SymExecError m))
+    via (StateT (SymbolicState r) (ExceptT SymExecError m))
 
 type Symbolic r a = SymbolicT r Identity a
 
@@ -793,3 +796,9 @@ doSubst (Ite cond x y) substs = Ite (doSubst cond substs)
                                     (doSubst x substs)
                                     (doSubst y substs)
 doSubst (Substitute x substs) substs' = doSubst x (substs ++ substs')
+
+instance Monad m => MonadThrow (SymbolicT r m) where
+  throwM (exc :: e) =
+    case eqTypeRep (typeRep @e) (typeRep @AbortException) of
+      Just HRefl -> throwError (ComputationAborted exc)
+      _          -> throwError (InternalError ("unexpected exception: " ++ show exc))

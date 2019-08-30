@@ -11,9 +11,6 @@ import qualified Data.Map.Strict as M
 -- Fuzzi.
 class (Typeable a, Show a) => FuzziType (a :: *)
 
-class Embed f where
-  embed :: (FuzziType a) => a -> f a
-
 -- |Order operators in the semantic domain.
 class (Boolean (CmpResult a), Typeable a) => Ordered (a :: *) where
   type CmpResult a :: *
@@ -32,14 +29,6 @@ instance LiteIntegral Int where
   idiv = div
   imod = mod
 
--- | 'Option' is necessary because 'Maybe' is not a 'Representable' functor, so
--- we use the extra field to store whether a value exists in this 'Option' or
--- not.
-data OptionF f a = OptionF {
-  isSome :: f Bool
-  , fromSome :: a
-  }
-
 class ( Typeable (LengthResult list)
       , Typeable (Elem list)
       , Typeable list
@@ -55,8 +44,6 @@ class ( Typeable (LengthResult list)
 
   length_  :: list -> LengthResult list
   filter_  :: (Elem list -> TestResult list) -> list -> list
-
-  uncons :: (Embed f) => list -> OptionF f (Elem list, list)
 
 -- |This constraint is only satisfied by numeric datatypes supported in Fuzzi.
 class (Ordered a, Num a, Typeable a) => Numeric (a :: *)
@@ -123,7 +110,7 @@ instance Ordered Int where
   (%==) a b = fromBool $ (==) a b
   (%/=) a b = fromBool $ (/=) a b
 
-instance (Inhabited a, Typeable a) => ListLike [a] where
+instance (Typeable a) => ListLike [a] where
   type Elem         [a] = a
   type TestResult   [a] = Bool
   type LengthResult [a] = Int
@@ -136,9 +123,6 @@ instance (Inhabited a, Typeable a) => ListLike [a] where
 
   filter_ = filter
   length_ = length
-
-  uncons []     = OptionF (embed False) (inhabitant, [])
-  uncons (x:xs) = OptionF (embed True)  (x, xs)
 
 instance FuzziType Double
 instance FuzziType Bool
@@ -194,21 +178,15 @@ update k v (PrivTree1D tree) = PrivTree1D $ M.insert k v tree
 depth :: PrivTreeNode1D -> PrivTree1D count -> Int
 depth (PrivTreeNode1D dirs) _ = length dirs
 
-depth' :: (FracNumeric a) => PrivTreeNode1D -> PrivTree1D count -> a
-depth' node tree = fromIntegral (depth node tree)
-
-endpoints :: (FracNumeric a) => PrivTreeNode1D -> (a, a)
+endpoints :: PrivTreeNode1D -> (Double, Double)
 endpoints (PrivTreeNode1D dirs) = go dirs 0 1
   where go []            start end = (start, end)
         go (LeftDir:xs)  start end = go xs start               ((start + end) / 2)
         go (RightDir:xs) start end = go xs ((start + end) / 2) end
 
-countPoints :: ( FracNumeric (Elem listA)
-               , CmpResult   (Elem listA) ~ TestResult listA
-               , ListLike listA
-               ) => listA -> PrivTreeNode1D -> LengthResult listA
+countPoints :: [Double] -> PrivTreeNode1D -> Int
 countPoints points node =
-  length_ (filter_ (\x -> (leftEnd %<= x) `Data.Fuzzi.Types.and` (x %< rightEnd)) points)
+  length (filter (\x -> leftEnd <= x && x < rightEnd) points)
   where (leftEnd, rightEnd) = endpoints node
 
 instance Matchable a b => Matchable (PrivTree1D a) (PrivTree1D b) where
@@ -224,21 +202,3 @@ type family NotList (t :: *) :: Constraint where
                        ':<>: 'Text " seems to be wrapped in a list type constructor,"
                        ':<>: 'Text " please use cons/snoc to build List of provenances.")
   NotList _      = ()
-
-class Inhabited a where
-  inhabitant :: a
-
-instance Inhabited Int where
-  inhabitant = 0
-
-instance Inhabited Double where
-  inhabitant = 0
-
-instance Inhabited Bool where
-  inhabitant = False
-
-instance Inhabited [a] where
-  inhabitant = []
-
-instance Inhabited b => Inhabited (a -> b) where
-  inhabitant = const inhabitant

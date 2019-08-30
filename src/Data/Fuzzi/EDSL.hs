@@ -13,16 +13,8 @@ module Data.Fuzzi.EDSL (
   , snd_
   , pair
   , lit
+  , abort
   , fromIntegral_
-  , emptyPT
-  , updatePT
-  , splitPT
-  , countPointsPT
-  , depthPT
-  , some
-  , none
-  , option
-  , Option
   , reify
   , streamline
   ) where
@@ -30,6 +22,7 @@ module Data.Fuzzi.EDSL (
 import Data.Coerce
 import Type.Reflection (TypeRep, Typeable, typeRep, eqTypeRep, (:~~:)(..))
 import Data.Fuzzi.Types
+import Control.Monad.Catch
 
 newtype Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
   deriving (Functor)--, Applicative, Monad)
@@ -99,11 +92,13 @@ data Fuzzi (a :: *) where
 
   NumCast   :: (Typeable a, Typeable b, Integral a, Num b) => Fuzzi a -> Fuzzi b
 
-  EmptyPrivTree       :: (FuzziType a)   => Fuzzi (PrivTree1D a)
-  SplitPrivTreeNode   ::                    Fuzzi PrivTreeNode1D -> Fuzzi (PrivTreeNode1D, PrivTreeNode1D)
-  UpdatePrivTree      :: (FuzziType a)   => Fuzzi PrivTreeNode1D -> Fuzzi a                  -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
-  DepthPrivTree       :: (FracNumeric a, Typeable count) => Fuzzi PrivTreeNode1D -> Fuzzi (PrivTree1D count) -> Fuzzi a
-  CountPointsPrivTree :: (FracNumeric a, ListLike listA, Elem listA ~ a, CmpResult (Elem listA) ~ TestResult listA, ConcreteBoolean (CmpResult (Elem listA))) => Fuzzi listA      -> Fuzzi PrivTreeNode1D -> Fuzzi (LengthResult listA)
+  Abort     :: (FuzziType a, Typeable m, MonadThrow m) => String -> Fuzzi (m a)
+
+abort :: ( FuzziType a
+         , Typeable m
+         , MonadThrow m
+         ) => String -> Mon m (Fuzzi a)
+abort reason = fromDeepRepr $ Abort reason
 
 true :: Fuzzi Bool
 true = Lit True
@@ -111,35 +106,8 @@ true = Lit True
 false :: Fuzzi Bool
 false = Lit False
 
-some :: a -> Option a
-some = OptionF true
-
-none :: forall a. (Syntactic a, Inhabited (Fuzzi (DeepRepr a))) => Option a
-none = OptionF false (fromDeepRepr inhabitant)
-
 fromIntegral_ :: (Typeable a, Typeable b, Integral a, Num b) => Fuzzi a -> Fuzzi b
 fromIntegral_ = NumCast
-
-emptyPT :: (FuzziType a) => Fuzzi (PrivTree1D a)
-emptyPT = EmptyPrivTree
-
-splitPT :: Fuzzi PrivTreeNode1D -> (Fuzzi PrivTreeNode1D, Fuzzi PrivTreeNode1D)
-splitPT node = fromDeepRepr (SplitPrivTreeNode node)
-
-updatePT :: (FuzziType a) => Fuzzi PrivTreeNode1D -> Fuzzi a -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
-updatePT = UpdatePrivTree
-
-depthPT :: (FracNumeric a, Typeable count) => Fuzzi PrivTreeNode1D -> Fuzzi (PrivTree1D count) -> Fuzzi a
-depthPT = DepthPrivTree
-
-countPointsPT :: ( FracNumeric a
-                 , ListLike listA
-                 , Elem listA ~ a
-                 , CmpResult (Elem listA) ~ TestResult listA
-                 , ConcreteBoolean (CmpResult (Elem listA))
-                 )
-              => Fuzzi listA -> Fuzzi PrivTreeNode1D -> Fuzzi (LengthResult listA)
-countPointsPT = CountPointsPrivTree
 
 if_ :: (Syntactic a, ConcreteBoolean bool) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
@@ -167,10 +135,6 @@ snd_ = Snd
 
 lit :: (FuzziType a) => a -> Fuzzi a
 lit = Lit
-
-option :: (Syntactic a, Syntactic b) => b -> (a -> b) -> Option a -> b
-option noneCase someCase opt =
-  if_ (isSome opt) (someCase (fromSome opt)) noneCase
 
 reify :: (Syntactic a) => a -> Fuzzi (DeepRepr a)
 reify = optimize . toDeepRepr
@@ -254,17 +218,6 @@ subst v term filling =
     ListFilter f xs -> ListFilter (subst v f filling) (subst v xs filling)
 
     NumCast a -> NumCast (subst v a filling)
-
-    EmptyPrivTree -> EmptyPrivTree
-    SplitPrivTreeNode node -> SplitPrivTreeNode (subst v node filling)
-    UpdatePrivTree node value tree ->
-      UpdatePrivTree (subst v node filling)
-                     (subst v value filling)
-                     (subst v tree filling)
-    DepthPrivTree node tree ->
-      DepthPrivTree (subst v node filling) (subst v tree filling)
-    CountPointsPrivTree list node ->
-      CountPointsPrivTree (subst v list filling) (subst v node filling)
 
     Pair a b -> Pair (subst v a filling) (subst v b filling)
     Fst p -> Fst (subst v p filling)
@@ -356,16 +309,6 @@ streamlineAux var (Snd p) =
   Snd <$> streamlineAux var p
 streamlineAux var (NumCast x) =
   NumCast <$> streamlineAux var x
-streamlineAux _ EmptyPrivTree =
-  [EmptyPrivTree]
-streamlineAux var (DepthPrivTree node tree) =
-  [DepthPrivTree node' tree' | node' <- streamlineAux var node, tree' <- streamlineAux var tree]
-streamlineAux var (SplitPrivTreeNode node) =
-  [SplitPrivTreeNode node' | node' <- streamlineAux var node]
-streamlineAux var (UpdatePrivTree node value tree) =
-  [UpdatePrivTree node' value' tree' | node' <- streamlineAux var node, value' <- streamlineAux var value, tree' <- streamlineAux var tree]
-streamlineAux var (CountPointsPrivTree points node) =
-  [CountPointsPrivTree points' node' | points' <- streamlineAux var points, node' <- streamlineAux var node]
 
 instance Applicative (Mon m) where
   pure a  = Mon $ \k -> k a
@@ -465,53 +408,3 @@ instance ( ConcreteBoolean (TestResult list)
   isNil = ListIsNil
   filter_ f xs = ListFilter (toDeepRepr f) xs
   length_ = ListLength
-
-type Option = OptionF Fuzzi
-
-instance Syntactic a => Syntactic (Option a) where
-  type DeepRepr (Option a)    = (Bool, DeepRepr a)
-  fromDeepRepr m              = OptionF (Fst m) (fromDeepRepr (Snd m))
-  toDeepRepr (OptionF cond v) = Pair cond (toDeepRepr v)
-
-instance Functor Option where
-  fmap f (OptionF b a) = OptionF b (f a)
-
-instance Applicative Option where
-  pure a = OptionF true a
-  (OptionF b1 f) <*> (OptionF b2 a) =
-    OptionF (b1 `Data.Fuzzi.Types.and` b2) (f a)
-
-instance Monad Option where
-  opt >>= f =
-    b { isSome = if_ (isSome opt) (isSome b) false }
-    where b = f (fromSome opt)
-
-instance Inhabited (Fuzzi Int) where
-  inhabitant = 0
-
-instance Inhabited (Fuzzi Double) where
-  inhabitant = 0
-
-instance Inhabited (Fuzzi Bool) where
-  inhabitant = false
-
-instance ( FuzziType (Elem list)
-         , ListLike list
-         ) => Inhabited (Fuzzi list) where
-  inhabitant = ListNil
-
-instance ( Typeable a
-         , Typeable b
-         , Inhabited (Fuzzi a)
-         , Inhabited (Fuzzi b)
-         ) => Inhabited (Fuzzi (a, b)) where
-  inhabitant = Pair inhabitant inhabitant
-
-instance ( FuzziType a
-         , Typeable b
-         , Inhabited (Fuzzi b)
-         ) => Inhabited (Fuzzi (a -> b)) where
-  inhabitant = Lam (const inhabitant)
-
-instance Embed Fuzzi where
-  embed = Lit
