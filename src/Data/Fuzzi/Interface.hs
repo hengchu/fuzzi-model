@@ -12,6 +12,10 @@ module Data.Fuzzi.Interface (
   , snd_
   , pair
   , lit
+  , true
+  , false
+  , abort
+  , updatePT
   , fromIntegral_
   , reify
   , streamline

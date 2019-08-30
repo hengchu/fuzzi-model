@@ -5,3 +5,4 @@
 :set -fwarn-redundant-constraints
 :set -isrc:test
 :load Data.Fuzzi
+:load Data.Fuzzi.Examples

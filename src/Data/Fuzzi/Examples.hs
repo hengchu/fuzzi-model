@@ -1,6 +1,8 @@
 module Data.Fuzzi.Examples where
 
 import Data.Fuzzi.Interface
+import qualified Data.Set as S
+import Data.Fuzzi.Types
 
 ex1 :: (FuzziLang m a) => Mon m (Fuzzi a)
 ex1 = do
@@ -207,3 +209,52 @@ sparseVectorBuggyAux (x:xs) n threshold acc
       ifM (x %> threshold)
           (sparseVectorBuggyAux xs (n-1) threshold (acc `snoc` x))
           (sparseVectorBuggyAux xs n     threshold (acc `snoc` 0))
+
+k_PT_LAMBDA :: (Fractional a) => a
+k_PT_LAMBDA = 1.0
+
+k_PT_GAMMA :: (Fractional a) => a
+k_PT_GAMMA = 1.0
+
+k_PT_DELTA :: (Fractional a) => a
+k_PT_DELTA = k_PT_LAMBDA * k_PT_GAMMA
+
+k_PT_THRESHOLD :: (Fractional a) => a
+k_PT_THRESHOLD = 2
+
+privTree :: (FuzziLang m a) => [Double] -> Mon m (Fuzzi (PrivTree1D a))
+privTree xs =
+  privTreeAux xs [rootNode] (S.singleton rootNode) (lit emptyTree)
+
+privTreeAux :: forall m a.
+               (FuzziLang m a)
+            => [Double]                     -- ^input points on the unit interval
+            -> [PrivTreeNode1D]             -- ^queue of unvisited nodes
+            -> S.Set PrivTreeNode1D         -- ^current set of leaf nodes
+            -> Fuzzi (PrivTree1D a)         -- ^current tree
+            -> Mon m (Fuzzi (PrivTree1D a))
+privTreeAux points queue leafNodes tree
+  | length leafNodes > length points
+  = abort "unreachable code: there are more leaf nodes than points"
+  | otherwise
+  = case queue of
+      [] -> return tree
+      (thisNode:more) -> do
+        let biasedCount = countPoints points thisNode - depth thisNode * k_PT_DELTA
+        biasedCount' <-
+          ifM (biasedCount %> (k_PT_THRESHOLD - k_PT_DELTA))
+              (return biasedCount)
+              (return $ k_PT_THRESHOLD - k_PT_DELTA)
+        noisedBiasedCount <- lap biasedCount' k_PT_LAMBDA
+        let updatedTree = updatePT (lit thisNode) noisedBiasedCount tree
+        ifM (noisedBiasedCount %> k_PT_THRESHOLD)
+            (do let (left, right) = split thisNode
+                let leafNodes' =
+                      S.insert right (S.insert left (S.delete thisNode leafNodes))
+                privTreeAux points (more++[left,right]) leafNodes' updatedTree
+            )
+            (privTreeAux
+               points
+               more
+               leafNodes
+               updatedTree)

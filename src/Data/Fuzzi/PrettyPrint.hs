@@ -225,6 +225,13 @@ pretty (Snd p) = do
 pretty (NumCast x) = do
   x' <- pretty x
   return $ hsep [text "fromIntegral", x']
+pretty (Abort reason) = do
+  return $ hsep [text "abort", text reason]
+pretty (UpdatePrivTree node value tree) = do
+  node' <- pretty node
+  value' <- pretty value
+  tree' <- pretty tree
+  return $ hsep [text "updatePT", node', value', tree']
 
 precedence :: M.Map Text Int
 precedence = M.fromList [("||", 0), ("&&", 1),

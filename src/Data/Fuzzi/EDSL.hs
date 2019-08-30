@@ -13,7 +13,10 @@ module Data.Fuzzi.EDSL (
   , snd_
   , pair
   , lit
+  , true
+  , false
   , abort
+  , updatePT
   , fromIntegral_
   , reify
   , streamline
@@ -94,6 +97,11 @@ data Fuzzi (a :: *) where
 
   Abort     :: (FuzziType a, Typeable m, MonadThrow m) => String -> Fuzzi (m a)
 
+  UpdatePrivTree :: (FuzziType a) => Fuzzi PrivTreeNode1D -> Fuzzi a -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
+
+updatePT :: (FuzziType a) => Fuzzi PrivTreeNode1D -> Fuzzi a -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
+updatePT = UpdatePrivTree
+
 abort :: ( FuzziType a
          , Typeable m
          , MonadThrow m
@@ -151,6 +159,7 @@ extensionallyEqualToReturn f =
 optimize :: Fuzzi a -> Fuzzi a
 optimize e@(Bind _ _)     = simplBindReturn e
 optimize e@(Sequence _ _) = simplBindReturn e
+optimize (IfM cond a b)   = IfM cond (optimize a) (optimize b)
 optimize e                = e
 
 simplBindReturn :: forall b m. (Typeable b, Typeable m, Monad m) => Fuzzi (m b) -> Fuzzi (m b)
@@ -158,6 +167,8 @@ simplBindReturn (Bind a (f :: Fuzzi a -> Fuzzi (m b))) =
   case extensionallyEqualToReturn f of
     Just HRefl -> simplBindReturn a
     Nothing    -> Bind (simplBindReturn a) (simplBindReturn . f)
+simplBindReturn (IfM cond a b) =
+  IfM cond (simplBindReturn a) (simplBindReturn b)
 simplBindReturn (Sequence a b) =
   Sequence (simplBindReturn a) (simplBindReturn b)
 simplBindReturn e = e
@@ -222,6 +233,11 @@ subst v term filling =
     Pair a b -> Pair (subst v a filling) (subst v b filling)
     Fst p -> Fst (subst v p filling)
     Snd p -> Snd (subst v p filling)
+
+    Abort reason -> Abort reason
+
+    UpdatePrivTree node value tree ->
+      UpdatePrivTree (subst v node filling) (subst v value filling) (subst v tree filling)
 
 streamline :: Typeable a => Fuzzi a -> [Fuzzi a]
 streamline = map optimize . streamlineAux 0
@@ -309,6 +325,10 @@ streamlineAux var (Snd p) =
   Snd <$> streamlineAux var p
 streamlineAux var (NumCast x) =
   NumCast <$> streamlineAux var x
+streamlineAux var (Abort reason) =
+  [Abort reason]
+streamlineAux var (UpdatePrivTree node value tree) =
+  [UpdatePrivTree node' value' tree' | node' <- streamlineAux var node, value' <- streamlineAux var value, tree' <- streamlineAux var tree]
 
 instance Applicative (Mon m) where
   pure a  = Mon $ \k -> k a

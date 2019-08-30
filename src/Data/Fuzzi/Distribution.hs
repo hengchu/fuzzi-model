@@ -232,15 +232,6 @@ instance MonadDist NoRandomness where
   laplace = laplaceNoRandomness
   gaussian = gaussianNoRandomness
 
-instance MonadDist m => MonadDist (MaybeT m) where
-  type NumDomain (MaybeT m) = NumDomain m
-  laplace c w  = MT.lift $ laplace c w
-  gaussian c w = MT.lift $ gaussian c w
-
-instance (Monad m, Typeable m) => MonadAssert (MaybeT m) where
-  type BoolType (MaybeT m) = Bool
-  assertTrue = guard
-
 instance MonadDist TracedDist where
   type NumDomain TracedDist = WithDistributionProvenance Double
   laplace  = laplaceTraced

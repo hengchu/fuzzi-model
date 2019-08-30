@@ -1,5 +1,6 @@
 module Data.Fuzzi.Types where
 
+import Control.Monad.Catch
 import Data.Fuzzi.IfCxt
 import Data.Kind (Constraint)
 import GHC.TypeLits
@@ -66,7 +67,7 @@ class (Monad m, Typeable m, FracNumeric (NumDomain m)) => MonadDist m where
   laplace  :: NumDomain m -> Double -> m (NumDomain m)
   gaussian :: NumDomain m -> Double -> m (NumDomain m)
 
-class (Monad m, Typeable m, Boolean (BoolType m)) => MonadAssert m where
+class (Monad m, Typeable m, Boolean (BoolType m), MonadThrow m) => MonadAssert m where
   type BoolType m :: *
   assertTrue  :: BoolType m -> m ()
   assertFalse :: BoolType m -> m ()
@@ -129,6 +130,7 @@ instance FuzziType Bool
 instance FuzziType Int
 instance FuzziType a => FuzziType (PrivTree1D a)
 instance FuzziType a => FuzziType [a]
+instance FuzziType PrivTreeNode1D
 
 instance Numeric Double
 instance FracNumeric Double
@@ -169,14 +171,17 @@ split (PrivTreeNode1D dirs) = ( PrivTreeNode1D (dirs ++ [LeftDir])
                               , PrivTreeNode1D (dirs ++ [RightDir])
                               )
 
+rootNode :: PrivTreeNode1D
+rootNode = PrivTreeNode1D []
+
 emptyTree :: PrivTree1D count
 emptyTree = PrivTree1D M.empty
 
 update :: PrivTreeNode1D -> count -> PrivTree1D count -> PrivTree1D count
 update k v (PrivTree1D tree) = PrivTree1D $ M.insert k v tree
 
-depth :: PrivTreeNode1D -> PrivTree1D count -> Int
-depth (PrivTreeNode1D dirs) _ = length dirs
+depth :: (Num count) => PrivTreeNode1D -> count
+depth (PrivTreeNode1D dirs) = fromIntegral (length dirs)
 
 endpoints :: PrivTreeNode1D -> (Double, Double)
 endpoints (PrivTreeNode1D dirs) = go dirs 0 1
@@ -184,9 +189,9 @@ endpoints (PrivTreeNode1D dirs) = go dirs 0 1
         go (LeftDir:xs)  start end = go xs start               ((start + end) / 2)
         go (RightDir:xs) start end = go xs ((start + end) / 2) end
 
-countPoints :: [Double] -> PrivTreeNode1D -> Int
+countPoints :: (Num count) => [Double] -> PrivTreeNode1D -> count
 countPoints points node =
-  length (filter (\x -> leftEnd <= x && x < rightEnd) points)
+  fromIntegral $ length (filter (\x -> leftEnd <= x && x < rightEnd) points)
   where (leftEnd, rightEnd) = endpoints node
 
 instance Matchable a b => Matchable (PrivTree1D a) (PrivTree1D b) where
