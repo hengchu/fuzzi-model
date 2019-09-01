@@ -1,8 +1,6 @@
 module Data.Fuzzi.Distribution where
 
-import Control.Monad
 import Control.Monad.State.Class
-import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State hiding (modify)
 import Data.Functor.Classes
 import Data.Functor.Identity
@@ -19,8 +17,10 @@ import Control.Monad.Catch
 import Control.Monad.IO.Class
 
 class Eq (GetProvenance a) => HasProvenance a where
-  type GetProvenance a :: *
-  getProvenance :: a -> GetProvenance a
+  type GetProvenance  a :: *
+  type DropProvenance a :: *
+  getProvenance  :: a -> GetProvenance a
+  dropProvenance :: a -> DropProvenance a
 
 newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVarT IO a }
   deriving (Functor, Applicative, Monad) via (RVarT IO)
@@ -36,8 +36,7 @@ type DProvenance k = DistributionProvenance k
 -- |Type parameter 'k' is the type of the result. 'Buckets' maps results
 -- identical up to provenance into the actual value of the result, paired with
 -- the profiled trace of that execution.
-type Buckets k = M.Map (DProvenance k) [(k, Seq (Trace Double))]
-type BucketsNoProvenance k = M.Map k [(k, Seq (Trace Double))]
+type Buckets k = M.Map (GetProvenance k) [(k, Seq (Trace Double))]
 
 newtype TracedDist a =
   TracedDist { runTracedDist_ :: StateT (Seq (Trace Double)) ConcreteDist a }
@@ -65,7 +64,7 @@ laplaceTraced :: WithDistributionProvenance Double
 laplaceTraced center width = do
   let centerValue = value center
   lapSample <- (TracedDist . MT.lift)
-    ((laplaceConcrete centerValue width))
+    (laplaceConcrete centerValue width)
   let prov  = Laplace (provenance center) width
   let trace = TrLaplace centerValue width lapSample
   modify (|> trace)
@@ -77,7 +76,7 @@ gaussianTraced :: WithDistributionProvenance Double
 gaussianTraced center width = do
   let centerValue = value center
   gaussSample <- (TracedDist . MT.lift)
-    ((gaussianConcrete centerValue width))
+    (gaussianConcrete centerValue width)
   let prov  = Gaussian (provenance center) width
   let trace = TrGaussian centerValue width gaussSample
   modify (|> trace)
@@ -250,29 +249,43 @@ instance MonadThrow TracedDist where
   throwM = liftIO . throwM
 
 instance HasProvenance (WithDistributionProvenance Double) where
-  type GetProvenance (WithDistributionProvenance Double) = DistributionProvenance Double
-  getProvenance = provenance
+  type GetProvenance  (WithDistributionProvenance Double) = DistributionProvenance Double
+  type DropProvenance (WithDistributionProvenance Double) = Double
+  getProvenance  = provenance
+  dropProvenance = value
 
 instance HasProvenance a => HasProvenance [a] where
-  type GetProvenance [a] = [GetProvenance a]
-  getProvenance = map getProvenance
+  type GetProvenance  [a] = [GetProvenance a]
+  type DropProvenance [a] = [DropProvenance a]
+  getProvenance  = map getProvenance
+  dropProvenance = map dropProvenance
 
 instance HasProvenance a => HasProvenance (PrivTree1D a) where
-  type GetProvenance (PrivTree1D a) = PrivTree1D (GetProvenance a)
-  getProvenance = fmap getProvenance
+  type GetProvenance  (PrivTree1D a) = PrivTree1D (GetProvenance a)
+  type DropProvenance (PrivTree1D a) = PrivTree1D (DropProvenance a)
+  getProvenance  = fmap getProvenance
+  dropProvenance = fmap dropProvenance
 
 instance HasProvenance () where
   type GetProvenance () = ()
+  type DropProvenance () = ()
   getProvenance = id
+  dropProvenance = id
 
 instance HasProvenance Int where
   type GetProvenance Int = Int
+  type DropProvenance Int = Int
   getProvenance = id
+  dropProvenance = id
 
 instance HasProvenance Bool where
   type GetProvenance Bool = Bool
+  type DropProvenance Bool = Bool
   getProvenance = id
+  dropProvenance = id
 
 instance HasProvenance Double where
   type GetProvenance Double = Double
+  type DropProvenance Double = Double
   getProvenance = id
+  dropProvenance = id

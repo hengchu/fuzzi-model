@@ -16,6 +16,11 @@ module Data.Fuzzi.Interface (
   , false
   , abort
   , updatePT
+  , nil
+  , cons
+  , snoc
+  , isNil
+  , length_
   , fromIntegral_
   , reify
   , streamline

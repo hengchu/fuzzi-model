@@ -7,6 +7,18 @@ jobs:
     steps:
       - checkout
 
+      - restore_cache:
+          name: restore cached dependencies
+          keys:
+            - fuzzi-model-{{ checksum "stack.yaml" }}-{{ checksum "fuzzi-model.cabal" }}
+            - fuzzi-model-{{ checksum "stack.yaml" }}
+
       - run:
           name: Build and Test
           command: stack test
+
+      - save_cache:
+          name: cache dependencies
+          key: fuzzi-model-{{ checksum "stack.yaml" }}-{{ checksum "fuzzi-model.cabal" }}
+            - "/root/.stack"
+            - ".stack-work"

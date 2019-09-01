@@ -17,6 +17,11 @@ module Data.Fuzzi.EDSL (
   , false
   , abort
   , updatePT
+  , nil
+  , cons
+  , snoc
+  , isNil
+  , length_
   , fromIntegral_
   , reify
   , streamline
@@ -82,12 +87,11 @@ data Fuzzi (a :: *) where
   AssertTrueM  :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m ())
   AssertFalseM :: (Assertion m bool) => Fuzzi bool -> Fuzzi (m ())
 
-  ListNil    :: (FuzziType (Elem list), ListLike list) => Fuzzi list
-  ListCons   :: (FuzziType (Elem list), ListLike list) => Fuzzi (Elem list) -> Fuzzi list -> Fuzzi list
-  ListSnoc   :: (FuzziType (Elem list), ListLike list) => Fuzzi list -> Fuzzi (Elem list) -> Fuzzi list
-  ListIsNil  :: (FuzziType (Elem list), ListLike list, ConcreteBoolean (TestResult list)) => Fuzzi list -> Fuzzi (TestResult list)
-  ListFilter :: (FuzziType (Elem list), ListLike list, ConcreteBoolean (TestResult list)) => Fuzzi (Elem list -> TestResult list) -> Fuzzi list -> Fuzzi list
-  ListLength :: (FuzziType (Elem list), ListLike list) => Fuzzi list -> Fuzzi (LengthResult list)
+  ListNil    :: (FuzziType a) => Fuzzi [a]
+  ListCons   :: (FuzziType a) => Fuzzi a   -> Fuzzi [a] -> Fuzzi [a]
+  ListSnoc   :: (FuzziType a) => Fuzzi [a] -> Fuzzi a   -> Fuzzi [a]
+  ListIsNil  :: (FuzziType a, ConcreteBoolean bool) => Fuzzi [a] -> Fuzzi bool
+  ListLength :: (FuzziType a) => Fuzzi [a] -> Fuzzi Int
 
   Pair      :: (Typeable a, Typeable b) => Fuzzi a -> Fuzzi b      -> Fuzzi (a, b)
   Fst       :: (Typeable a, Typeable b) =>            Fuzzi (a, b) -> Fuzzi a
@@ -99,7 +103,26 @@ data Fuzzi (a :: *) where
 
   UpdatePrivTree :: (FuzziType a) => Fuzzi PrivTreeNode1D -> Fuzzi a -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
 
-updatePT :: (FuzziType a) => Fuzzi PrivTreeNode1D -> Fuzzi a -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
+nil :: (FuzziType a) => Fuzzi [a]
+nil = ListNil
+
+cons :: (FuzziType a) => Fuzzi a -> Fuzzi [a] -> Fuzzi [a]
+cons = ListCons
+
+snoc :: (FuzziType a) => Fuzzi [a] -> Fuzzi a -> Fuzzi [a]
+snoc = ListSnoc
+
+isNil :: (FuzziType a, ConcreteBoolean bool) => Fuzzi [a] -> Fuzzi bool
+isNil = ListIsNil
+
+length_ :: (FuzziType a) => Fuzzi [a] -> Fuzzi Int
+length_ = ListLength
+
+updatePT :: (FuzziType a)
+         => Fuzzi PrivTreeNode1D
+         -> Fuzzi a
+         -> Fuzzi (PrivTree1D a)
+         -> Fuzzi (PrivTree1D a)
 updatePT = UpdatePrivTree
 
 abort :: ( FuzziType a
@@ -226,7 +249,7 @@ subst v term filling =
     ListSnoc xs x -> ListSnoc (subst v xs filling) (subst v x filling)
     ListIsNil xs  -> ListIsNil (subst v xs filling)
     ListLength xs -> ListLength (subst v xs filling)
-    ListFilter f xs -> ListFilter (subst v f filling) (subst v xs filling)
+    -- ListFilter f xs -> ListFilter (subst v f filling) (subst v xs filling)
 
     NumCast a -> NumCast (subst v a filling)
 
@@ -315,8 +338,8 @@ streamlineAux var (ListIsNil x) =
   [ListIsNil x' | x' <- streamlineAux var x]
 streamlineAux var (ListLength x) =
   [ListLength x' | x' <- streamlineAux var x]
-streamlineAux var (ListFilter f xs) =
-  [ListFilter f' xs' | f' <- streamlineAux var f, xs' <- streamlineAux var xs]
+--streamlineAux var (ListFilter f xs) =
+--  [ListFilter f' xs' | f' <- streamlineAux var f, xs' <- streamlineAux var xs]
 streamlineAux var (Pair a b) =
   [Pair a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (Fst p) =
@@ -325,7 +348,7 @@ streamlineAux var (Snd p) =
   Snd <$> streamlineAux var p
 streamlineAux var (NumCast x) =
   NumCast <$> streamlineAux var x
-streamlineAux var (Abort reason) =
+streamlineAux _var (Abort reason) =
   [Abort reason]
 streamlineAux var (UpdatePrivTree node value tree) =
   [UpdatePrivTree node' value' tree' | node' <- streamlineAux var node, value' <- streamlineAux var value, tree' <- streamlineAux var tree]
@@ -415,6 +438,7 @@ instance Boolean a => Boolean (Fuzzi a) where
   or  = Or
   neg = Not
 
+{-
 instance ( ConcreteBoolean (TestResult list)
          , FuzziType (Elem list)
          , ListLike list
@@ -428,3 +452,4 @@ instance ( ConcreteBoolean (TestResult list)
   isNil = ListIsNil
   filter_ f xs = ListFilter (toDeepRepr f) xs
   length_ = ListLength
+-}

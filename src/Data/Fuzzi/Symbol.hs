@@ -51,6 +51,12 @@ data SymbolicState r = SymbolicState {
   , _ssSourceCode          :: PP.SomeFuzzi
   } deriving (Show, Eq, Ord)
 
+{-
+deriving instance Show (D.DropProvenance r) => Show (SymbolicState r)
+deriving instance Eq   (D.DropProvenance r) => Eq   (SymbolicState r)
+deriving instance Ord  (D.DropProvenance r) => Ord  (SymbolicState r)
+-}
+
 data SymbolicConstraints = SymbolicConstraints {
   _scPathConstraints       :: S.Seq (BoolExpr, Bool)
   , _scCouplingConstraints :: S.Seq BoolExpr
@@ -305,7 +311,9 @@ type EqualityCondition = BoolExpr
 type TotalSymbolicCost = RealExpr
 type Epsilon           = Double
 
-fillConstraintTemplate :: (SEq concrete symbolic)
+fillConstraintTemplate :: ( D.HasProvenance concrete
+                          , D.HasProvenance symbolic
+                          , SEq (D.DropProvenance concrete) (D.DropProvenance symbolic))
                        => Int
                        -> symbolic
                        -> SymbolicConstraints
@@ -318,7 +326,7 @@ fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
         (toList . fmap (simplify . first (`substituteB` subst)))
         (sc ^. pathConstraints)
   let cpls = (toList . fmap (reduceSubstB . flip substituteB subst)) (sc ^. couplingConstraints)
-  let eqCond = reduceSubstB $ substituteB (cr `symEq` sym) subst
+  let eqCond = reduceSubstB $ substituteB (D.dropProvenance cr `symEq` D.dropProvenance sym) subst
   return (pcs, cpls, eqCond)
   where
     simplify (cond, True)  = reduceSubstB cond
@@ -334,7 +342,7 @@ fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
       ss' <- freshSReal $ "run_" ++ show idx ++ "_lap"
       subst <- go idx syms traces
       return $ (cs,double cs'):(cc,double cc'):(ss,sReal ss'):subst
-    go idx ((cs, cc, ss):syms) (D.TrGaussian cc' _ cs':traces) =
+    go _idx ((_cs, _cc, _ss):_syms) (D.TrGaussian _cc' _ _cs':_traces) =
       error "not implemented yet..."
     go _    syms                traces                         =
       error $ "impossible: trace and symbol triples have different lengths...\n"
@@ -342,7 +350,9 @@ fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
             ++ "\n===========\n"
             ++ show syms
 
-buildFullConstraints :: (SEq concrete symbolic)
+buildFullConstraints :: ( D.HasProvenance concrete
+                        , D.HasProvenance symbolic
+                        , SEq (D.DropProvenance concrete) (D.DropProvenance symbolic))
                      => symbolic
                      -> SymbolicConstraints
                      -> Bucket concrete
@@ -398,7 +408,11 @@ solve_ conditions symCost eps = do
       reason <- liftIO $ Z3.solverGetReasonUnknown cxt solver
       return (Unknown reason)
 
-solve :: (MonadIO m, MonadLogger m, SEq concrete symbolic)
+solve :: ( MonadIO m
+         , MonadLogger m
+         , SEq (D.DropProvenance concrete) (D.DropProvenance symbolic)
+         , D.HasProvenance concrete
+         , D.HasProvenance symbolic)
       => symbolic
       -> SymbolicConstraints
       -> Bucket concrete
@@ -413,7 +427,9 @@ solve sym sc bucket eps = do
       return (Right r)
 
 gatherConstraints :: ( Monad m
-                     , Matchable r a
+                     , D.HasProvenance r
+                     , D.HasProvenance a
+                     , Matchable (D.DropProvenance r) (D.DropProvenance a)
                      )
                   => Bucket r
                   -> PP.SomeFuzzi
@@ -430,7 +446,7 @@ gatherConstraints bucket code computation = do
           osyms = st ^. openSymbols
           code' = st ^. sourceCode
       in
-        if any (\r -> not $ match r a) (map fst bucket)
+        if any (\r -> not $ match (D.dropProvenance r) (D.dropProvenance a)) (map fst bucket)
         then
           return (Left ResultDefinitelyNotEqual)
         else
@@ -864,3 +880,9 @@ instance Monad m => MonadThrow (SymbolicT r m) where
     case eqTypeRep (typeRep @e) (typeRep @AbortException) of
       Just HRefl -> throwError (ComputationAborted exc)
       _          -> throwError (InternalError ("unexpected exception: " ++ show exc))
+
+instance D.HasProvenance (D.WithDistributionProvenance RealExpr) where
+  type GetProvenance (D.WithDistributionProvenance RealExpr) = D.DistributionProvenance RealExpr
+  type DropProvenance (D.WithDistributionProvenance RealExpr) = RealExpr
+  getProvenance = D.provenance
+  dropProvenance = D.value

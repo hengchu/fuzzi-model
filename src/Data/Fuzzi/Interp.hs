@@ -57,12 +57,12 @@ eval (AssertTrueM cond) =
   assertTrue (eval cond)
 eval (AssertFalseM cond) =
   assertFalse (eval cond)
-eval ListNil         = nil
-eval (ListCons x xs) = (eval x) `cons` (eval xs)
-eval (ListSnoc xs x) = (eval xs) `snoc` (eval x)
-eval (ListIsNil xs)  = isNil (eval xs)
-eval (ListLength xs) = length_ (eval xs)
-eval (ListFilter f xs) = filter_ (eval f) (eval xs)
+eval ListNil         = []
+eval (ListCons x xs) = (eval x):(eval xs)
+eval (ListSnoc xs x) = (eval xs) ++ [eval x]
+eval (ListIsNil xs)  = fromBool $ null (eval xs)
+eval (ListLength xs) = length (eval xs)
+--eval (ListFilter f xs) = filter_ (eval f) (eval xs)
 eval (Pair a b) = ((,) $! eval a) $! eval b
 eval (Fst p)    = fst (eval p)
 eval (Snd p)    = snd (eval p)

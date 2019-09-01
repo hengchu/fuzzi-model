@@ -33,8 +33,7 @@ testSmartSumProvenance = do
   results <- (profileIO 100 . reify)
     (smartSum
       @TracedDist
-      @_
-      @(WithDistributionProvenance [Double])
+      @(WithDistributionProvenance Double)
       [1, 2, 3, 4, 5])
   let k = head (M.keys results)
   return (M.size results == 1 &&
@@ -58,8 +57,8 @@ prop_rnmLengthConstraints :: SmallList Double -> Property
 prop_rnmLengthConstraints (SmallList xs) = monadicIO $ do
   let prog1 = reify (reportNoisyMax (map (fromRational . toRational) xs))
   let prog2 = reify (reportNoisyMax (map (fromRational . toRational) xs))
-  buckets <- run $ profileNoProvenanceIO 100 prog1
-  case symExecGeneralizeNoProvenance buckets prog2 of
+  buckets <- run $ profileIO 100 prog1
+  case symExecGeneralize buckets prog2 of
     Left  err -> run (print err) >> assert False
     Right constraints -> assert (length buckets == length constraints)
 
@@ -67,8 +66,8 @@ smartSumPrivacyTest :: L1List Double -> Property
 smartSumPrivacyTest xs = label ("smartsum input size: " ++ show (length xs)) $ monadicIO $ do
   let xs1 = map (fromRational . toRational) (left xs)
   let xs2 = map (fromRational . toRational) (right xs)
-  let prog1 = reify (smartSum xs1) :: Fuzzi (TracedDist (WithDistributionProvenance [Double]))
-  let prog2 = reify (smartSum xs2) :: Fuzzi (Symbolic [Double] (WithDistributionProvenance [RealExpr]))
+  let prog1 = reify (smartSum xs1) :: Fuzzi (TracedDist ([WithDistributionProvenance Double]))
+  let prog2 = reify (smartSum xs2) :: Fuzzi (Symbolic [WithDistributionProvenance Double] ([WithDistributionProvenance RealExpr]))
   buckets <- run $ profileIO 100 prog1
   let spec = symExecGeneralize buckets prog2
   case spec of
@@ -88,8 +87,8 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $
   let xs2   = map (fromRational . toRational) (right xs)
   let prog1 = reify (reportNoisyMax xs1)
   let prog2 = reify (reportNoisyMax xs2)
-  buckets <- run $ profileNoProvenanceIO 100 prog1
-  let spec = symExecGeneralizeNoProvenance buckets prog2
+  buckets <- run $ profileIO 100 prog1
+  let spec = symExecGeneralize buckets prog2
   case spec of
     Left err -> run (print err) >> assert False
     Right bundles -> do
@@ -109,8 +108,8 @@ rnmNotPrivateTest = monadicIO $ do
     let xs2   = map (fromRational . toRational) (right xs)
     let prog1 = reify (reportNoisyMaxBuggy xs1)
     let prog2 = reify (reportNoisyMaxBuggy xs2)
-    buckets <- run $ runNoLoggingT (profileNoProvenance 300 prog1)
-    let spec = symExecGeneralizeNoProvenance buckets prog2
+    buckets <- run $ runNoLoggingT (profile 300 prog1)
+    let spec = symExecGeneralize buckets prog2
     case spec of
       Left err -> run (print err) >> stop False
       Right bundles -> do
@@ -129,9 +128,9 @@ smartSumNotPrivateTest = monadicIO $ do
     let xs1   = map (fromRational . toRational) (left xs)
     let xs2   = map (fromRational . toRational) (right xs)
     let prog1 = reify (smartSumBuggy xs1)
-          :: Fuzzi (TracedDist (WithDistributionProvenance [Double]))
+          :: Fuzzi (TracedDist ([WithDistributionProvenance Double]))
     let prog2 = reify (smartSumBuggy xs2)
-          :: Fuzzi (Symbolic [Double] (WithDistributionProvenance [RealExpr]))
+          :: Fuzzi (Symbolic [WithDistributionProvenance Double] ([WithDistributionProvenance RealExpr]))
     buckets <- run $ runNoLoggingT (profile 300 prog1)
     let spec = symExecGeneralize buckets prog2
     case spec of
@@ -154,8 +153,8 @@ sparseVectorPrivacyTest xs =
           :: Fuzzi (TracedDist [Bool])
     let prog2 = reify (sparseVector xs2 2 0)
           :: Fuzzi (Symbolic [Bool] [Bool])
-    buckets <- run $ profileNoProvenanceIO 100 prog1
-    let spec = symExecGeneralizeNoProvenance buckets prog2
+    buckets <- run $ profileIO 100 prog1
+    let spec = symExecGeneralize buckets prog2
     case spec of
       Left err -> run (print err) >> assert False
       Right bundles -> do
@@ -174,9 +173,9 @@ sparseVectorNotPrivateTest = monadicIO $ do
     let xs1   = map (fromRational . toRational) (left xs)
     let xs2   = map (fromRational . toRational) (right xs)
     let prog1 = reify (sparseVectorBuggy xs1 2 0)
-          :: Fuzzi (TracedDist (WithDistributionProvenance [Double]))
+          :: Fuzzi (TracedDist ([WithDistributionProvenance Double]))
     let prog2 = reify (sparseVectorBuggy xs2 2 0)
-          :: Fuzzi (Symbolic [Double] (WithDistributionProvenance [RealExpr]))
+          :: Fuzzi (Symbolic [WithDistributionProvenance Double] ([WithDistributionProvenance RealExpr]))
     buckets <- run $ runNoLoggingT (profile 300 prog1)
     let spec = symExecGeneralize buckets prog2
     case spec of

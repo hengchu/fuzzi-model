@@ -208,10 +208,12 @@ pretty (ListIsNil xs) = do
 pretty (ListLength xs) = do
   xs' <- pretty xs
   return $ hsep [text "length", xs']
+{-
 pretty (ListFilter f xs) = do
   f' <- pretty f
   xs' <- pretty xs
   return $ hsep [text "filter", f', xs']
+-}
 pretty (Pair a b) = do
   a' <- pretty a
   b' <- pretty b
@@ -225,7 +227,7 @@ pretty (Snd p) = do
 pretty (NumCast x) = do
   x' <- pretty x
   return $ hsep [text "fromIntegral", x']
-pretty (Abort reason) = do
+pretty (Abort reason) =
   return $ hsep [text "abort", text reason]
 pretty (UpdatePrivTree node value tree) = do
   node' <- pretty node

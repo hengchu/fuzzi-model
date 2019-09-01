@@ -30,6 +30,7 @@ instance LiteIntegral Int where
   idiv = div
   imod = mod
 
+{-
 class ( Typeable (LengthResult list)
       , Typeable (Elem list)
       , Typeable list
@@ -45,6 +46,7 @@ class ( Typeable (LengthResult list)
 
   length_  :: list -> LengthResult list
   filter_  :: (Elem list -> TestResult list) -> list -> list
+-}
 
 -- |This constraint is only satisfied by numeric datatypes supported in Fuzzi.
 class (Ordered a, Num a, Typeable a) => Numeric (a :: *)
@@ -111,6 +113,7 @@ instance Ordered Int where
   (%==) a b = fromBool $ (==) a b
   (%/=) a b = fromBool $ (/=) a b
 
+{-
 instance (Typeable a) => ListLike [a] where
   type Elem         [a] = a
   type TestResult   [a] = Bool
@@ -124,6 +127,7 @@ instance (Typeable a) => ListLike [a] where
 
   filter_ = filter
   length_ = length
+-}
 
 instance FuzziType Double
 instance FuzziType Bool
@@ -196,9 +200,9 @@ countPoints points node =
 
 instance Matchable a b => Matchable (PrivTree1D a) (PrivTree1D b) where
   match (PrivTree1D a) (PrivTree1D b) =
-    all id (MM.merge whenMissing whenMissing whenMatched a b)
+    Prelude.and (MM.merge whenMissing whenMissing whenMatched a b)
     where whenMissing = MM.mapMissing (\_ _ -> False)
-          whenMatched = MM.zipWithMatched (\_ -> match)
+          whenMatched = MM.zipWithMatched (const match) -- \_ a b -> match a b
 
 type family NotList (t :: *) :: Constraint where
   NotList ([] a) = TypeError (
