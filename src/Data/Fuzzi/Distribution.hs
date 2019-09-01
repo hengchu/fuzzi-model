@@ -18,7 +18,7 @@ import qualified Data.Random as R
 import Control.Monad.Catch
 import Control.Monad.IO.Class
 
-class HasProvenance a where
+class Eq (GetProvenance a) => HasProvenance a where
   type GetProvenance a :: *
   getProvenance :: a -> GetProvenance a
 
@@ -107,35 +107,28 @@ data UOp = Abs | Sign
   deriving (Show, Eq, Ord)
 
 data DistributionProvenance (a :: *) where
-  Deterministic :: (NotList a) => a
-                -> DistributionProvenance a
-  ListEmpty     :: DistributionProvenance [a]
-  ListCons      :: (Show a, Eq a, Ord a)
-                => DistributionProvenance a
-                -> DistributionProvenance [a]
-                -> DistributionProvenance [a]
-  ListSnoc      :: (Show a, Eq a, Ord a)
-                => DistributionProvenance [a]
-                -> DistributionProvenance a
-                -> DistributionProvenance [a]
-  Laplace       :: (NotList a) => DistributionProvenance a
+  Deterministic :: a -> DistributionProvenance a
+  Laplace       :: DistributionProvenance a
                 -> Double
                 -> DistributionProvenance a
-  Gaussian      :: (NotList a) => DistributionProvenance a
+  Gaussian      :: DistributionProvenance a
                 -> Double
                 -> DistributionProvenance a
-  Arith         :: (NotList a) => DistributionProvenance a
+  Arith         :: DistributionProvenance a
                 -> ArithOp
                 -> DistributionProvenance a
                 -> DistributionProvenance a
-  Unary         :: (NotList a) => UOp
+  Unary         :: UOp
                 -> DistributionProvenance a
                 -> DistributionProvenance a
+  deriving (Show, Eq, Ord)
 
+{-
 deriving instance (Show a) => Show (DistributionProvenance a)
 deriving instance (Eq a) => Eq (DistributionProvenance a)
 deriving instance (Ord a) => Ord (DistributionProvenance a)
 deriving instance Typeable DistributionProvenance
+-}
 
 instance (NotList a, Num a) => Num (DistributionProvenance a) where
   a + b         = Arith a Add  b
@@ -179,6 +172,7 @@ instance Ordered a => Ordered (WithDistributionProvenance a) where
   a %== b = value a %== value b
   a %/= b = value a %/= value b
 
+{-
 unsnoc :: [a] -> Maybe ([a], a)
 unsnoc xs =
   case Prelude.reverse xs of
@@ -220,6 +214,7 @@ instance (Show a, Eq a, Ord a, Typeable a)
                    ++ "and provenance are not synchronized, "
                    ++ "i.e. they are not built with cons and snoc"
   length_ = length_ . value
+-}
 
 instance (NotList a, Numeric a)     => Numeric (WithDistributionProvenance a)
 instance (NotList a, FracNumeric a) => FracNumeric (WithDistributionProvenance a)
@@ -245,14 +240,17 @@ instance MonadAssert TracedDist where
   type BoolType TracedDist = Bool
   assertTrue _ = return ()
 
-instance Matchable a b => Matchable (WithDistributionProvenance a) (WithDistributionProvenance b) where
+instance Matchable a b =>
+  Matchable
+    (WithDistributionProvenance a)
+    (WithDistributionProvenance b) where
   match a b = match (value a) (value b)
 
 instance MonadThrow TracedDist where
   throwM = liftIO . throwM
 
-instance HasProvenance (WithDistributionProvenance a) where
-  type GetProvenance (WithDistributionProvenance a) = DistributionProvenance a
+instance HasProvenance (WithDistributionProvenance Double) where
+  type GetProvenance (WithDistributionProvenance Double) = DistributionProvenance Double
   getProvenance = provenance
 
 instance HasProvenance a => HasProvenance [a] where
@@ -262,3 +260,19 @@ instance HasProvenance a => HasProvenance [a] where
 instance HasProvenance a => HasProvenance (PrivTree1D a) where
   type GetProvenance (PrivTree1D a) = PrivTree1D (GetProvenance a)
   getProvenance = fmap getProvenance
+
+instance HasProvenance () where
+  type GetProvenance () = ()
+  getProvenance = id
+
+instance HasProvenance Int where
+  type GetProvenance Int = Int
+  getProvenance = id
+
+instance HasProvenance Bool where
+  type GetProvenance Bool = Bool
+  getProvenance = id
+
+instance HasProvenance Double where
+  type GetProvenance Double = Double
+  getProvenance = id
