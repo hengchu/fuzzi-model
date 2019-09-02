@@ -14,8 +14,8 @@ jobs:
             - fuzzi-model-{{ checksum "stack.yaml" }}
 
       - run:
-          name: Build and Test
-          command: stack test
+          name: Setup dependencies
+          command: stack --no-terminal setup
 
       - save_cache:
           name: cache dependencies
@@ -23,3 +23,7 @@ jobs:
           paths:
             - "/root/.stack"
             - ".stack-work"
+
+      - run:
+          name: Build and test
+          command: stack test
