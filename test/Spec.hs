@@ -68,8 +68,8 @@ smartSumPrivacyTest :: L1List Double -> Property
 smartSumPrivacyTest xs = label ("smartsum input size: " ++ show (length xs)) $ monadicIO $ do
   let xs1 = map (fromRational . toRational) (left xs)
   let xs2 = map (fromRational . toRational) (right xs)
-  let prog1 = reify (smartSum xs1) :: Fuzzi (TracedDist ([WithDistributionProvenance Double]))
-  let prog2 = reify (smartSum xs2) :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ ([WithDistributionProvenance RealExpr]))
+  let prog1 = reify (smartSum xs1) :: Fuzzi (TracedDist [WithDistributionProvenance Double])
+  let prog2 = reify (smartSum xs2) :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ [WithDistributionProvenance RealExpr])
   buckets <- run $ profileIO 100 prog1
   spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
   case spec of
@@ -130,9 +130,9 @@ smartSumNotPrivateTest = monadicIO $ do
     let xs1   = map (fromRational . toRational) (left xs)
     let xs2   = map (fromRational . toRational) (right xs)
     let prog1 = reify (smartSumBuggy xs1)
-          :: Fuzzi (TracedDist ([WithDistributionProvenance Double]))
+          :: Fuzzi (TracedDist [WithDistributionProvenance Double])
     let prog2 = reify (smartSumBuggy xs2)
-          :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ ([WithDistributionProvenance RealExpr]))
+          :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ [WithDistributionProvenance RealExpr])
     buckets <- run $ runNoLoggingT (profile 300 prog1)
     spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
     case spec of
@@ -175,9 +175,9 @@ sparseVectorNotPrivateTest = monadicIO $ do
     let xs1   = map (fromRational . toRational) (left xs)
     let xs2   = map (fromRational . toRational) (right xs)
     let prog1 = reify (sparseVectorBuggy xs1 2 0)
-          :: Fuzzi (TracedDist ([WithDistributionProvenance Double]))
+          :: Fuzzi (TracedDist [WithDistributionProvenance Double])
     let prog2 = reify (sparseVectorBuggy xs2 2 0)
-          :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ ([WithDistributionProvenance RealExpr]))
+          :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ [WithDistributionProvenance RealExpr])
     buckets <- run $ runNoLoggingT (profile 300 prog1)
     spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
     case spec of
@@ -267,7 +267,7 @@ prop_pairWiseL1ListLength =
 printAndExitIfFailed :: Result -> IO ()
 printAndExitIfFailed r = do
   print r
-  when (not $ isSuccess r) $ do
+  unless (isSuccess r) $
     exitWith (ExitFailure 1)
 
 main :: IO ()
