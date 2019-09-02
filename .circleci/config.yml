@@ -19,11 +19,16 @@ jobs:
 
       - save_cache:
           name: cache dependencies
-          key: fuzzi-model-{{ checksum "stack.yaml" }}-{{ checksum "fuzzi-model.cabal" }}
+          key: fuzzi-model-{{ checksum "stack.yaml" }}
           paths:
             - "/root/.stack"
-            - ".stack-work"
 
       - run:
           name: Build and test
           command: stack test
+
+      - save_cache:
+          name: cache dependencies again
+          key: fuzzi-model-{{ checksum "stack.yaml" }}-{{ checksum "fuzzi-model.cabal" }}
+          paths:
+            - ".stack-work"
