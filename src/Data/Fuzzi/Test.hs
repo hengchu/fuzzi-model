@@ -172,7 +172,7 @@ runTestBundle :: ( MonadIO m
                  , SEq (DropProvenance concreteResult) (DropProvenance symbolicResult))
               => Epsilon
               -> TestBundle concreteResult symbolicResult
-              -> m (Either SymExecError SolverResult)
+              -> m (Either SymExecError (TestResult concreteResult symbolicResult))
 runTestBundle eps (TestBundle sc sr bucket) =
   solve sr sc bucket eps
 
@@ -187,7 +187,7 @@ runTests :: ( MonadIO m
             , SEq (DropProvenance concreteResult) (DropProvenance symbolicResult))
          => Epsilon
          -> [TestBundle concreteResult symbolicResult]
-         -> m (Either SymExecError [SolverResult])
+         -> m (Either SymExecError [TestResult concreteResult symbolicResult])
 runTests eps bundles = do
   results <- mapM (runTestBundle eps) bundles
   return (sequence results)

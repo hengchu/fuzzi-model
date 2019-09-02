@@ -1,3 +1,4 @@
+import Control.Lens (view)
 import Control.Concurrent.Async
 import Control.Monad
 import Control.Monad.IO.Class
@@ -78,7 +79,7 @@ smartSumPrivacyTest xs = label ("smartsum input size: " ++ show (length xs)) $ m
       case results of
         Left err -> run (print err) >> assert False
         Right results' -> do
-          run (print results')
+          run (print (map (view solverResult) results'))
           assert (length bundles == length buckets)
           assert (all isOk results')
 
@@ -97,7 +98,7 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $
       case results of
         Left err -> run (print err) >> assert False
         Right results' -> do
-          run (print results')
+          run (print (map (view solverResult) results'))
           assert (length bundles == length buckets)
           assert (all isOk results')
 
@@ -118,7 +119,7 @@ rnmNotPrivateTest = monadicIO $ do
         case results of
           Left err -> run (print err) >> stop False
           Right results' -> do
-            run (print results')
+            run (print (map (view solverResult) results'))
             if any isFailed results' then stop True else return False
   assert (or results)
 
@@ -141,7 +142,7 @@ smartSumNotPrivateTest = monadicIO $ do
         case results of
           Left err -> run (print err) >> stop False
           Right results' -> do
-            run (print results')
+            run (print (map (view solverResult) results'))
             if any isFailed results' then stop True else return False
   assert (or results)
 
@@ -163,7 +164,7 @@ sparseVectorPrivacyTest xs =
         case results of
           Left err -> run (print err) >> assert False
           Right results' -> do
-            run (print results')
+            run (print (map (view solverResult) results'))
             assert (length bundles == length buckets)
             assert (all isOk results')
 
@@ -186,7 +187,7 @@ sparseVectorNotPrivateTest = monadicIO $ do
         case results of
           Left err -> run (print err) >> stop False
           Right results' -> do
-            run (print results')
+            run (print (map (view solverResult) results'))
             if any isFailed results' then stop True else return False
   assert (or results)
 

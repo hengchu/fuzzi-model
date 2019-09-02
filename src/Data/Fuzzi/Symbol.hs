@@ -234,22 +234,28 @@ makeLensesWith abbreviatedFields ''SymbolicState
 makeLensesWith abbreviatedFields ''SymbolicConstraints
 makeLensesWith abbreviatedFields ''MergingSymbolicConstraints
 
+type Epsilon           = Double
+
 data SolverResult = Ok      Epsilon --Z3.Model
                   | Failed  [String]
                   | Unknown  String
+                  deriving (Show, Eq, Ord)
 
-isOk :: SolverResult -> Bool
-isOk (Ok _) = True
-isOk _        = False
+data TestResult c s = TestResult {
+  _trSolverResult     :: SolverResult
+  , _trSymbolicValue  :: s
+  , _trConcreteValues :: [c]
+  } deriving (Show, Eq, Ord)
 
-isFailed :: SolverResult -> Bool
-isFailed (Failed _) = True
-isFailed _          = False
+makeLensesWith abbreviatedFields ''TestResult
 
-instance Show SolverResult where
-  show (Ok eps)       = "Ok " ++ show eps
-  show (Failed cores)   = "Failed " ++ show cores
-  show (Unknown reason) = "Unknown " ++ reason
+isOk :: HasSolverResult r SolverResult => r -> Bool
+isOk (view solverResult -> Ok _) = True
+isOk _                           = False
+
+isFailed :: HasSolverResult r SolverResult => r -> Bool
+isFailed (view solverResult -> Failed _) = True
+isFailed _                               = False
 
 data SymExecError =
   UnbalancedLaplaceCalls
@@ -310,7 +316,6 @@ type PathCondition     = BoolExpr
 type CouplingCondition = BoolExpr
 type EqualityCondition = BoolExpr
 type TotalSymbolicCost = RealExpr
-type Epsilon           = Double
 
 fillConstraintTemplate :: ( D.HasProvenance concrete
                           , D.HasProvenance symbolic
@@ -443,14 +448,14 @@ solve :: ( MonadIO m
       -> SymbolicConstraints
       -> Bucket concrete
       -> Epsilon
-      -> m (Either SymExecError SolverResult)
+      -> m (Either SymExecError (TestResult concrete symbolic))
 solve sym sc bucket eps = do
   let totalCostExpr = sum (sc ^. costSymbols)
   case buildFullConstraints sym sc bucket of
     Left err -> return (Left err)
     Right conds -> do
       r <- solve_ conds totalCostExpr eps
-      return (Right r)
+      return (Right (TestResult r sym (map fst bucket)))
 
 gatherConstraints :: ( Monad m
                      , MonadLogger m
