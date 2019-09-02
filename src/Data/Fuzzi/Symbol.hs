@@ -7,6 +7,7 @@ module Data.Fuzzi.Symbol where
 import Control.DeepSeq
 import Control.Exception
 import Control.Lens
+import Control.Monad.Catch
 import Control.Monad.Except
 import Control.Monad.Logger
 import Control.Monad.State.Class
@@ -16,6 +17,7 @@ import Data.Coerce
 import Data.Foldable
 import Data.Fuzzi.Interp
 import Data.Fuzzi.Types
+import Data.Text (pack)
 import Data.Void
 import Debug.Trace
 import Type.Reflection
@@ -27,7 +29,6 @@ import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
 import qualified Text.PrettyPrint as TPP
 import qualified Z3.Base as Z3
-import Control.Monad.Catch
 
 k_FLOAT_TOLERANCE :: Rational
 k_FLOAT_TOLERANCE = 1e-4
@@ -313,6 +314,10 @@ type Epsilon           = Double
 
 fillConstraintTemplate :: ( D.HasProvenance concrete
                           , D.HasProvenance symbolic
+                          , Show concrete
+                          , Show symbolic
+                          , Show (D.DropProvenance concrete)
+                          , Show (D.DropProvenance symbolic)
                           , SEq (D.DropProvenance concrete) (D.DropProvenance symbolic))
                        => Int
                        -> symbolic
@@ -321,7 +326,12 @@ fillConstraintTemplate :: ( D.HasProvenance concrete
                        -> S.Seq (D.Trace Double)
                        -> Either SymExecError ([PathCondition], [CouplingCondition], EqualityCondition)
 fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
-  subst <- go idx (toList $ sc ^. openSymbols) (toList traces)
+  unless (match (D.dropProvenance cr) (D.dropProvenance sym)) $
+    error $ "impossible: trace and symbol results do not match...\n"
+            ++ show (D.dropProvenance cr)
+            ++ "\n===========\n"
+            ++ show (D.dropProvenance sym)
+  subst <- go sym cr idx (toList $ sc ^. openSymbols) (toList traces)
   let pcs =
         (toList . fmap (simplify . first (`substituteB` subst)))
         (sc ^. pathConstraints)
@@ -332,26 +342,38 @@ fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
     simplify (cond, True)  = reduceSubstB cond
     simplify (cond, False) = reduceSubstB $ neg cond
 
-    go _   syms                traces | length syms /= length traces =
+    go sr cr _   syms                traces | length syms /= length traces =
       error $ "impossible: trace and symbol triples have different lengths...\n"
+            ++ show (D.dropProvenance cr)
+            ++ "\n===========\n"
+            ++ show (D.dropProvenance sr)
+            ++ "\n===========\n"
             ++ show traces
             ++ "\n===========\n"
             ++ show syms
-    go _   []                  []                             = return []
-    go idx ((cs, cc, ss):syms) (D.TrLaplace cc' _ cs':traces) = do
+    go _  _  _   []                  []                             = return []
+    go sr cr idx ((cs, cc, ss):syms) (D.TrLaplace cc' _ cs':traces) = do
       ss' <- freshSReal $ "run_" ++ show idx ++ "_lap"
-      subst <- go idx syms traces
+      subst <- go sr cr idx syms traces
       return $ (cs,double cs'):(cc,double cc'):(ss,sReal ss'):subst
-    go _idx ((_cs, _cc, _ss):_syms) (D.TrGaussian _cc' _ _cs':_traces) =
+    go _sr _cr _idx ((_cs, _cc, _ss):_syms) (D.TrGaussian _cc' _ _cs':_traces) =
       error "not implemented yet..."
-    go _    syms                traces                         =
+    go sr cr _    syms                traces                         =
       error $ "impossible: trace and symbol triples have different lengths...\n"
+            ++ show (D.dropProvenance cr)
+            ++ "\n===========\n"
+            ++ show (D.dropProvenance sr)
+            ++ "\n===========\n"
             ++ show traces
             ++ "\n===========\n"
             ++ show syms
 
 buildFullConstraints :: ( D.HasProvenance concrete
                         , D.HasProvenance symbolic
+                        , Show concrete
+                        , Show symbolic
+                        , Show (D.DropProvenance concrete)
+                        , Show (D.DropProvenance symbolic)
                         , SEq (D.DropProvenance concrete) (D.DropProvenance symbolic))
                      => symbolic
                      -> SymbolicConstraints
@@ -411,6 +433,10 @@ solve_ conditions symCost eps = do
 solve :: ( MonadIO m
          , MonadLogger m
          , SEq (D.DropProvenance concrete) (D.DropProvenance symbolic)
+         , Show concrete
+         , Show symbolic
+         , Show (D.DropProvenance concrete)
+         , Show (D.DropProvenance symbolic)
          , D.HasProvenance concrete
          , D.HasProvenance symbolic)
       => symbolic
@@ -427,9 +453,10 @@ solve sym sc bucket eps = do
       return (Right r)
 
 gatherConstraints :: ( Monad m
-                     , D.HasProvenance r
-                     , D.HasProvenance a
-                     , Matchable (D.DropProvenance r) (D.DropProvenance a)
+                     , MonadLogger m
+                     , Matchable r a
+                     , Show r
+                     , Show a
                      )
                   => Bucket r
                   -> PP.SomeFuzzi
@@ -445,12 +472,15 @@ gatherConstraints bucket code computation = do
           csyms = st ^. costSymbols
           osyms = st ^. openSymbols
           code' = st ^. sourceCode
+          notMatching = filter (not . flip match a) (map fst bucket)
       in
-        if any (\r -> not $ match (D.dropProvenance r) (D.dropProvenance a)) (map fst bucket)
+        if null notMatching
         then
-          return (Left ResultDefinitelyNotEqual)
-        else
           return (Right (a, SymbolicConstraints pc cc csyms osyms [code']))
+        else do
+          $(logInfo) ("definitely not equal to symbolic result: " <> pack (show a))
+          $(logInfo) (pack (show notMatching))
+          return (Left ResultDefinitelyNotEqual)
   where run =
           runExceptT
           . flip runStateT (initialSymbolicState bucket code)
@@ -771,7 +801,10 @@ instance (Monad m, Typeable m, Typeable r)
         throwError (AssertImpossible cond False)
 
 instance Matchable Double RealExpr where
-  match _ _ = True
+  match v sv =
+    case tryEvalReal sv of
+      Just v' -> toRational v == v'
+      Nothing -> True
 
 instance SEq Int Int where
   symEq a b = bool (a == b)

@@ -31,8 +31,6 @@ data Trace :: * -> * where
   TrGaussian :: a -> Double -> a -> Trace a
   deriving (Show, Eq, Ord, Functor)
 
-type DProvenance k = DistributionProvenance k
-
 -- |Type parameter 'k' is the type of the result. 'Buckets' maps results
 -- identical up to provenance into the actual value of the result, paired with
 -- the profiled trace of that execution.

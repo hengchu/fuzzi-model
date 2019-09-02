@@ -69,74 +69,94 @@ buildMapAux :: ( Ord (GetProvenance a)
                , HasProvenance a
                )
             => [(a, S.Seq (Trace Double))]
-            -> Buckets a
-            -> Buckets a
+            -> M.Map (GetProvenance a) [(a, S.Seq (Trace Double))]
+            -> M.Map (GetProvenance a) [(a, S.Seq (Trace Double))]
 buildMapAux []                m = m
 buildMapAux ((k, profile):xs) m =
   buildMapAux xs (M.insertWith (++) (getProvenance k) [(k, profile)] m)
 
-symExec :: ( Typeable concreteResult
+symExec :: forall m concreteResult symbolicResult.
+           ( Typeable concreteResult
            , Typeable symbolicResult
-           -- , Show symbolicResult
+           , Typeable m
+           , Show concreteResult
+           , Show symbolicResult
+           , Show (GetProvenance symbolicResult)
            , HasProvenance concreteResult
            , HasProvenance symbolicResult
-           , Matchable
-               (DropProvenance concreteResult)
-               (DropProvenance symbolicResult))
+           , Matchable concreteResult symbolicResult
+           , MonadLogger m
+           , Eq symbolicResult
+           )
         => Buckets concreteResult
-        -> Fuzzi (Symbolic concreteResult symbolicResult)
-        -> [(symbolicResult, SymbolicConstraints)]
-symExec buckets code =
+        -> Fuzzi (SymbolicT concreteResult m symbolicResult)
+        -> m [(Bucket concreteResult, [(symbolicResult, SymbolicConstraints)])]
+symExec buckets code = do
   let codes = streamline code
-      errorsAndPaths {-:: [([SymExecError], [_])]-} =
-        map
-        (\(bucket :: Bucket concreteResult) ->
-             partitionEithers $
-             map (go bucket) codes)
-        buckets'
-      -- maybe log the errors to console?
-      _errors = concatMap fst errorsAndPaths
-      paths  = concatMap snd errorsAndPaths
-  in paths
+  (errorsAndPaths :: [([SymExecError], (Bucket concreteResult, [(symbolicResult, SymbolicConstraints)]))])
+    <- mapM
+    (\(bucket :: Bucket concreteResult) -> do
+         rs <- mapM (go bucket) codes
+         let (errors, paths) = partitionEithers rs
+         return (errors, (bucket, paths))
+    )
+    buckets'
+  -- maybe log the errors to console?
+  let branchErrors   = concatMap fst errorsAndPaths
+  let bucketAndPaths = map snd errorsAndPaths
+  $(logInfo) ("throwing away " <> pack (show (length branchErrors)) <> " branches")
+  return bucketAndPaths
   where
     buckets' = map snd (M.toList buckets)
-    go bucket code =
-      (runIdentity . gatherConstraints bucket (PP.MkSomeFuzzi code) . eval) code
 
-symExecGeneralize :: ( Typeable concreteResult
+    go :: Bucket concreteResult
+       -> Fuzzi (SymbolicT concreteResult m symbolicResult)
+       -> m (Either SymExecError (symbolicResult, SymbolicConstraints))
+    go bucket code =
+      (gatherConstraints bucket (PP.MkSomeFuzzi code) . eval) code
+
+symExecGeneralize :: forall m concreteResult symbolicResult.
+                     ( Typeable concreteResult
                      , Typeable symbolicResult
-                     -- , Show symbolicResult
+                     , Typeable m
                      , Ord (GetProvenance symbolicResult)
+                     , Ord symbolicResult
+                     , Show concreteResult
+                     , Show symbolicResult
                      , HasProvenance concreteResult
                      , HasProvenance symbolicResult
-                     , Matchable
-                         (DropProvenance concreteResult)
-                         (DropProvenance symbolicResult)
+                     , Show (GetProvenance symbolicResult)
+                     , Matchable concreteResult symbolicResult
+                     , MonadLogger m
                      )
                   => Buckets concreteResult
-                  -> Fuzzi (Symbolic concreteResult symbolicResult)
-                  -> Either SymExecError [TestBundle concreteResult symbolicResult]
-symExecGeneralize concreteBuckets prog = do
-  let paths = symExec concreteBuckets prog
-  let symBuckets = bucketSymbolicConstraints paths M.empty
-  symBuckets' <- sequence $ M.map
-    (\xs -> let a = head (map fst xs)
-            in do {sc <- generalize (map snd xs); return (a, sc)})
-    symBuckets
-  return $ zipWith merge (values concreteBuckets) (values symBuckets')
-  where
-    values = map snd . M.toList
-    merge bucket (symResult, constraints) =
-      TestBundle constraints symResult bucket
+                  -> Fuzzi (SymbolicT concreteResult m symbolicResult)
+                  -> m (Either SymExecError [TestBundle concreteResult symbolicResult])
+symExecGeneralize concreteBuckets prog = runExceptT $ do
+  bucketAndPaths <- lift $ symExec concreteBuckets prog
+  let symBuckets = for bucketAndPaths $ \(bucket, paths) ->
+        (bucket, bucketSymbolicConstraints paths M.empty)
 
-bucketSymbolicConstraints :: ( Ord (GetProvenance a)
-                             , HasProvenance a
+  buckets <-
+    forM symBuckets $ \(bucket, thisSymBuckets) ->
+      forM (map snd (M.toList thisSymBuckets)) $ \symValsAndConstraints -> do
+        let symVals = map fst symValsAndConstraints
+        let constraints = map snd symValsAndConstraints
+        genConstraints <- liftEither (generalize constraints)
+        return (TestBundle genConstraints (head symVals) bucket)
+
+  return (concat buckets)
+
+  where for = flip map
+
+bucketSymbolicConstraints :: ( Ord (GetProvenance symbolicResult)
+                             , HasProvenance symbolicResult
                              )
-                          => [(a, SymbolicConstraints)]
-                          -> M.Map (GetProvenance a)
-                                   [(a, SymbolicConstraints)]
-                          -> M.Map (GetProvenance a)
-                                   [(a, SymbolicConstraints)]
+                          => [(symbolicResult, SymbolicConstraints)]
+                          -> M.Map (GetProvenance symbolicResult)
+                                   [(symbolicResult, SymbolicConstraints)]
+                          -> M.Map (GetProvenance symbolicResult)
+                                   [(symbolicResult, SymbolicConstraints)]
 bucketSymbolicConstraints []          m = m
 bucketSymbolicConstraints ((k,sc):xs) m =
   bucketSymbolicConstraints xs (M.insertWith (++) (getProvenance k) [(k, sc)] m)
@@ -145,6 +165,10 @@ runTestBundle :: ( MonadIO m
                  , MonadLogger m
                  , HasProvenance concreteResult
                  , HasProvenance symbolicResult
+                 , Show concreteResult
+                 , Show symbolicResult
+                 , Show (DropProvenance concreteResult)
+                 , Show (DropProvenance symbolicResult)
                  , SEq (DropProvenance concreteResult) (DropProvenance symbolicResult))
               => Epsilon
               -> TestBundle concreteResult symbolicResult
@@ -156,6 +180,10 @@ runTests :: ( MonadIO m
             , MonadLogger m
             , HasProvenance concreteResult
             , HasProvenance symbolicResult
+            , Show concreteResult
+            , Show symbolicResult
+            , Show (DropProvenance concreteResult)
+            , Show (DropProvenance symbolicResult)
             , SEq (DropProvenance concreteResult) (DropProvenance symbolicResult))
          => Epsilon
          -> [TestBundle concreteResult symbolicResult]

@@ -174,6 +174,9 @@ k_PT_DELTA = k_PT_LAMBDA * k_PT_GAMMA
 k_PT_THRESHOLD :: (Fractional a) => a
 k_PT_THRESHOLD = 2
 
+k_PT_MAX_LEAF_NODES :: (Num a) => a
+k_PT_MAX_LEAF_NODES = 10
+
 privTree :: (FuzziLang m a) => [Double] -> Mon m (Fuzzi (PrivTree1D a))
 privTree xs =
   privTreeAux xs [rootNode] (S.singleton rootNode) (lit emptyTree)
@@ -186,7 +189,7 @@ privTreeAux :: forall m a.
             -> Fuzzi (PrivTree1D a)         -- ^current tree
             -> Mon m (Fuzzi (PrivTree1D a))
 privTreeAux points queue leafNodes tree
-  | length leafNodes > length points
+  | length leafNodes > k_PT_MAX_LEAF_NODES
   = abort "unreachable code: there are more leaf nodes than points"
   | otherwise
   = case queue of

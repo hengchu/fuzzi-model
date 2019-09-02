@@ -58,7 +58,8 @@ prop_rnmLengthConstraints (SmallList xs) = monadicIO $ do
   let prog1 = reify (reportNoisyMax (map (fromRational . toRational) xs))
   let prog2 = reify (reportNoisyMax (map (fromRational . toRational) xs))
   buckets <- run $ profileIO 100 prog1
-  case symExecGeneralize buckets prog2 of
+  spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
+  case spec of
     Left  err -> run (print err) >> assert False
     Right constraints -> assert (length buckets == length constraints)
 
@@ -67,9 +68,9 @@ smartSumPrivacyTest xs = label ("smartsum input size: " ++ show (length xs)) $ m
   let xs1 = map (fromRational . toRational) (left xs)
   let xs2 = map (fromRational . toRational) (right xs)
   let prog1 = reify (smartSum xs1) :: Fuzzi (TracedDist ([WithDistributionProvenance Double]))
-  let prog2 = reify (smartSum xs2) :: Fuzzi (Symbolic [WithDistributionProvenance Double] ([WithDistributionProvenance RealExpr]))
+  let prog2 = reify (smartSum xs2) :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ ([WithDistributionProvenance RealExpr]))
   buckets <- run $ profileIO 100 prog1
-  let spec = symExecGeneralize buckets prog2
+  spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
   case spec of
     Left err -> run (print err) >> assert False
     Right bundles -> do
@@ -88,7 +89,7 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $
   let prog1 = reify (reportNoisyMax xs1)
   let prog2 = reify (reportNoisyMax xs2)
   buckets <- run $ profileIO 100 prog1
-  let spec = symExecGeneralize buckets prog2
+  spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
   case spec of
     Left err -> run (print err) >> assert False
     Right bundles -> do
@@ -109,7 +110,7 @@ rnmNotPrivateTest = monadicIO $ do
     let prog1 = reify (reportNoisyMaxBuggy xs1)
     let prog2 = reify (reportNoisyMaxBuggy xs2)
     buckets <- run $ runNoLoggingT (profile 300 prog1)
-    let spec = symExecGeneralize buckets prog2
+    spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
     case spec of
       Left err -> run (print err) >> stop False
       Right bundles -> do
@@ -130,9 +131,9 @@ smartSumNotPrivateTest = monadicIO $ do
     let prog1 = reify (smartSumBuggy xs1)
           :: Fuzzi (TracedDist ([WithDistributionProvenance Double]))
     let prog2 = reify (smartSumBuggy xs2)
-          :: Fuzzi (Symbolic [WithDistributionProvenance Double] ([WithDistributionProvenance RealExpr]))
+          :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ ([WithDistributionProvenance RealExpr]))
     buckets <- run $ runNoLoggingT (profile 300 prog1)
-    let spec = symExecGeneralize buckets prog2
+    spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
     case spec of
       Left err -> run (print err) >> stop False
       Right bundles -> do
@@ -152,9 +153,9 @@ sparseVectorPrivacyTest xs =
     let prog1 = reify (sparseVector xs1 2 0)
           :: Fuzzi (TracedDist [Bool])
     let prog2 = reify (sparseVector xs2 2 0)
-          :: Fuzzi (Symbolic [Bool] [Bool])
+          :: Fuzzi (SymbolicT [Bool] _ [Bool])
     buckets <- run $ profileIO 100 prog1
-    let spec = symExecGeneralize buckets prog2
+    spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
     case spec of
       Left err -> run (print err) >> assert False
       Right bundles -> do
@@ -175,9 +176,9 @@ sparseVectorNotPrivateTest = monadicIO $ do
     let prog1 = reify (sparseVectorBuggy xs1 2 0)
           :: Fuzzi (TracedDist ([WithDistributionProvenance Double]))
     let prog2 = reify (sparseVectorBuggy xs2 2 0)
-          :: Fuzzi (Symbolic [WithDistributionProvenance Double] ([WithDistributionProvenance RealExpr]))
+          :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ ([WithDistributionProvenance RealExpr]))
     buckets <- run $ runNoLoggingT (profile 300 prog1)
-    let spec = symExecGeneralize buckets prog2
+    spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
     case spec of
       Left err -> run (print err) >> stop False
       Right bundles -> do
@@ -240,6 +241,27 @@ prop_nodeSplit node =
       (rleft, rright) = endpoints rightSubNode
   in lleft == left && lright == rleft && rright == right
 
+prop_matchReflList :: [Int] -> Bool
+prop_matchReflList xs =
+  match xs xs
+
+prop_matchSymList :: [(Double, String)] -> Bool
+prop_matchSymList xys =
+  let xs = map fst xys in
+  let ys = map snd xys in
+  match xs (map sReal ys)
+
+prop_matchSymDiffLengthList :: [Double] -> [String] -> Property
+prop_matchSymDiffLengthList xs ys = length xs /= length ys ==>
+  not $ match xs (map sReal ys)
+
+prop_matchDiffLengthList :: [Int] -> [Int] -> Property
+prop_matchDiffLengthList xs ys = length xs /= length ys ==>
+  not (match xs ys)
+
+prop_pairWiseL1ListLength :: Property
+prop_pairWiseL1ListLength =
+  forAll (pairWiseL1 1.0) $ \(xs :: PairWiseL1List Double) -> length (left xs) == length (right xs)
 
 printAndExitIfFailed :: Result -> IO ()
 printAndExitIfFailed r = do
@@ -253,9 +275,15 @@ main = do
     "\n#######################################"
     ++ "\n#          QuickCheck Tests           #"
     ++ "\n#######################################"
+  let simpleProperties = prop_nodeSplit
+                         .&&. prop_matchReflList
+                         .&&. prop_matchSymList
+                         .&&. prop_matchSymDiffLengthList
+                         .&&. prop_matchDiffLengthList
+                         .&&. prop_pairWiseL1ListLength
   quickCheckWithResult
     stdArgs{maxSuccess=2000}
-    prop_nodeSplit >>= printAndExitIfFailed
+    simpleProperties >>= printAndExitIfFailed
   quickCheckWithResult
     stdArgs{maxSuccess=20}
     prop_rnmIsDifferentiallyPrivate >>= printAndExitIfFailed
