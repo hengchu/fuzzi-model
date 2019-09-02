@@ -102,7 +102,7 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $
 
 rnmNotPrivateTest :: Property
 rnmNotPrivateTest = monadicIO $ do
-  results <- forM [0..10] $ \_ -> do
+  results <- forM [0..20] $ \_ -> do
     (xs :: PairWiseL1List Double) <- pick (pairWiseL1 1.0)
     let xs1   = map (fromRational . toRational) (left xs)
     let xs2   = map (fromRational . toRational) (right xs)
