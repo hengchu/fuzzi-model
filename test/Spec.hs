@@ -346,7 +346,9 @@ main = do
   quickCheckWithResult
     stdArgs{maxSuccess=5}
     prop_sparseVectorBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
-
+  quickCheckWithResult
+    stdArgs{maxSuccess=20}
+    prop_privTreeIsDifferentiallyPrivate >>= printAndExitIfFailed
 
   putStrLn $
     "\n#######################################"

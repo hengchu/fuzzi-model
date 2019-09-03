@@ -236,9 +236,10 @@ makeLensesWith abbreviatedFields ''MergingSymbolicConstraints
 
 type Epsilon           = Double
 
-data SolverResult = Ok      Epsilon --Z3.Model
-                  | Failed  [String]
-                  | Unknown  String
+data SolverResult = Ok           Epsilon
+                  | FailedEps    Epsilon Epsilon -- ^expected epsilon and actual minimized epsilon
+                  | FailedUnSat  [String]
+                  | Unknown      String
                   deriving (Show, Eq, Ord)
 
 data TestResult c s = TestResult {
@@ -254,8 +255,9 @@ isOk (view solverResult -> Ok _) = True
 isOk _                           = False
 
 isFailed :: HasSolverResult r SolverResult => r -> Bool
-isFailed (view solverResult -> Failed _) = True
-isFailed _                               = False
+isFailed (view solverResult -> FailedEps _ _) = True
+isFailed (view solverResult -> FailedUnSat _) = True
+isFailed _                                    = False
 
 data SymExecError =
   UnbalancedLaplaceCalls
@@ -293,6 +295,15 @@ z3Init = do
   solver <- liftIO (Z3.mkSolverForLogic ctx Z3.QF_NRA)
   $(logInfo) "initialized Z3 solver and context"
   return (ctx, solver)
+
+z3InitOpt :: (MonadIO m, MonadLogger m) => m (Z3.Context, Z3.Optimizer)
+z3InitOpt = do
+  cfg <- liftIO Z3.mkConfig
+  ctx <- liftIO (Z3.mkContext cfg)
+  liftIO (Z3.setASTPrintMode ctx Z3.Z3_PRINT_SMTLIB2_COMPLIANT)
+  optimizer <- liftIO (Z3.mkOptimizer ctx)
+  $(logInfo) "initialized Z3 optimizer and context"
+  return (ctx, optimizer)
 
 double :: Double -> RealExpr
 double = fromRational . toRational
@@ -429,7 +440,7 @@ solve_ conditions symCost eps = do
       $(logInfo) "solver returned unsat, retrieving unsat core..."
       cores <- liftIO $ Z3.solverGetUnsatCore cxt solver
       strs <- liftIO $ mapM ((liftIO . evaluate . force) <=< Z3.astToString cxt) cores
-      return (Failed strs)
+      return (FailedUnSat strs)
     Z3.Undef -> do
       $(logInfo) "solver returned undef, retrieving reason..."
       reason <- liftIO $ Z3.solverGetReasonUnknown cxt solver

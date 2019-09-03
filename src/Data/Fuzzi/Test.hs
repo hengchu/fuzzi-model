@@ -2,6 +2,7 @@ module Data.Fuzzi.Test where
 
 {- HLINT ignore "Use mapM" -}
 
+import Control.Exception
 import Control.Lens
 import Control.Monad.Except
 import Control.Monad.IO.Unlift
@@ -12,6 +13,7 @@ import Data.Fuzzi.EDSL
 import Data.Fuzzi.Interp
 import Data.Fuzzi.Symbol
 import Data.Fuzzi.Types
+import Data.Maybe (isJust)
 import Data.Text (pack)
 import Debug.Trace
 import Type.Reflection
@@ -39,13 +41,17 @@ profile :: ( Show (GetProvenance a)
         -> Fuzzi (TracedDist a)
         -> m (Buckets a)
 profile ntimes prog = do
-  outputs <- replicateConcurrently ntimes (liftIO $ (sampleTraced . eval) prog)
-  $(logInfo) ("collected " <> pack (show (length outputs)) <> " buckets")
-  let bucketsWithKey = buildMapAux outputs M.empty
+  outputs <- replicateM ntimes (liftIO $ run prog `catch` (\(_ :: AbortException) -> return Nothing))
+  let Just outputs' = sequence (filter isJust outputs)
+  $(logInfo) ("collected " <> pack (show (length outputs')) <> " buckets")
+  let bucketsWithKey = buildMapAux outputs' M.empty
   $(logInfo) ("bucket distribution: "
               <> (pack . show $ bucketsDistributions bucketsWithKey))
   return bucketsWithKey
   where bucketsDistributions = M.map length
+        run prog = do
+          r <- (sampleTraced . eval) prog
+          return (Just r)
 
 profileIO :: ( Show (GetProvenance a)
              , Ord (GetProvenance a)

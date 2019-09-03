@@ -202,7 +202,7 @@ k_PT_THRESHOLD :: (Fractional a) => a
 k_PT_THRESHOLD = 2
 
 k_PT_MAX_LEAF_NODES :: (Num a) => a
-k_PT_MAX_LEAF_NODES = 10
+k_PT_MAX_LEAF_NODES = 5
 
 privTree :: (FuzziLang m a) => [Double] -> Mon m (Fuzzi (PrivTree1D Bool))
 privTree xs =
@@ -233,9 +233,9 @@ privTreeAux points queue leafNodes tree
             (do let (left, right) = split thisNode
                 let leafNodes' =
                       S.insert right (S.insert left (S.delete thisNode leafNodes))
-                if length leafNodes' <= length points
+                if length leafNodes' <= k_PT_MAX_LEAF_NODES
                 then privTreeAux points (more++[left,right]) leafNodes' updatedTree
-                else return updatedTree
+                else abort "unreachable code: there are impossibly many leaf nodes"
             )
             (privTreeAux
                points
