@@ -819,7 +819,7 @@ instance SEq Bool Bool where
 
 instance SEq Double RealExpr where
   symEq a b =
-    BoolExpr (Eq_ (getRealExpr . fromRational . toRational $ a) (getRealExpr b))
+    abs ((double a) - b) %<= fromRational k_FLOAT_TOLERANCE
 
 instance SEq (D.WithDistributionProvenance Double) (D.WithDistributionProvenance RealExpr) where
   symEq a b = symEq (D.value a) (D.value b)
@@ -827,6 +827,11 @@ instance SEq (D.WithDistributionProvenance Double) (D.WithDistributionProvenance
 instance (SEq a b, SEq c d) => SEq (a, c) (b, d) where
   symEq (a, c) (b, d) =
     BoolExpr (And (getBoolExpr (a `symEq` b)) (getBoolExpr (c `symEq` d)))
+
+instance SEq a b => SEq (Maybe a) (Maybe b) where
+  symEq (Just a) (Just b) = symEq a b
+  symEq Nothing  Nothing  = bool True
+  symEq _        _        = bool False
 
 instance SEq a b => SEq [a] [b] where
   symEq [] []         = BoolExpr (JustBool True)

@@ -264,6 +264,12 @@ instance HasProvenance a => HasProvenance (PrivTree1D a) where
   getProvenance  = fmap getProvenance
   dropProvenance = fmap dropProvenance
 
+instance HasProvenance a => HasProvenance (Maybe a) where
+  type GetProvenance (Maybe a) = Maybe (GetProvenance a)
+  type DropProvenance (Maybe a) = Maybe (DropProvenance a)
+  getProvenance = fmap getProvenance
+  dropProvenance = fmap dropProvenance
+
 instance HasProvenance () where
   type GetProvenance () = ()
   type DropProvenance () = ()

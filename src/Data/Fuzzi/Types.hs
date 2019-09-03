@@ -134,6 +134,7 @@ instance FuzziType Bool
 instance FuzziType Int
 instance FuzziType a => FuzziType (PrivTree1D a)
 instance FuzziType a => FuzziType [a]
+instance FuzziType a => FuzziType (Maybe a)
 instance FuzziType PrivTreeNode1D
 
 instance Numeric Double
@@ -154,6 +155,11 @@ instance ( Matchable a b
          , Matchable c d
          ) => Matchable (a,c) (b,d) where
   match (a,b) (c,d) = match a c && match b d
+
+instance Matchable a b => Matchable (Maybe a) (Maybe b) where
+  match (Just a) (Just b) = match a b
+  match Nothing  Nothing  = True
+  match _        _        = False
 
 instance Matchable a b => Matchable [a] [b] where
   match []     []     = True

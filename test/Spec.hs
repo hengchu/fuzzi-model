@@ -1,10 +1,6 @@
 import Control.Lens (view)
-import Control.Concurrent.Async
 import Control.Monad
-import Control.Monad.IO.Class
 import Control.Monad.Logger
-import Control.Monad.Trans.Identity
-import Data.Functor.Identity
 import Data.Fuzzi.Distribution
 import Data.Fuzzi.EDSL
 import Data.Fuzzi.Examples
@@ -18,7 +14,6 @@ import Test.QuickCheck
 import Test.QuickCheck.Monadic
 import qualified Data.Map.Strict as M
 import qualified Test.HUnit.Base as H
-import qualified Z3.Base as Z3
 
 smtTests :: H.Test
 smtTests = H.TestList [
@@ -68,8 +63,8 @@ smartSumPrivacyTest :: L1List Double -> Property
 smartSumPrivacyTest xs = label ("smartsum input size: " ++ show (length xs)) $ monadicIO $ do
   let xs1 = map (fromRational . toRational) (left xs)
   let xs2 = map (fromRational . toRational) (right xs)
-  let prog1 = reify (smartSum xs1) :: Fuzzi (TracedDist [WithDistributionProvenance Double])
-  let prog2 = reify (smartSum xs2) :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ [WithDistributionProvenance RealExpr])
+  let prog1 = reify (smartSum xs1)
+  let prog2 = reify (smartSum xs2)
   buckets <- run $ profileIO 100 prog1
   spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
   case spec of
@@ -104,7 +99,7 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $
 
 rnmNotPrivateTest :: Property
 rnmNotPrivateTest = monadicIO $ do
-  results <- forM [0..20] $ \_ -> do
+  results <- forM ([0..50] :: [Int]) $ \_ -> do
     (xs :: PairWiseL1List Double) <- pick (pairWiseL1 1.0)
     let xs1   = map (fromRational . toRational) (left xs)
     let xs2   = map (fromRational . toRational) (right xs)
@@ -125,15 +120,13 @@ rnmNotPrivateTest = monadicIO $ do
 
 smartSumNotPrivateTest :: Property
 smartSumNotPrivateTest = monadicIO $ do
-  results <- forM [0..50] $ \_ -> do
+  results <- forM ([0..50] :: [Int]) $ \_ -> do
     (xs :: L1List Double) <- pick (l1List 1.0)
     let xs1   = map (fromRational . toRational) (left xs)
     let xs2   = map (fromRational . toRational) (right xs)
     let prog1 = reify (smartSumBuggy xs1)
-          :: Fuzzi (TracedDist [WithDistributionProvenance Double])
     let prog2 = reify (smartSumBuggy xs2)
-          :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ [WithDistributionProvenance RealExpr])
-    buckets <- run $ runNoLoggingT (profile 300 prog1)
+    buckets <- run $ runNoLoggingT (profile 500 prog1)
     spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
     case spec of
       Left err -> run (print err) >> stop False
@@ -152,9 +145,27 @@ sparseVectorPrivacyTest xs =
     let xs1 = map (fromRational . toRational) (left xs)
     let xs2 = map (fromRational . toRational) (right xs)
     let prog1 = reify (sparseVector xs1 2 0)
-          :: Fuzzi (TracedDist [Bool])
     let prog2 = reify (sparseVector xs2 2 0)
-          :: Fuzzi (SymbolicT [Bool] _ [Bool])
+    buckets <- run $ profileIO 100 prog1
+    spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
+    case spec of
+      Left err -> run (print err) >> assert False
+      Right bundles -> do
+        results <- run $ runNoLoggingT (runTests 1.0 bundles)
+        case results of
+          Left err -> run (print err) >> assert False
+          Right results' -> do
+            run (print (map (view solverResult) results'))
+            assert (length bundles == length buckets)
+            assert (all isOk results')
+
+sparseVectorGapPrivacyTest :: PairWiseL1List Double -> Property
+sparseVectorGapPrivacyTest xs =
+  label ("sparseVectorGap input length: " ++ show (length xs)) $ monadicIO $ do
+    let xs1 = map (fromRational . toRational) (left xs)
+    let xs2 = map (fromRational . toRational) (right xs)
+    let prog1 = reify (sparseVectorGap xs1 2 0)
+    let prog2 = reify (sparseVectorGap xs2 2 0)
     buckets <- run $ profileIO 100 prog1
     spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
     case spec of
@@ -170,14 +181,12 @@ sparseVectorPrivacyTest xs =
 
 sparseVectorNotPrivateTest :: Property
 sparseVectorNotPrivateTest = monadicIO $ do
-  results <- forM [0..50] $ \_ -> do
+  results <- forM ([0..50] :: [Int]) $ \_ -> do
     (xs :: L1List Double) <- pick (l1List 1.0)
     let xs1   = map (fromRational . toRational) (left xs)
     let xs2   = map (fromRational . toRational) (right xs)
     let prog1 = reify (sparseVectorBuggy xs1 2 0)
-          :: Fuzzi (TracedDist [WithDistributionProvenance Double])
     let prog2 = reify (sparseVectorBuggy xs2 2 0)
-          :: Fuzzi (SymbolicT [WithDistributionProvenance Double] _ [WithDistributionProvenance RealExpr])
     buckets <- run $ runNoLoggingT (profile 300 prog1)
     spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
     case spec of
@@ -190,6 +199,27 @@ sparseVectorNotPrivateTest = monadicIO $ do
             run (print (map (view solverResult) results'))
             if any isFailed results' then stop True else return False
   assert (or results)
+
+privTreePrivacyTest :: BagList Double -> Property
+privTreePrivacyTest xs = monadicIO $ do
+  let xs1 = map (fromRational . toRational) (left xs)
+  let xs2 = map (fromRational . toRational) (right xs)
+  let prog1 = reify (privTree xs1)
+  let prog2 = reify (privTree xs2)
+  buckets <- run $ runNoLoggingT (profile 100 prog1)
+  spec <- run $ runNoLoggingT (symExecGeneralize buckets prog2)
+  case spec of
+    Left err -> run (print err) >> stop False
+    Right bundles -> do
+      results <- run $ runNoLoggingT (runTests k_PT_EPSILON bundles)
+      case results of
+        Left err -> run (print err) >> stop False
+        Right results' -> do
+          run (print (map (view solverResult) results'))
+          let failures = filter isFailed results'
+          unless (null failures) $
+            run (print failures)
+          assert (all isOk results')
 
 prop_rnmIsDifferentiallyPrivate :: Property
 prop_rnmIsDifferentiallyPrivate =
@@ -213,6 +243,14 @@ prop_sparseVectorIsDifferentiallyPrivate =
 prop_sparseVectorBuggyIsNotDifferentiallyPrivate :: Property
 prop_sparseVectorBuggyIsNotDifferentiallyPrivate =
   sparseVectorNotPrivateTest
+
+prop_privTreeIsDifferentiallyPrivate :: Property
+prop_privTreeIsDifferentiallyPrivate =
+  forAll (bagList (0.0, 1.0) 1) privTreePrivacyTest
+
+prop_sparseVectorGapIsDifferentiallyPrivate :: Property
+prop_sparseVectorGapIsDifferentiallyPrivate =
+  forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 sparseVectorGapPrivacyTest
 
 newtype SmallList a = SmallList {
   getSmallList :: [a]
@@ -294,12 +332,17 @@ main = do
   quickCheckWithResult
     stdArgs{maxSuccess=20}
     prop_smartSumIsDifferentiallyPrivate >>= printAndExitIfFailed
+  {- too slow with float tolerance
   quickCheckWithResult
     stdArgs{maxSuccess=5}
     prop_smartSumBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+  -}
   quickCheckWithResult
     stdArgs{maxSuccess=20}
     prop_sparseVectorIsDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
+    stdArgs{maxSuccess=20}
+    prop_sparseVectorGapIsDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     stdArgs{maxSuccess=5}
     prop_sparseVectorBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed

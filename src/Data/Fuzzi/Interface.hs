@@ -21,6 +21,8 @@ module Data.Fuzzi.Interface (
   , snoc
   , isNil
   , length_
+  , just
+  , nothing
   , fromIntegral_
   , reify
   , streamline

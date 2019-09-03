@@ -234,6 +234,10 @@ pretty (UpdatePrivTree node value tree) = do
   value' <- pretty value
   tree' <- pretty tree
   return $ hsep [text "updatePT", node', value', tree']
+pretty (Just_ x) = do
+  x' <- pretty x
+  return $ hsep [text "Just", x']
+pretty Nothing_ = return (text "Nothing")
 
 precedence :: M.Map Text Int
 precedence = M.fromList [("||", 0), ("&&", 1),

@@ -6,6 +6,8 @@ module Data.Fuzzi.NeighborGen (
   , L1List
   , l1List
   , shrinkL1List
+  , BagList
+  , bagList
   ) where
 
 import Control.Lens
@@ -29,8 +31,14 @@ data L1List a = L1List {
   , _llDiff :: a
   } deriving (Show, Eq, Ord)
 
+data BagList a = BagList {
+  _blDataLeft :: [a]
+  , _blDataRight :: [a]
+  } deriving (Show, Eq, Ord)
+
 makeLensesWith abbreviatedFields ''PairWiseL1List
 makeLensesWith abbreviatedFields ''L1List
+makeLensesWith abbreviatedFields ''BagList
 
 pairWiseL1 :: forall a.
               ( Fractional a
@@ -71,6 +79,21 @@ shrinkL1List (L1List xs diff) =
   filter (not . null . view listData) $
     L1List <$> shrinkList (:[]) xs <*> pure diff
 
+bagList :: forall a. (Random a) => (a, a) -> Int -> Gen (BagList a)
+bagList (lower, upper) nDiff = do
+  len <- choose (3,4)
+  xs1 <- replicateM len   (choose (lower, upper))
+  xs2 <- replicateM nDiff (choose (lower, upper))
+  xs2' <- randomlyIntersperse xs1 xs2
+  return (BagList xs1 xs2')
+  where randomlyIntersperse xs1      []       = return xs1
+        randomlyIntersperse []       xs2      = return xs2
+        randomlyIntersperse (x1:xs1) (x2:xs2) = do
+          coin <- frequency [(1, pure True), (1, pure False)]
+          if coin
+          then randomlyIntersperse (x2:x1:xs1) xs2
+          else randomlyIntersperse (x1:x2:xs1) xs2
+
 instance (Num a) => Neighbor (PairWiseL1List a) where
   type Element (PairWiseL1List a) = [a]
   left  = map fst . view dataAndDiff
@@ -86,3 +109,8 @@ instance Neighbor (L1List a) where
 
 instance Foldable L1List where
   foldMap f xs = foldMap f (map fst $ xs ^. listData)
+
+instance Neighbor (BagList a) where
+  type Element (BagList a) = [a]
+  left  = view dataLeft
+  right = view dataRight

@@ -69,3 +69,5 @@ eval (Snd p)    = snd (eval p)
 eval (NumCast a) = fromIntegral (eval a)
 eval (Abort reason) = throwM (AbortException reason)
 eval (UpdatePrivTree node value tree) = update (eval node) (eval value) (eval tree)
+eval (Just_ x) = Just (eval x)
+eval Nothing_ = Nothing

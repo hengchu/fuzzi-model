@@ -137,6 +137,30 @@ sparseVectorAux (x:xs) n threshold acc
           (sparseVectorAux xs (n-1) threshold (acc `snoc` lit True))
           (sparseVectorAux xs n     threshold (acc `snoc` lit False))
 
+sparseVectorGap :: (FuzziLang m a)
+                => [Fuzzi a]
+                -> Int
+                -> Fuzzi a
+                -> Mon m (Fuzzi [Maybe a])
+sparseVectorGap xs n threshold = do
+  noisedThreshold <- lap threshold 2.0
+  noisedXs <- mapM (`lap` (4.0 * fromIntegral n)) xs
+  sparseVectorGapAux noisedXs n noisedThreshold nil
+
+sparseVectorGapAux :: (FuzziLang m a)
+                   => [Fuzzi a]
+                   -> Int
+                   -> Fuzzi a
+                   -> Fuzzi [Maybe a]
+                   -> Mon m (Fuzzi [Maybe a])
+sparseVectorGapAux []     _n _threshold acc = return acc
+sparseVectorGapAux (x:xs)  n  threshold acc
+  | n <= 0 = return acc
+  | otherwise =
+    ifM (x %> threshold)
+        (sparseVectorGapAux xs (n-1) threshold (acc `snoc` (just $ x - threshold)))
+        (sparseVectorGapAux xs n     threshold (acc `snoc` nothing))
+
 sparseVectorBuggy :: forall m a.
                      (FuzziLang m a)
                   => [Fuzzi a] -- ^ input data
@@ -171,13 +195,16 @@ k_PT_GAMMA = 1.0
 k_PT_DELTA :: (Fractional a) => a
 k_PT_DELTA = k_PT_LAMBDA * k_PT_GAMMA
 
+k_PT_EPSILON :: (Floating a) => a
+k_PT_EPSILON = (2 * exp k_PT_GAMMA - 1) / (exp k_PT_GAMMA - 1) / k_PT_LAMBDA
+
 k_PT_THRESHOLD :: (Fractional a) => a
 k_PT_THRESHOLD = 2
 
 k_PT_MAX_LEAF_NODES :: (Num a) => a
 k_PT_MAX_LEAF_NODES = 10
 
-privTree :: (FuzziLang m a) => [Double] -> Mon m (Fuzzi (PrivTree1D a))
+privTree :: (FuzziLang m a) => [Double] -> Mon m (Fuzzi (PrivTree1D Bool))
 privTree xs =
   privTreeAux xs [rootNode] (S.singleton rootNode) (lit emptyTree)
 
@@ -186,11 +213,11 @@ privTreeAux :: forall m a.
             => [Double]                     -- ^input points on the unit interval
             -> [PrivTreeNode1D]             -- ^queue of unvisited nodes
             -> S.Set PrivTreeNode1D         -- ^current set of leaf nodes
-            -> Fuzzi (PrivTree1D a)         -- ^current tree
-            -> Mon m (Fuzzi (PrivTree1D a))
+            -> Fuzzi (PrivTree1D Bool)         -- ^current tree
+            -> Mon m (Fuzzi (PrivTree1D Bool))
 privTreeAux points queue leafNodes tree
   | length leafNodes > k_PT_MAX_LEAF_NODES
-  = abort "unreachable code: there are more leaf nodes than points"
+  = abort "unreachable code: there are impossibly many leaf nodes"
   | otherwise
   = case queue of
       [] -> return tree
@@ -200,9 +227,9 @@ privTreeAux points queue leafNodes tree
           ifM (biasedCount %> (k_PT_THRESHOLD - k_PT_DELTA))
               (return biasedCount)
               (return $ k_PT_THRESHOLD - k_PT_DELTA)
-        noisedBiasedCount <- lap biasedCount' k_PT_LAMBDA
-        let updatedTree = updatePT (lit thisNode) noisedBiasedCount tree
-        ifM (noisedBiasedCount %> k_PT_THRESHOLD)
+        noisedBiasedCount1 <- lap biasedCount' k_PT_LAMBDA
+        let updatedTree = updatePT (lit thisNode) true tree
+        ifM (noisedBiasedCount1 %> k_PT_THRESHOLD)
             (do let (left, right) = split thisNode
                 let leafNodes' =
                       S.insert right (S.insert left (S.delete thisNode leafNodes))

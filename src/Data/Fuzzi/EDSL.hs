@@ -20,6 +20,8 @@ module Data.Fuzzi.EDSL (
   , nil
   , cons
   , snoc
+  , just
+  , nothing
   , isNil
   , length_
   , fromIntegral_
@@ -93,6 +95,9 @@ data Fuzzi (a :: *) where
   ListIsNil  :: (FuzziType a, ConcreteBoolean bool) => Fuzzi [a] -> Fuzzi bool
   ListLength :: (FuzziType a) => Fuzzi [a] -> Fuzzi Int
 
+  Just_      :: (FuzziType a) => Fuzzi a -> Fuzzi (Maybe a)
+  Nothing_   :: (FuzziType a) => Fuzzi (Maybe a)
+
   Pair      :: (Typeable a, Typeable b) => Fuzzi a -> Fuzzi b      -> Fuzzi (a, b)
   Fst       :: (Typeable a, Typeable b) =>            Fuzzi (a, b) -> Fuzzi a
   Snd       :: (Typeable a, Typeable b) =>            Fuzzi (a, b) -> Fuzzi b
@@ -102,6 +107,12 @@ data Fuzzi (a :: *) where
   Abort     :: (FuzziType a, Typeable m, MonadThrow m) => String -> Fuzzi (m a)
 
   UpdatePrivTree :: (FuzziType a) => Fuzzi PrivTreeNode1D -> Fuzzi a -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
+
+just :: (FuzziType a) => Fuzzi a -> Fuzzi (Maybe a)
+just = Just_
+
+nothing :: (FuzziType a) => Fuzzi (Maybe a)
+nothing = Nothing_
 
 nil :: (FuzziType a) => Fuzzi [a]
 nil = ListNil
@@ -251,6 +262,9 @@ subst v term filling =
     ListLength xs -> ListLength (subst v xs filling)
     -- ListFilter f xs -> ListFilter (subst v f filling) (subst v xs filling)
 
+    Just_ x -> Just_ (subst v x filling)
+    Nothing_ -> Nothing_
+
     NumCast a -> NumCast (subst v a filling)
 
     Pair a b -> Pair (subst v a filling) (subst v b filling)
@@ -352,6 +366,10 @@ streamlineAux _var (Abort reason) =
   [Abort reason]
 streamlineAux var (UpdatePrivTree node value tree) =
   [UpdatePrivTree node' value' tree' | node' <- streamlineAux var node, value' <- streamlineAux var value, tree' <- streamlineAux var tree]
+streamlineAux var (Just_ x) =
+  Just_ <$> streamlineAux var x
+streamlineAux _ Nothing_ =
+  [Nothing_]
 
 instance Applicative (Mon m) where
   pure a  = Mon $ \k -> k a
