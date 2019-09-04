@@ -147,11 +147,11 @@ data WithDistributionProvenance a =
   WithDistributionProvenance { value :: a
                              , provenance :: DistributionProvenance a
                              }
-  deriving (Show, Eq, Ord, Typeable)
+  deriving ({-Show, -}Eq, Ord, Typeable)
 
 
--- instance Show a => Show (WithDistributionProvenance a) where
---   show a = show (value a)
+instance Show a => Show (WithDistributionProvenance a) where
+  show a = show (value a)
 
 instance (NotList a, Num a) => Num (WithDistributionProvenance a) where
   a + b = WithDistributionProvenance (value a + value b) (provenance a + provenance b)

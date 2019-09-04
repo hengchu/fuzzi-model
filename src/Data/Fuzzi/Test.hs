@@ -92,6 +92,7 @@ symExec :: forall m concreteResult symbolicResult.
            , HasProvenance symbolicResult
            , Matchable concreteResult symbolicResult
            , MonadLogger m
+           , MonadIO m
            , Eq symbolicResult
            )
         => Buckets concreteResult
@@ -133,6 +134,7 @@ symExecGeneralize :: forall m concreteResult symbolicResult.
                      , HasProvenance symbolicResult
                      , Show (GetProvenance symbolicResult)
                      , Matchable concreteResult symbolicResult
+                     , MonadIO m
                      , MonadLogger m
                      )
                   => Buckets concreteResult

@@ -59,15 +59,15 @@ reportNoisyMaxGap :: (FuzziLang m a)
                   => [Fuzzi a]
                   -> Mon m (Fuzzi Int, Fuzzi a)
 reportNoisyMaxGap []     = error "reportNoisyMaxGap received empty input"
---reportNoisyMaxGap (_:[]) = error "reportNoisyMaxGap received only one input"
-reportNoisyMaxGap (x:xs) = do
+reportNoisyMaxGap (_:[]) = error "reportNoisyMaxGap received only one input"
+reportNoisyMaxGap (x:y:xs) = do
   xNoised <- lap x 1.0
-  --yNoised <- lap y 1.0
+  yNoised <- lap y 1.0
   xsNoised <- mapM (`lap` 1.0) xs
-  reportNoisyMaxGapAux xsNoised 0 0 xNoised xNoised
-  --ifM (xNoised %> yNoised)
-  --    (reportNoisyMaxGapAux xsNoised 1 0 xNoised yNoised)
-  --    (reportNoisyMaxGapAux xsNoised 1 1 yNoised xNoised)
+  --reportNoisyMaxGapAux xsNoised 0 0 xNoised xNoised
+  ifM (xNoised %> yNoised)
+      (reportNoisyMaxGapAux xsNoised 1 0 xNoised yNoised)
+      (reportNoisyMaxGapAux xsNoised 1 1 yNoised xNoised)
   --ifM (x %> y)
   --  (reportNoisyMaxGapAux xs 1 0 x y)
   --  (reportNoisyMaxGapAux xs 1 1 y x)

@@ -116,7 +116,7 @@ parensIf False = id
 
 prettySymbolic :: Int -> SymbolicExpr -> TPP.Doc
 prettySymbolic _ (RealVar x) = TPP.text x
-prettySymbolic _ (Rat r) = TPP.double (fromRational r)
+prettySymbolic _ (Rat r) = TPP.text (show r) --TPP.double (fromRational r)
 prettySymbolic _ (JustBool b) = TPP.text (show b)
 prettySymbolic currPrec (Add x y) =
   let thisPrec = PP.precedence M.! "+" in
@@ -268,7 +268,7 @@ data SymExecError =
   | ResultDefinitelyNotEqual
   | AssertImpossible BoolExpr Bool
   | ComputationAborted AbortException
-  | AbsurdPathConstraints PathConstraints
+  | AbsurdConstraints [String] -- ^ the unsat core
   | InternalError String
   deriving (Show, Eq, Ord, Typeable)
 
@@ -486,7 +486,31 @@ solve sym sc bucket eps = do
       r <- solve_ conds totalCostExpr eps
       return (Right (TestResult r sym (map fst bucket)))
 
+isAbsurd :: (MonadIO m, MonadLogger m) => SymbolicConstraints -> m (Maybe [String])
+isAbsurd sc = do
+  (cxt, solver) <- z3Init
+  let addToSolver (label, ast) = do
+        trackedBoolVar <- liftIO $ Z3.mkFreshBoolVar cxt label
+        liftIO (Z3.solverAssertAndTrack cxt solver ast trackedBoolVar)
+  let toZ3 cond = do
+        ast <- liftIO $ symbolicExprToZ3AST cxt (getBoolExpr cond)
+        let prettyStr = pretty (getBoolExpr cond)
+        return (prettyStr, ast)
+  forM (sc ^. pathConstraints) $ \(cond, truth) -> do
+    (label, condZ3) <- toZ3 (if truth then cond else neg cond)
+    addToSolver (label, condZ3)
+  forM (sc ^. couplingConstraints) (toZ3 >=> addToSolver)
+
+  r <- liftIO $ Z3.solverCheck cxt solver
+  case r of
+    Z3.Unsat -> do
+      cores <- liftIO $ Z3.solverGetUnsatCore cxt solver
+      strs <- liftIO $ mapM ((liftIO . evaluate . force) <=< Z3.astToString cxt) cores
+      return (Just strs)
+    _ -> return Nothing
+
 gatherConstraints :: ( Monad m
+                     , MonadIO m
                      , MonadLogger m
                      , Matchable r a
                      , Show r
@@ -507,27 +531,22 @@ gatherConstraints bucket code computation = do
           osyms = st ^. openSymbols
           code' = st ^. sourceCode
           notMatching = filter (not . flip match a) (map fst bucket)
-      in
-        if isAbsurd pc
-        then do
-          $(logInfo) ("discarding absurd path constraints...")
-          $(logInfo) (pack (show pc))
-          return (Left (AbsurdPathConstraints pc))
-        else
-          if null notMatching
-          then
-            return (Right (a, SymbolicConstraints pc cc csyms osyms [code']))
-          else do
-            $(logInfo) ("definitely not equal to symbolic result: " <> pack (show a))
-            $(logInfo) (pack (show notMatching))
-            return (Left ResultDefinitelyNotEqual)
+          sc = SymbolicConstraints pc cc csyms osyms [code']
+      in do absurdCore <- isAbsurd sc
+            case absurdCore of
+              Nothing ->
+                if null notMatching
+                then
+                  return (Right (a, sc))
+                else do
+                  $(logInfo) ("definitely not equal to symbolic result: " <> pack (show a))
+                  $(logInfo) (pack (show notMatching))
+                  return (Left ResultDefinitelyNotEqual)
+              Just cores -> return (Left (AbsurdConstraints cores))
   where run =
           runExceptT
           . flip runStateT (initialSymbolicState bucket code)
           . runSymbolicT_
-
-        isAbsurd' pc (c, _) = (c, True) `elem` pc && (c, False) `elem` pc
-        isAbsurd  pc        = any (isAbsurd' pc) pc
 
 symbolicExprToZ3AST :: (MonadIO m) => Z3.Context -> SymbolicExpr -> m Z3.AST
 symbolicExprToZ3AST ctx (RealVar name) = do
@@ -673,7 +692,7 @@ laplaceSymbolic centerWithProvenance w = do
   modify (\st -> st & couplingConstraints %~ (S.|> shiftCond))
   let costCond =
         sReal epsSym %>= (abs (c - sReal concreteCenterSym + sReal shiftSym)
-                    / (fromRational . toRational $ w))
+                          / (fromRational . toRational $ w))
   modify (\st -> st & couplingConstraints %~ (S.|> costCond))
 
   modify (\st -> st & costSymbols %~ (S.|> sReal epsSym))
