@@ -75,7 +75,7 @@ smartSumPrivacyTest xs = label ("smartsum input size: " ++ show (length xs)) $ m
         Left err -> run (print err) >> assert False
         Right results' -> do
           run (print (map (view solverResult) results'))
-          assert (length bundles == length buckets)
+          -- assert (length bundles == length buckets)
           assert (all isOk results')
 
 rnmPrivacyTest :: PairWiseL1List Double -> Property
@@ -94,7 +94,29 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $
         Left err -> run (print err) >> assert False
         Right results' -> do
           run (print (map (view solverResult) results'))
-          assert (length bundles == length buckets)
+          -- assert (length bundles == length buckets)
+          assert (all isOk results')
+
+rnmGapPrivacyTest :: PairWiseL1List Double -> Property
+rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $ monadicIO $ do
+  let xs1   = map (fromRational . toRational) (left xs)
+  let xs2   = map (fromRational . toRational) (right xs)
+  let prog1 = reify (reportNoisyMaxGap xs1)
+  let prog2 = reify (reportNoisyMaxGap xs2)
+  buckets <- run $ profileIO 100 prog1
+  spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
+  case spec of
+    Left err -> run (print err) >> assert False
+    Right bundles -> do
+      results <- run $ runNoLoggingT (runTests 4.0 bundles)
+      case results of
+        Left err -> run (print err) >> assert False
+        Right results' -> do
+          let failures = filter isFailed results'
+          unless (null failures) $ do
+            run (print failures)
+            stop False
+          run (print (map (view solverResult) results'))
           assert (all isOk results')
 
 rnmNotPrivateTest :: Property
@@ -156,7 +178,7 @@ sparseVectorPrivacyTest xs =
           Left err -> run (print err) >> assert False
           Right results' -> do
             run (print (map (view solverResult) results'))
-            assert (length bundles == length buckets)
+            -- assert (length bundles == length buckets)
             assert (all isOk results')
 
 sparseVectorGapPrivacyTest :: PairWiseL1List Double -> Property
@@ -176,18 +198,18 @@ sparseVectorGapPrivacyTest xs =
           Left err -> run (print err) >> assert False
           Right results' -> do
             run (print (map (view solverResult) results'))
-            assert (length bundles == length buckets)
+            -- assert (length bundles == length buckets)
             assert (all isOk results')
 
 sparseVectorNotPrivateTest :: Property
 sparseVectorNotPrivateTest = monadicIO $ do
-  results <- forM ([0..50] :: [Int]) $ \_ -> do
+  results <- forM ([0..20] :: [Int]) $ \_ -> do
     (xs :: L1List Double) <- pick (l1List 1.0)
     let xs1   = map (fromRational . toRational) (left xs)
     let xs2   = map (fromRational . toRational) (right xs)
     let prog1 = reify (sparseVectorBuggy xs1 2 0)
     let prog2 = reify (sparseVectorBuggy xs2 2 0)
-    buckets <- run $ runNoLoggingT (profile 300 prog1)
+    buckets <- run $ runNoLoggingT (profile 500 prog1)
     spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
     case spec of
       Left err -> run (print err) >> stop False
@@ -196,6 +218,8 @@ sparseVectorNotPrivateTest = monadicIO $ do
         case results of
           Left err -> run (print err) >> stop False
           Right results' -> do
+            --run (print results')
+            --stop False
             run (print (map (view solverResult) results'))
             if any isFailed results' then stop True else return False
   assert (or results)
@@ -224,6 +248,10 @@ privTreePrivacyTest xs = monadicIO $ do
 prop_rnmIsDifferentiallyPrivate :: Property
 prop_rnmIsDifferentiallyPrivate =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 rnmPrivacyTest
+
+prop_rnmGapIsDifferentiallyPrivate :: Property
+prop_rnmGapIsDifferentiallyPrivate =
+  forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 rnmGapPrivacyTest
 
 prop_rnmBuggyIsNotDifferentiallyPrivate :: Property
 prop_rnmBuggyIsNotDifferentiallyPrivate = rnmNotPrivateTest
@@ -320,17 +348,26 @@ main = do
                          .&&. prop_matchSymDiffLengthList
                          .&&. prop_matchDiffLengthList
                          .&&. prop_pairWiseL1ListLength
+
+  let expectSuccessArgs = stdArgs{maxSuccess = 20, maxShrinks = 20}
+  let expectFailureArgs = stdArgs{maxSuccess = 5, maxShrinks = 20}
+
   quickCheckWithResult
     stdArgs{maxSuccess=2000}
     simpleProperties >>= printAndExitIfFailed
   quickCheckWithResult
-    stdArgs{maxSuccess=20}
+    expectSuccessArgs
     prop_rnmIsDifferentiallyPrivate >>= printAndExitIfFailed
+    {-
   quickCheckWithResult
-    stdArgs{maxSuccess=5}
+    expectSuccessArgs
+    prop_rnmGapIsDifferentiallyPrivate >>= printAndExitIfFailed
+-}
+  quickCheckWithResult
+    expectFailureArgs
     prop_rnmBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
-    stdArgs{maxSuccess=20}
+    expectSuccessArgs
     prop_smartSumIsDifferentiallyPrivate >>= printAndExitIfFailed
   {- too slow with float tolerance
   quickCheckWithResult
@@ -338,16 +375,16 @@ main = do
     prop_smartSumBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
   -}
   quickCheckWithResult
-    stdArgs{maxSuccess=20}
+    expectSuccessArgs
     prop_sparseVectorIsDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
-    stdArgs{maxSuccess=20}
+    expectSuccessArgs
     prop_sparseVectorGapIsDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
-    stdArgs{maxSuccess=5}
+    expectFailureArgs
     prop_sparseVectorBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
-    stdArgs{maxSuccess=20}
+    expectSuccessArgs
     prop_privTreeIsDifferentiallyPrivate >>= printAndExitIfFailed
 
   putStrLn $

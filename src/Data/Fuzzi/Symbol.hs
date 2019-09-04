@@ -259,6 +259,8 @@ isFailed (view solverResult -> FailedEps _ _) = True
 isFailed (view solverResult -> FailedUnSat _) = True
 isFailed _                                    = False
 
+type PathConstraints = S.Seq (BoolExpr, Bool)
+
 data SymExecError =
   UnbalancedLaplaceCalls
   | MismatchingNoiseMechanism
@@ -266,6 +268,7 @@ data SymExecError =
   | ResultDefinitelyNotEqual
   | AssertImpossible BoolExpr Bool
   | ComputationAborted AbortException
+  | AbsurdPathConstraints PathConstraints
   | InternalError String
   deriving (Show, Eq, Ord, Typeable)
 
@@ -409,23 +412,33 @@ solve_ conditions symCost eps = do
   let addToSolver (label, ast) = do
         trackedBoolVar <- liftIO $ Z3.mkFreshBoolVar cxt label
         liftIO (Z3.solverAssertAndTrack cxt solver ast trackedBoolVar)
-        --liftIO $ Z3.solverAssertCnstr cxt solver ast
+        --liftIO (Z3.optimizerAssertAndTrack cxt solver ast trackedBoolVar)
       toZ3 cond = do
         ast <- liftIO $ symbolicExprToZ3AST cxt (getBoolExpr cond)
         let prettyStr = pretty (getBoolExpr cond)
         return (prettyStr, ast)
+      --toZ3R val = do
+      --  ast <- liftIO $ symbolicExprToZ3AST cxt (getRealExpr val)
+      --  let prettyStr = pretty (getRealExpr val)
+      --  return (prettyStr, ast)
   $(logInfo) "loading constraints..."
+
   forM_ conditions $ \(pcs, cpls, eqCond) -> do
     forM_ pcs $ toZ3 >=> addToSolver
     forM_ cpls $ toZ3 >=> addToSolver
     toZ3 eqCond >>= addToSolver
+
   toZ3 (symCost %<= double eps) >>= addToSolver
+  --toZ3R symCost >>= \(_label, symCostZ3) -> do
+  --  liftIO $ Z3.optimizerMinimize cxt solver symCostZ3
   $(logInfo) "checking constraints..."
   r <- liftIO $ Z3.solverCheck cxt solver
+  --r <- liftIO $ Z3.optimizerCheck cxt solver []
   case r of
     Z3.Sat -> do
       $(logInfo) "solver returned sat, retrieving total privacy cost..."
       model <- liftIO $ Z3.solverGetModel cxt solver
+      --model <- liftIO $ Z3.optimizerGetModel cxt solver
       let getCostValue sym = do
             ast <- liftIO $ symbolicExprToZ3AST cxt (getRealExpr sym)
             liftIO $ Z3.evalReal cxt model ast
@@ -433,17 +446,22 @@ solve_ conditions symCost eps = do
       case cost of
         Just cost' -> do
           costForced <- liftIO $ evaluate (force cost')
-          return (Ok (fromRational costForced) )--model)
+          let costForced' = fromRational costForced
+          if costForced' <= eps
+          then return (Ok costForced')
+          else return (FailedEps eps costForced')
         Nothing ->
           error "failed to retrieve total privacy cost..."
     Z3.Unsat -> do
       $(logInfo) "solver returned unsat, retrieving unsat core..."
       cores <- liftIO $ Z3.solverGetUnsatCore cxt solver
+      --cores <- liftIO $ Z3.optimizerGetUnsatCore cxt solver
       strs <- liftIO $ mapM ((liftIO . evaluate . force) <=< Z3.astToString cxt) cores
       return (FailedUnSat strs)
     Z3.Undef -> do
       $(logInfo) "solver returned undef, retrieving reason..."
       reason <- liftIO $ Z3.solverGetReasonUnknown cxt solver
+      --reason <- liftIO $ Z3.optimizerGetReasonUnknown cxt solver
       return (Unknown reason)
 
 solve :: ( MonadIO m
@@ -490,17 +508,26 @@ gatherConstraints bucket code computation = do
           code' = st ^. sourceCode
           notMatching = filter (not . flip match a) (map fst bucket)
       in
-        if null notMatching
-        then
-          return (Right (a, SymbolicConstraints pc cc csyms osyms [code']))
-        else do
-          $(logInfo) ("definitely not equal to symbolic result: " <> pack (show a))
-          $(logInfo) (pack (show notMatching))
-          return (Left ResultDefinitelyNotEqual)
+        if isAbsurd pc
+        then do
+          $(logInfo) ("discarding absurd path constraints...")
+          $(logInfo) (pack (show pc))
+          return (Left (AbsurdPathConstraints pc))
+        else
+          if null notMatching
+          then
+            return (Right (a, SymbolicConstraints pc cc csyms osyms [code']))
+          else do
+            $(logInfo) ("definitely not equal to symbolic result: " <> pack (show a))
+            $(logInfo) (pack (show notMatching))
+            return (Left ResultDefinitelyNotEqual)
   where run =
           runExceptT
           . flip runStateT (initialSymbolicState bucket code)
           . runSymbolicT_
+
+        isAbsurd' pc (c, _) = (c, True) `elem` pc && (c, False) `elem` pc
+        isAbsurd  pc        = any (isAbsurd' pc) pc
 
 symbolicExprToZ3AST :: (MonadIO m) => Z3.Context -> SymbolicExpr -> m Z3.AST
 symbolicExprToZ3AST ctx (RealVar name) = do
@@ -638,6 +665,8 @@ laplaceSymbolic centerWithProvenance w = do
   epsSym   <- freshSReal "eps"
   shiftSym <- freshSReal "shift"
 
+  traceIdx <- gets (\st -> length (st ^. costSymbols))
+
   let shiftCond =
         abs (sReal concreteSampleSym + sReal shiftSym - sReal lapSym)
         %<= fromRational k_FLOAT_TOLERANCE
@@ -650,7 +679,7 @@ laplaceSymbolic centerWithProvenance w = do
   modify (\st -> st & costSymbols %~ (S.|> sReal epsSym))
   modify (\st -> st & openSymbols %~ (S.|> (concreteSampleSym, concreteCenterSym, lapSym)))
 
-  let provenance = D.Laplace (D.provenance centerWithProvenance) w
+  let provenance = D.Laplace traceIdx (D.provenance centerWithProvenance) w
   return (D.WithDistributionProvenance (sReal lapSym) provenance)
 
 gaussianSymbolic :: (Monad m)

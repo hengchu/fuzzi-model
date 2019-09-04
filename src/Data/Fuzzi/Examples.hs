@@ -38,7 +38,7 @@ reportNoisyMaxAux :: (FuzziLang m a)
                   -> Fuzzi Int
                   -> Fuzzi a
                   -> Mon m (Fuzzi Int)
-reportNoisyMaxAux []     _       maxIdx _       = return maxIdx
+reportNoisyMaxAux []           _       maxIdx _       = return maxIdx
 reportNoisyMaxAux (xNoised:xs) lastIdx maxIdx currMax = do
   let thisIdx = lastIdx + 1
   ifM (xNoised %> currMax)
@@ -54,6 +54,41 @@ reportNoisyMax (x:xs) = do
   xNoised <- lap x 1.0
   xsNoised <- mapM (`lap` 1.0) xs
   reportNoisyMaxAux xsNoised 0 0 xNoised
+
+reportNoisyMaxGap :: (FuzziLang m a)
+                  => [Fuzzi a]
+                  -> Mon m (Fuzzi Int, Fuzzi a)
+reportNoisyMaxGap []     = error "reportNoisyMaxGap received empty input"
+--reportNoisyMaxGap (_:[]) = error "reportNoisyMaxGap received only one input"
+reportNoisyMaxGap (x:xs) = do
+  xNoised <- lap x 1.0
+  --yNoised <- lap y 1.0
+  xsNoised <- mapM (`lap` 1.0) xs
+  reportNoisyMaxGapAux xsNoised 0 0 xNoised xNoised
+  --ifM (xNoised %> yNoised)
+  --    (reportNoisyMaxGapAux xsNoised 1 0 xNoised yNoised)
+  --    (reportNoisyMaxGapAux xsNoised 1 1 yNoised xNoised)
+  --ifM (x %> y)
+  --  (reportNoisyMaxGapAux xs 1 0 x y)
+  --  (reportNoisyMaxGapAux xs 1 1 y x)
+
+reportNoisyMaxGapAux :: (FuzziLang m a)
+                     => [Fuzzi a]             -- ^input data
+                     -> Fuzzi Int             -- ^last iteration index
+                     -> Fuzzi Int             -- ^current max index
+                     -> Fuzzi a               -- ^current maximum
+                     -> Fuzzi a               -- ^current runner-up
+                     -> Mon m (Fuzzi Int, Fuzzi a)
+reportNoisyMaxGapAux []           _       maxIdx currMax currRunnerUp =
+  return $ (maxIdx, currMax - currRunnerUp)
+reportNoisyMaxGapAux (xNoised:xs) lastIdx maxIdx currMax currRunnerUp = do
+  let thisIdx = lastIdx + 1
+  ifM (xNoised %> currMax)
+      (reportNoisyMaxGapAux xs thisIdx thisIdx xNoised currMax)
+      (ifM (xNoised %> currRunnerUp)
+           (reportNoisyMaxGapAux xs thisIdx maxIdx currMax xNoised)
+           (reportNoisyMaxGapAux xs thisIdx maxIdx currMax currRunnerUp)
+      )
 
 reportNoisyMaxBuggy :: forall m a.
                        (FuzziLang m a)
@@ -179,7 +214,7 @@ sparseVectorBuggyAux :: (FuzziLang m a)
                      -> Fuzzi [a]
                      -> Mon m (Fuzzi [a])
 sparseVectorBuggyAux []     _n _threshold acc = return acc
-sparseVectorBuggyAux (x:xs) n threshold acc
+sparseVectorBuggyAux (x:xs) n  threshold  acc
   | n <= 0    = return acc
   | otherwise =
       ifM (x %> threshold)

@@ -1,7 +1,7 @@
 module Data.Fuzzi.Distribution where
 
 import Control.Monad.State.Class
-import Control.Monad.Trans.State hiding (modify)
+import Control.Monad.Trans.State hiding (modify, gets)
 import Data.Functor.Classes
 import Data.Functor.Identity
 import Data.Random.Distribution.Normal
@@ -63,7 +63,8 @@ laplaceTraced center width = do
   let centerValue = value center
   lapSample <- (TracedDist . MT.lift)
     (laplaceConcrete centerValue width)
-  let prov  = Laplace (provenance center) width
+  traceIdx <- gets Data.Sequence.length
+  let prov  = Laplace traceIdx (provenance center) width
   let trace = TrLaplace centerValue width lapSample
   modify (|> trace)
   return (WithDistributionProvenance lapSample prov)
@@ -75,7 +76,8 @@ gaussianTraced center width = do
   let centerValue = value center
   gaussSample <- (TracedDist . MT.lift)
     (gaussianConcrete centerValue width)
-  let prov  = Gaussian (provenance center) width
+  traceIdx <- gets Data.Sequence.length
+  let prov  = Gaussian traceIdx (provenance center) width
   let trace = TrGaussian centerValue width gaussSample
   modify (|> trace)
   return (WithDistributionProvenance gaussSample prov)
@@ -105,10 +107,12 @@ data UOp = Abs | Sign
 
 data DistributionProvenance (a :: *) where
   Deterministic :: a -> DistributionProvenance a
-  Laplace       :: DistributionProvenance a
+  Laplace       :: Int
+                -> DistributionProvenance a
                 -> Double
                 -> DistributionProvenance a
-  Gaussian      :: DistributionProvenance a
+  Gaussian      :: Int
+                -> DistributionProvenance a
                 -> Double
                 -> DistributionProvenance a
   Arith         :: DistributionProvenance a
@@ -143,10 +147,11 @@ data WithDistributionProvenance a =
   WithDistributionProvenance { value :: a
                              , provenance :: DistributionProvenance a
                              }
-  deriving (Eq, Ord, Typeable)
+  deriving (Show, Eq, Ord, Typeable)
 
-instance Show a => Show (WithDistributionProvenance a) where
-  show a = show (value a)
+
+-- instance Show a => Show (WithDistributionProvenance a) where
+--   show a = show (value a)
 
 instance (NotList a, Num a) => Num (WithDistributionProvenance a) where
   a + b = WithDistributionProvenance (value a + value b) (provenance a + provenance b)
@@ -237,11 +242,29 @@ instance MonadAssert TracedDist where
   type BoolType TracedDist = Bool
   assertTrue _ = return ()
 
+matchProvenance :: Matchable a b
+                 => DistributionProvenance a
+                 -> DistributionProvenance b
+                 -> Bool
+matchProvenance (Deterministic _)          (Deterministic _)             = True
+matchProvenance (Laplace idx center width) (Laplace idx' center' width') =
+  idx == idx' && matchProvenance center center' && width == width'
+matchProvenance (Gaussian idx center width) (Gaussian idx' center' width') =
+  idx == idx' && matchProvenance center center' && width == width'
+matchProvenance (Arith lhs op rhs) (Arith lhs' op' rhs') =
+  op == op' && matchProvenance lhs lhs' && matchProvenance rhs rhs'
+matchProvenance (Unary op operand) (Unary op' operand') =
+  op == op' && matchProvenance operand operand'
+matchProvenance _ _ = False
+
 instance Matchable a b =>
   Matchable
     (WithDistributionProvenance a)
     (WithDistributionProvenance b) where
-  match a b = match (value a) (value b)
+  match a b =
+    let provA = provenance a
+        provB = provenance b
+    in match (value a) (value b) -- && matchProvenance provA provB
 
 instance MonadThrow TracedDist where
   throwM = liftIO . throwM
@@ -269,6 +292,12 @@ instance HasProvenance a => HasProvenance (Maybe a) where
   type DropProvenance (Maybe a) = Maybe (DropProvenance a)
   getProvenance = fmap getProvenance
   dropProvenance = fmap dropProvenance
+
+instance (Eq a, HasProvenance b) => HasProvenance (a, b) where
+  type GetProvenance (a, b) = (a, GetProvenance b)
+  type DropProvenance (a, b) = (a, DropProvenance b)
+  getProvenance (a, b)  = (a, getProvenance b)
+  dropProvenance (a, b) = (a, dropProvenance b)
 
 instance HasProvenance () where
   type GetProvenance () = ()

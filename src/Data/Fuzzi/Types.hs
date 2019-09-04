@@ -136,6 +136,7 @@ instance FuzziType a => FuzziType (PrivTree1D a)
 instance FuzziType a => FuzziType [a]
 instance FuzziType a => FuzziType (Maybe a)
 instance FuzziType PrivTreeNode1D
+instance (FuzziType a, FuzziType b) => FuzziType (a, b)
 
 instance Numeric Double
 instance FracNumeric Double

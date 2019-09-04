@@ -24,7 +24,13 @@ class Neighbor a where
 data PairWiseL1List a = PairWiseL1List {
   _pwlDataAndDiff :: [(a, a)]
   , _pwlDiff      :: a
-  } deriving (Show, Eq, Ord)
+  } deriving (Eq, Ord)
+
+instance (Show a, Num a) => Show (PairWiseL1List a) where
+  show xs =
+    let xs1 = left xs
+        xs2 = right xs
+    in "PairWiseL1List { left = " ++ show xs1 ++ ", right = " ++ show xs2 ++ " }"
 
 data L1List a = L1List {
   _llListData :: [(a, a)]
