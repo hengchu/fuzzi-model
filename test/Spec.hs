@@ -70,13 +70,13 @@ smartSumPrivacyTest xs = label ("smartsum input size: " ++ show (length xs)) $ m
   case spec of
     Left err -> run (print err) >> assert False
     Right bundles -> do
-      results <- run $ runNoLoggingT (runTests 2.0 bundles)
+      results <- run $ runNoLoggingT (runTestCases 2.0 bundles)
       case results of
         Left err -> run (print err) >> assert False
         Right results' -> do
-          run (print (map (view solverResult) results'))
+          --run (print (map (view solverResult) results'))
           -- assert (length bundles == length buckets)
-          assert (all isOk results')
+          assert (all isTestCaseOk results')
 
 rnmPrivacyTest :: PairWiseL1List Double -> Property
 rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $ do
@@ -89,13 +89,13 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $
   case spec of
     Left err -> run (print err) >> assert False
     Right bundles -> do
-      results <- run $ runNoLoggingT (runTests 2.0 bundles)
+      results <- run $ runNoLoggingT (runTestCases 2.0 bundles)
       case results of
         Left err -> run (print err) >> assert False
         Right results' -> do
-          run (print (map (view solverResult) results'))
+          --run (print (map (view solverResult) results'))
           -- assert (length bundles == length buckets)
-          assert (all isOk results')
+          assert (all isTestCaseOk results')
 
 rnmGapPrivacyTest :: PairWiseL1List Double -> Property
 rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $ monadicIO $ do
@@ -108,16 +108,16 @@ rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $ monad
   case spec of
     Left err -> run (print err) >> assert False
     Right bundles -> do
-      results <- run $ runNoLoggingT (runTests 2.0 bundles)
+      results <- run $ runNoLoggingT (runTestCases 2.0 bundles)
       case results of
         Left err -> run (print err) >> assert False
         Right results' -> do
-          let failures = filter isFailed results'
+          let failures = filter isTestCaseFailed results'
           unless (null failures) $ do
             run (print failures)
             stop False
-          run (print (map (view solverResult) results'))
-          assert (all isOk results')
+          --run (print (map (view solverResult) results'))
+          assert (all isTestCaseOk results')
 
 rnmNotPrivateTest :: Property
 rnmNotPrivateTest = monadicIO $ do
@@ -132,12 +132,12 @@ rnmNotPrivateTest = monadicIO $ do
     case spec of
       Left err -> run (print err) >> stop False
       Right bundles -> do
-        results <- run $ runNoLoggingT (runTests 2.0 bundles)
+        results <- run $ runNoLoggingT (runTestCases 2.0 bundles)
         case results of
           Left err -> run (print err) >> stop False
           Right results' -> do
-            run (print (map (view solverResult) results'))
-            if any isFailed results' then stop True else return False
+            --run (print (map (view solverResult) results'))
+            if any isTestCaseFailed results' then stop True else return False
   assert (or results)
 
 smartSumNotPrivateTest :: Property
@@ -153,12 +153,12 @@ smartSumNotPrivateTest = monadicIO $ do
     case spec of
       Left err -> run (print err) >> stop False
       Right bundles -> do
-        results <- run $ runNoLoggingT (runTests 2.0 bundles)
+        results <- run $ runNoLoggingT (runTestCases 2.0 bundles)
         case results of
           Left err -> run (print err) >> stop False
           Right results' -> do
-            run (print (map (view solverResult) results'))
-            if any isFailed results' then stop True else return False
+            --run (print (map (view solverResult) results'))
+            if any isTestCaseFailed results' then stop True else return False
   assert (or results)
 
 sparseVectorPrivacyTest :: PairWiseL1List Double -> Property
@@ -173,13 +173,13 @@ sparseVectorPrivacyTest xs =
     case spec of
       Left err -> run (print err) >> assert False
       Right bundles -> do
-        results <- run $ runNoLoggingT (runTests 1.0 bundles)
+        results <- run $ runNoLoggingT (runTestCases 1.0 bundles)
         case results of
           Left err -> run (print err) >> assert False
           Right results' -> do
-            run (print (map (view solverResult) results'))
+            --run (print (map (view solverResult) results'))
             -- assert (length bundles == length buckets)
-            assert (all isOk results')
+            assert (all isTestCaseOk results')
 
 sparseVectorGapPrivacyTest :: PairWiseL1List Double -> Property
 sparseVectorGapPrivacyTest xs =
@@ -193,13 +193,13 @@ sparseVectorGapPrivacyTest xs =
     case spec of
       Left err -> run (print err) >> assert False
       Right bundles -> do
-        results <- run $ runNoLoggingT (runTests 1.0 bundles)
+        results <- run $ runNoLoggingT (runTestCases 1.0 bundles)
         case results of
           Left err -> run (print err) >> assert False
           Right results' -> do
-            run (print (map (view solverResult) results'))
+            --run (print (map (view solverResult) results'))
             -- assert (length bundles == length buckets)
-            assert (all isOk results')
+            assert (all isTestCaseOk results')
 
 sparseVectorNotPrivateTest :: Property
 sparseVectorNotPrivateTest = monadicIO $ do
@@ -214,14 +214,14 @@ sparseVectorNotPrivateTest = monadicIO $ do
     case spec of
       Left err -> run (print err) >> stop False
       Right bundles -> do
-        results <- run $ runNoLoggingT (runTests 1.0 bundles)
+        results <- run $ runNoLoggingT (runTestCases 1.0 bundles)
         case results of
           Left err -> run (print err) >> stop False
           Right results' -> do
             --run (print results')
             --stop False
-            run (print (map (view solverResult) results'))
-            if any isFailed results' then stop True else return False
+            --run (print (map (view solverResult) results'))
+            if any isTestCaseFailed results' then stop True else return False
   assert (or results)
 
 privTreePrivacyTest :: BagList Double -> Property
@@ -235,15 +235,15 @@ privTreePrivacyTest xs = monadicIO $ do
   case spec of
     Left err -> run (print err) >> stop False
     Right bundles -> do
-      results <- run $ runNoLoggingT (runTests k_PT_EPSILON bundles)
+      results <- run $ runNoLoggingT (runTestCases k_PT_EPSILON bundles)
       case results of
         Left err -> run (print err) >> stop False
         Right results' -> do
-          run (print (map (view solverResult) results'))
-          let failures = filter isFailed results'
+          --run (print (map (view solverResult) results'))
+          let failures = filter isTestCaseFailed results'
           unless (null failures) $
             run (print failures)
-          assert (all isOk results')
+          assert (all isTestCaseOk results')
 
 prop_rnmIsDifferentiallyPrivate :: Property
 prop_rnmIsDifferentiallyPrivate =

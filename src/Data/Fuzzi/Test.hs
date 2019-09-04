@@ -30,6 +30,20 @@ data TestBundle concrete symbolic = TestBundle {
 
 makeLensesWith abbreviatedFields ''TestBundle
 
+newtype TestCase concrete symbolic =
+  TestCase [TestBundle concrete symbolic]
+  deriving (Show, Eq, Ord)
+
+newtype TestCaseResult concrete symbolic =
+  TestCaseResult [TestResult concrete symbolic]
+  deriving (Show, Eq, Ord)
+
+isTestCaseOk :: TestCaseResult concrete symbolic -> Bool
+isTestCaseOk (TestCaseResult results) = any isOk results
+
+isTestCaseFailed :: TestCaseResult concrete symbolic -> Bool
+isTestCaseFailed (TestCaseResult results) = all isFailed results
+
 profile :: ( Show (GetProvenance a)
            , Ord (GetProvenance a)
            , HasProvenance a
@@ -139,7 +153,7 @@ symExecGeneralize :: forall m concreteResult symbolicResult.
                      )
                   => Buckets concreteResult
                   -> Fuzzi (SymbolicT concreteResult m symbolicResult)
-                  -> m (Either SymExecError [TestBundle concreteResult symbolicResult])
+                  -> m (Either SymExecError [TestCase concreteResult symbolicResult])
 symExecGeneralize concreteBuckets prog = runExceptT $ do
   bucketAndPaths <- lift $ symExec concreteBuckets prog
   let symBuckets = for bucketAndPaths $ \(bucket, paths) ->
@@ -153,7 +167,7 @@ symExecGeneralize concreteBuckets prog = runExceptT $ do
         genConstraints <- liftEither (generalize constraints)
         return (TestBundle genConstraints (head symVals) bucket)
 
-  return (concat buckets)
+  return (map TestCase buckets)
 
   where for = flip map
 
@@ -199,3 +213,19 @@ runTests :: ( MonadIO m
 runTests eps bundles = do
   results <- mapM (runTestBundle eps) bundles
   return (sequence results)
+
+runTestCases :: ( MonadIO m
+                , MonadLogger m
+                , HasProvenance concreteResult
+                , HasProvenance symbolicResult
+                , Show concreteResult
+                , Show symbolicResult
+                , Show (DropProvenance concreteResult)
+                , Show (DropProvenance symbolicResult)
+                , SEq (DropProvenance concreteResult) (DropProvenance symbolicResult))
+             => Epsilon
+             -> [TestCase concreteResult symbolicResult]
+             -> m (Either SymExecError [TestCaseResult concreteResult symbolicResult])
+runTestCases eps cases = do
+  (errorOrResults :: _) <- mapM (\(TestCase bundles) -> (runTests eps bundles)) cases
+  return $ fmap (map TestCaseResult) (sequence errorOrResults)
