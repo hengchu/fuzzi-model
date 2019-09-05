@@ -108,7 +108,7 @@ rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $ monad
   case spec of
     Left err -> run (print err) >> assert False
     Right bundles -> do
-      results <- run $ runNoLoggingT (runTests 2.0 bundles)
+      results <- run $ runNoLoggingT (runTests 4.0 bundles)
       case results of
         Left err -> run (print err) >> assert False
         Right results' -> do

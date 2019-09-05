@@ -197,6 +197,10 @@ prettySymbolic currPrec (Or x y) =
     TPP.<+> prettySymbolic (thisPrec + thisFixity) y
 prettySymbolic _ (Not x) =
   TPP.text "not" TPP.<> TPP.parens (prettySymbolic 0 x)
+prettySymbolic _ (Ite (e1 `Ge` (Rat 0)) e2 (Rat 0 `Sub` e3)) -- an optimization for our encoding of absolute values
+  | e1 == e2 && e2 == e3 =
+    TPP.text "abs" TPP.<> TPP.parens (prettyExpr)
+  where prettyExpr = prettySymbolic 0 e1
 prettySymbolic _ (Ite cond x y) =
   TPP.text "ite" TPP.<> TPP.parens (prettyCond `PP.commaSep`
                                     prettyX    `PP.commaSep`

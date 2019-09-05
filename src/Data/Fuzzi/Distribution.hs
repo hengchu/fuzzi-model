@@ -299,11 +299,11 @@ instance HasProvenance a => HasProvenance (Maybe a) where
   getProvenance = fmap getProvenance
   dropProvenance = fmap dropProvenance
 
-instance (Eq a, HasProvenance b) => HasProvenance (a, b) where
-  type GetProvenance (a, b) = (a, GetProvenance b)
-  type DropProvenance (a, b) = (a, DropProvenance b)
-  getProvenance (a, b)  = (a, getProvenance b)
-  dropProvenance (a, b) = (a, dropProvenance b)
+instance (HasProvenance a, HasProvenance b) => HasProvenance (a, b) where
+  type GetProvenance (a, b) = (GetProvenance a, GetProvenance b)
+  type DropProvenance (a, b) = (DropProvenance a, DropProvenance b)
+  getProvenance (a, b)  = (getProvenance a, getProvenance b)
+  dropProvenance (a, b) = (dropProvenance a, dropProvenance b)
 
 instance HasProvenance () where
   type GetProvenance () = ()
