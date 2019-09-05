@@ -705,7 +705,7 @@ laplaceSymbolic' tol centerWithProvenance w = do
              %<= fromRational tol
   modify (\st -> st & couplingConstraints %~ (S.|> shiftCond))
   let costCond =
-        sReal epsSym %>= (abs (c - sReal concreteCenterSym + sReal shiftSym)
+        sReal epsSym %>= (abs (sReal concreteCenterSym + sReal shiftSym - c)
                           / (fromRational . toRational $ w))
   modify (\st -> st & couplingConstraints %~ (S.|> costCond))
 

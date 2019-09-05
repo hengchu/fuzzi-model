@@ -330,6 +330,16 @@ prop_pairWiseL1ListLength :: Property
 prop_pairWiseL1ListLength =
   forAll (pairWiseL1 1.0) $ \(xs :: PairWiseL1List Double) -> length (left xs) == length (right xs)
 
+prop_rnmGapLemma7 :: Property
+prop_rnmGapLemma7 =
+  forAll (pairWiseL1 1.0) $
+  \(xs :: PairWiseL1List Double) ->
+    let xs1 = left  xs
+        xs2 = right xs
+        max1 = maximum xs1
+        max2 = maximum xs2
+    in abs (max1 - max2) <= 1.0
+
 printAndExitIfFailed :: Result -> IO ()
 printAndExitIfFailed r = do
   print r
@@ -348,6 +358,7 @@ main = do
                          .&&. prop_matchSymDiffLengthList
                          .&&. prop_matchDiffLengthList
                          .&&. prop_pairWiseL1ListLength
+                         .&&. prop_rnmGapLemma7
 
   let expectSuccessArgs = stdArgs{maxSuccess = 20, maxShrinks = 20}
   let expectFailureArgs = stdArgs{maxSuccess = 5, maxShrinks = 20}
