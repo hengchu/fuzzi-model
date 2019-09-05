@@ -30,8 +30,10 @@ eval (IfM (cond :: Fuzzi bool) t f) =
         (error ("The type "
                 ++ show (typeRep @bool)
                 ++ " does not support concrete execution"))
-eval (Laplace _ c w) = laplace (eval c) w
-eval (Gaussian _ c w) = gaussian (eval c) w
+eval (Laplace c w) = laplace (eval c) w
+eval (Gaussian c w) = gaussian (eval c) w
+eval (Laplace' tol c w) = laplace' tol (eval c) w
+eval (Gaussian' tol c w) = gaussian' tol (eval c) w
 eval (Variable v) =
   error ("unexpected variable " ++ show v ++ " :: " ++ show (typeRep @a))
 eval (PrettyPrintVariable v) =

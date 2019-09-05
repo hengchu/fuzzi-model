@@ -116,12 +116,18 @@ pretty (IfM cond t f) = do
     text "else",
     nest 2 f'
     ]
-pretty (Laplace _ c w) = do
+pretty (Laplace c w) = do
   c' <- pretty c
   return $ hsep [ text "lap", c', double w ]
-pretty (Gaussian _ c w) = do
+pretty (Gaussian c w) = do
   c' <- pretty c
   return $ hsep [ text "gauss", c', double w ]
+pretty (Laplace' tol c w) = do
+  c' <- pretty c
+  return $ hsep [ text "lap'", text (show tol), c', double w ]
+pretty (Gaussian' tol c w) = do
+  c' <- pretty c
+  return $ hsep [ text "gauss'", text (show tol), c', double w ]
 pretty (And a b) = do
   a' <- pretty a
   b' <- pretty b

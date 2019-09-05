@@ -58,8 +58,8 @@ reportNoisyMax (x:xs) = do
 reportNoisyMaxGap :: (FuzziLang m a)
                   => [Fuzzi a]
                   -> Mon m (Fuzzi Int, Fuzzi a)
-reportNoisyMaxGap []     = error "reportNoisyMaxGap received empty input"
-reportNoisyMaxGap (_:[]) = error "reportNoisyMaxGap received only one input"
+reportNoisyMaxGap []  = error "reportNoisyMaxGap received empty input"
+reportNoisyMaxGap [_] = error "reportNoisyMaxGap received only one input"
 reportNoisyMaxGap (x:y:xs) = do
   xNoised <- lap x 1.0
   yNoised <- lap y 1.0
@@ -80,7 +80,7 @@ reportNoisyMaxGapAux :: (FuzziLang m a)
                      -> Fuzzi a               -- ^current runner-up
                      -> Mon m (Fuzzi Int, Fuzzi a)
 reportNoisyMaxGapAux []           _       maxIdx currMax currRunnerUp =
-  return $ (maxIdx, currMax - currRunnerUp)
+  return (maxIdx, currMax - currRunnerUp)
 reportNoisyMaxGapAux (xNoised:xs) lastIdx maxIdx currMax currRunnerUp = do
   let thisIdx = lastIdx + 1
   ifM (xNoised %> currMax)
@@ -129,10 +129,11 @@ smartSumAuxBuggy []     _    _ _ _   results = return results
 smartSumAuxBuggy (x:xs) next n i sum results = do
   let sum' = sum + x
   if_ (((i + 1) `imod` 2) %== 0)
-      (do n' <- lap (n + sum') 1.0
+      (do n' <- lapNoTolerance (n + sum') 1.0
           smartSumAuxBuggy xs n'    n' (i+1) sum' (results `snoc` n'))    -- here's the bug
-      (do next' <- lap (next + x) 1.0
+      (do next' <- lapNoTolerance (next + x) 1.0
           smartSumAuxBuggy xs next' n  (i+1) sum' (results `snoc` next'))
+  where lapNoTolerance = lap' 0
 
 smartSum :: forall m a.
             (FuzziLang m a)
@@ -193,7 +194,7 @@ sparseVectorGapAux (x:xs)  n  threshold acc
   | n <= 0 = return acc
   | otherwise =
     ifM (x %> threshold)
-        (sparseVectorGapAux xs (n-1) threshold (acc `snoc` (just $ x - threshold)))
+        (sparseVectorGapAux xs (n-1) threshold (acc `snoc` just (x - threshold)))
         (sparseVectorGapAux xs n     threshold (acc `snoc` nothing))
 
 sparseVectorBuggy :: forall m a.

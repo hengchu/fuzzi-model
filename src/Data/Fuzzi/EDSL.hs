@@ -9,6 +9,8 @@ module Data.Fuzzi.EDSL (
   , ifM
   , lap
   , gauss
+  , lap'
+  , gauss'
   , fst_
   , snd_
   , pair
@@ -30,7 +32,7 @@ module Data.Fuzzi.EDSL (
   ) where
 
 import Data.Coerce
-import Type.Reflection (TypeRep, Typeable, typeRep, eqTypeRep, (:~~:)(..))
+import Type.Reflection (Typeable, typeRep, eqTypeRep, (:~~:)(..))
 import Data.Fuzzi.Types
 import Control.Monad.Catch
 
@@ -59,8 +61,10 @@ data Fuzzi (a :: *) where
   Lit         :: (FuzziType a) => a -> Fuzzi a
   If          :: (ConcreteBoolean bool) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
   IfM         :: (FuzziType a, Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a) -> Fuzzi (m a)
-  Laplace     :: (Distribution m a) => TypeRep m -> Fuzzi a -> Double -> Fuzzi (m a)
-  Gaussian    :: (Distribution m a) => TypeRep m -> Fuzzi a -> Double -> Fuzzi (m a)
+  Laplace     :: (Distribution m a) =>             Fuzzi a -> Double -> Fuzzi (m a)
+  Laplace'    :: (Distribution m a) => Rational -> Fuzzi a -> Double -> Fuzzi (m a)
+  Gaussian    :: (Distribution m a) =>             Fuzzi a -> Double -> Fuzzi (m a)
+  Gaussian'   :: (Distribution m a) => Rational -> Fuzzi a -> Double -> Fuzzi (m a)
   Variable    :: (Typeable a) => Int -> Fuzzi a
 
   PrettyPrintVariable :: (Typeable a) => String -> Fuzzi a
@@ -161,10 +165,16 @@ ifM :: ( Syntactic1 m
 ifM c t f = fromDeepRepr1 $ IfM c (toDeepRepr1 t) (toDeepRepr1 f)
 
 lap :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
-lap c w = fromDeepRepr $ Laplace (typeRep @m) c w -- Mon ((Bind (Laplace c w)))
+lap c w = fromDeepRepr $ Laplace c w -- Mon ((Bind (Laplace c w)))
 
 gauss :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
-gauss c w = fromDeepRepr $ Gaussian (typeRep @m) c w --  Mon ((Bind (Gaussian c w)))
+gauss c w = fromDeepRepr $ Gaussian c w --  Mon ((Bind (Gaussian c w)))
+
+lap' :: forall m a. Distribution m a => Rational -> Fuzzi a -> Double -> Mon m (Fuzzi a)
+lap' tol c w = fromDeepRepr $ Laplace' tol c w -- Mon ((Bind (Laplace c w)))
+
+gauss' :: forall m a. Distribution m a => Rational -> Fuzzi a -> Double -> Mon m (Fuzzi a)
+gauss' tol c w = fromDeepRepr $ Gaussian' tol c w --  Mon ((Bind (Gaussian c w)))
 
 pair :: (Syntactic a, Syntactic b) => a -> b -> (a, b)
 pair a b = fromDeepRepr $ Pair (toDeepRepr a) (toDeepRepr b)
@@ -220,8 +230,10 @@ subst v term filling =
     Lit x -> Lit x
     If cond t f -> If (subst v cond filling) (subst v t filling) (subst v f filling)
     IfM cond t f -> IfM (subst v cond filling) (subst v t filling) (subst v f filling)
-    Laplace tr c w -> Laplace tr (subst v c filling) w
-    Gaussian tr c w -> Gaussian tr (subst v c filling) w
+    Laplace c w -> Laplace (subst v c filling) w
+    Gaussian c w -> Gaussian (subst v c filling) w
+    Laplace' tol c w -> Laplace' tol (subst v c filling) w
+    Gaussian' tol c w -> Gaussian' tol (subst v c filling) w
 
     Variable v' ->
       case (v == v', eqTypeRep (typeRep @varType) (typeRep @a)) of
@@ -299,10 +311,14 @@ streamlineAux var (IfM cond t f) =
   let conds = streamlineAux var cond
   in [Sequence (AssertTrueM cond') t' | cond' <- conds, t' <- streamlineAux var t]
      ++ [Sequence (AssertFalseM cond') f' | cond' <- conds, f' <- streamlineAux var f]
-streamlineAux var (Laplace tr c w) =
-  [Laplace tr c' w | c' <- streamlineAux var c]
-streamlineAux var (Gaussian tr c w) =
-  [Gaussian tr c' w | c' <- streamlineAux var c]
+streamlineAux var (Laplace c w) =
+  [Laplace c' w | c' <- streamlineAux var c]
+streamlineAux var (Gaussian c w) =
+  [Gaussian c' w | c' <- streamlineAux var c]
+streamlineAux var (Laplace' tol c w) =
+  [Laplace' tol c' w | c' <- streamlineAux var c]
+streamlineAux var (Gaussian' tol c w) =
+  [Gaussian' tol c' w | c' <- streamlineAux var c]
 streamlineAux _ v@(Variable _) = [v]
 streamlineAux _ v@(PrettyPrintVariable _) = [v]
 streamlineAux var (And a b) =

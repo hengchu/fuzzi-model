@@ -218,7 +218,9 @@ prettySymbolic _ (Substitute x substs) =
 class Matchable a b => SEq a b where
   symEq :: a -> b -> BoolExpr
 
-newtype RealExpr = RealExpr { getRealExpr :: SymbolicExpr }
+data RealExpr = RealExpr { getTolerance :: Rational
+                         , getRealExpr :: SymbolicExpr
+                         }
   deriving (Eq, Ord)
 
 instance Show RealExpr where
@@ -496,10 +498,10 @@ isAbsurd sc = do
         ast <- liftIO $ symbolicExprToZ3AST cxt (getBoolExpr cond)
         let prettyStr = pretty (getBoolExpr cond)
         return (prettyStr, ast)
-  forM (sc ^. pathConstraints) $ \(cond, truth) -> do
+  forM_ (sc ^. pathConstraints) $ \(cond, truth) -> do
     (label, condZ3) <- toZ3 (if truth then cond else neg cond)
     addToSolver (label, condZ3)
-  forM (sc ^. couplingConstraints) (toZ3 >=> addToSolver)
+  forM_ (sc ^. couplingConstraints) (toZ3 >=> addToSolver)
 
   r <- liftIO $ Z3.solverCheck cxt solver
   case r of
@@ -619,7 +621,10 @@ symbolicExprToZ3AST ctx (Substitute a fts) = do
   liftIO (Z3.substitute ctx a' fts')
 
 sReal :: String -> RealExpr
-sReal = RealExpr . RealVar
+sReal = RealExpr k_FLOAT_TOLERANCE . RealVar
+
+sReal' :: Rational -> String -> RealExpr
+sReal' tol = RealExpr tol . RealVar
 
 freshSReal :: (Monad m) => String -> SymbolicT r m String
 freshSReal name = do
@@ -662,10 +667,17 @@ popTraces = do
   where rebuild = map rest
 
 laplaceSymbolic :: (Monad m)
-                => D.WithDistributionProvenance RealExpr
-                -> Double
-                -> SymbolicT r m (D.WithDistributionProvenance RealExpr)
-laplaceSymbolic centerWithProvenance w = do
+                 => D.WithDistributionProvenance RealExpr
+                 -> Double
+                 -> SymbolicT r m (D.WithDistributionProvenance RealExpr)
+laplaceSymbolic = laplaceSymbolic' k_FLOAT_TOLERANCE
+
+laplaceSymbolic' :: (Monad m)
+                 => Rational
+                 -> D.WithDistributionProvenance RealExpr
+                 -> Double
+                 -> SymbolicT r m (D.WithDistributionProvenance RealExpr)
+laplaceSymbolic' tol centerWithProvenance w = do
   let c = D.value centerWithProvenance
   lapSym <- freshSReal "lap"
   matchedTraces <- popTraces
@@ -687,8 +699,10 @@ laplaceSymbolic centerWithProvenance w = do
   traceIdx <- gets (\st -> length (st ^. costSymbols))
 
   let shiftCond =
-        abs (sReal concreteSampleSym + sReal shiftSym - sReal lapSym)
-        %<= fromRational k_FLOAT_TOLERANCE
+        if tol == 0
+        then (sReal' 0 concreteSampleSym + sReal' 0 shiftSym) %== sReal' 0 lapSym
+        else abs (sReal' tol concreteSampleSym + sReal' tol shiftSym - sReal' tol lapSym)
+             %<= fromRational tol
   modify (\st -> st & couplingConstraints %~ (S.|> shiftCond))
   let costCond =
         sReal epsSym %>= (abs (c - sReal concreteCenterSym + sReal shiftSym)
@@ -699,13 +713,20 @@ laplaceSymbolic centerWithProvenance w = do
   modify (\st -> st & openSymbols %~ (S.|> (concreteSampleSym, concreteCenterSym, lapSym)))
 
   let provenance = D.Laplace traceIdx (D.provenance centerWithProvenance) w
-  return (D.WithDistributionProvenance (sReal lapSym) provenance)
+  return (D.WithDistributionProvenance (sReal' tol lapSym) provenance)
 
 gaussianSymbolic :: (Monad m)
                  => D.WithDistributionProvenance RealExpr
                  -> Double
                  -> SymbolicT r m (D.WithDistributionProvenance RealExpr)
-gaussianSymbolic _ _ = error "not yet implemented"
+gaussianSymbolic = gaussianSymbolic' k_FLOAT_TOLERANCE
+
+gaussianSymbolic' :: (Monad m)
+                  => Rational
+                  -> D.WithDistributionProvenance RealExpr
+                  -> Double
+                  -> SymbolicT r m (D.WithDistributionProvenance RealExpr)
+gaussianSymbolic' _ _ _ = error "not yet implemented"
 
 substituteB :: BoolExpr -> [(String, RealExpr)] -> BoolExpr
 substituteB (BoolExpr a) fts =
@@ -713,9 +734,9 @@ substituteB (BoolExpr a) fts =
   in BoolExpr $ Substitute a ftsAst
 
 substituteR :: RealExpr -> [(String, RealExpr)] -> RealExpr
-substituteR (RealExpr a) fts =
+substituteR (RealExpr tol a) fts =
   let ftsAst = map (second getRealExpr) fts
-  in RealExpr $ Substitute a ftsAst
+  in RealExpr tol $ Substitute a ftsAst
 
 newtype GSC a =
   GSC {
@@ -802,22 +823,22 @@ generalize (x:xs) =
     go ((_,    Drop)   S.:<| xs) = go xs
 
 instance Num RealExpr where
-  (+) = coerce Add
-  (-) = coerce Sub
-  (*) = coerce Mul
-  abs (RealExpr ast) =
+  RealExpr tol left + RealExpr tol' right = RealExpr (max tol tol') (Add left right)
+  RealExpr tol left - RealExpr tol' right = RealExpr (max tol tol') (Sub left right)
+  RealExpr tol left * RealExpr tol' right = RealExpr (max tol tol') (Mul left right)
+  abs (RealExpr tol ast) =
     let geZero = ast `Ge` Rat 0
         negAst = Rat 0 `Sub` ast
-    in RealExpr $ Ite geZero ast negAst
-  signum (RealExpr ast) =
+    in RealExpr tol $ Ite geZero ast negAst
+  signum (RealExpr tol ast) =
     let eqZero = ast `Eq_` Rat 0
         gtZero = ast `Gt` Rat 0
-    in RealExpr $ Ite eqZero (Rat 0) (Ite gtZero (Rat 1) (Rat (-1)))
-  fromInteger v = RealExpr $ Rat (fromInteger v)
+    in RealExpr tol $ Ite eqZero (Rat 0) (Ite gtZero (Rat 1) (Rat (-1)))
+  fromInteger v = RealExpr 0 $ Rat (fromInteger v)
 
 instance Fractional RealExpr where
-  (/) = coerce Div
-  fromRational = RealExpr . Rat
+  RealExpr tol left / RealExpr tol' right = RealExpr (max tol tol') (Div left right)
+  fromRational = RealExpr 0 . Rat
 
 instance Boolean BoolExpr where
   and = coerce And
@@ -827,11 +848,11 @@ instance Boolean BoolExpr where
 instance Ordered RealExpr where
   type CmpResult RealExpr = BoolExpr
 
-  (%<)  = coerce Lt
-  (%<=) = coerce Le
-  (%>)  = coerce Gt
-  (%>=) = coerce Ge
-  (%==) = coerce Eq_
+  lhs %< rhs  = BoolExpr (getRealExpr lhs `Lt` getRealExpr rhs)
+  lhs %<= rhs = BoolExpr (getRealExpr lhs `Le` getRealExpr rhs)
+  lhs %> rhs  = BoolExpr (getRealExpr lhs `Gt` getRealExpr rhs)
+  lhs %>= rhs = BoolExpr (getRealExpr lhs `Ge` getRealExpr rhs)
+  lhs %== rhs = BoolExpr (getRealExpr lhs `Eq_` getRealExpr rhs)
   a %/= b = neg (a %== b)
 
 instance Numeric     RealExpr
@@ -842,8 +863,10 @@ instance FuzziType   BoolExpr
 instance (Monad m, Typeable m, Typeable r)
   => MonadDist (SymbolicT r m) where
   type NumDomain (SymbolicT r m) = D.WithDistributionProvenance RealExpr
-  laplace  = laplaceSymbolic
-  gaussian = gaussianSymbolic
+  laplace   = laplaceSymbolic
+  laplace'  = laplaceSymbolic'
+  gaussian  = gaussianSymbolic
+  gaussian' = gaussianSymbolic'
 
 instance (Monad m, Typeable m, Typeable r)
   => MonadAssert (SymbolicT r m) where
@@ -878,7 +901,10 @@ instance SEq Bool Bool where
 
 instance SEq Double RealExpr where
   symEq a b =
-    abs ((double a) - b) %<= fromRational k_FLOAT_TOLERANCE
+    let tol = getTolerance b
+    in if tol == 0
+    then double a %== b
+    else abs (double a - b) %<= fromRational (getTolerance b)
 
 instance SEq (D.WithDistributionProvenance Double) (D.WithDistributionProvenance RealExpr) where
   symEq a b = symEq (D.value a) (D.value b)

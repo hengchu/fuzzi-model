@@ -66,8 +66,10 @@ class Boolean a => ConcreteBoolean (a :: *) where
 -- |Sample instructions in the semantic domain.
 class (Monad m, Typeable m, FracNumeric (NumDomain m)) => MonadDist m where
   type NumDomain m :: *
-  laplace  :: NumDomain m -> Double -> m (NumDomain m)
-  gaussian :: NumDomain m -> Double -> m (NumDomain m)
+  laplace   ::             NumDomain m -> Double -> m (NumDomain m)
+  laplace'  :: Rational -> NumDomain m -> Double -> m (NumDomain m)
+  gaussian  ::             NumDomain m -> Double -> m (NumDomain m)
+  gaussian' :: Rational -> NumDomain m -> Double -> m (NumDomain m)
 
 class (Monad m, Typeable m, Boolean (BoolType m), MonadThrow m) => MonadAssert m where
   type BoolType m :: *

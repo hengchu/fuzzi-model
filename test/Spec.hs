@@ -369,11 +369,9 @@ main = do
   quickCheckWithResult
     expectSuccessArgs
     prop_smartSumIsDifferentiallyPrivate >>= printAndExitIfFailed
-  {- too slow with float tolerance
   quickCheckWithResult
     stdArgs{maxSuccess=5}
     prop_smartSumBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
-  -}
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorIsDifferentiallyPrivate >>= printAndExitIfFailed

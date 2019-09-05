@@ -225,18 +225,24 @@ instance {-# OVERLAPS #-}     FuzziType a   => FuzziType (WithDistributionProven
 
 instance MonadDist ConcreteDist where
   type NumDomain ConcreteDist = Double
-  laplace = laplaceConcrete
-  gaussian = gaussianConcrete
+  laplace   = laplaceConcrete
+  laplace'  = const laplaceConcrete
+  gaussian  = gaussianConcrete
+  gaussian' = const gaussianConcrete
 
 instance MonadDist NoRandomness where
   type NumDomain NoRandomness = Double
-  laplace = laplaceNoRandomness
-  gaussian = gaussianNoRandomness
+  laplace   = laplaceNoRandomness
+  laplace'  = const laplaceNoRandomness
+  gaussian  = gaussianNoRandomness
+  gaussian' = const gaussianNoRandomness
 
 instance MonadDist TracedDist where
   type NumDomain TracedDist = WithDistributionProvenance Double
-  laplace  = laplaceTraced
-  gaussian = gaussianTraced
+  laplace   = laplaceTraced
+  laplace'  = const laplaceTraced
+  gaussian  = gaussianTraced
+  gaussian' = const gaussianTraced
 
 instance MonadAssert TracedDist where
   type BoolType TracedDist = Bool
