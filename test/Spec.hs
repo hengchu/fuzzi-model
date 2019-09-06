@@ -43,16 +43,16 @@ allTests = H.TestList [
 
 prop_symbolCongruence :: Double -> Double -> Bool
 prop_symbolCongruence a b =
-  let sa = (fromRational . toRational) a :: S.RealExpr
-      sb = (fromRational . toRational) b :: S.RealExpr
+  let sa = realToFrac a :: S.RealExpr
+      sb = realToFrac b :: S.RealExpr
   in if a == b
      then sa == sb
      else sa /= sb
 
 prop_rnmLengthConstraints :: SmallList Double -> Property
 prop_rnmLengthConstraints (SmallList xs) = monadicIO $ do
-  let prog1 = reify (reportNoisyMax (map (fromRational . toRational) xs))
-  let prog2 = reify (reportNoisyMax (map (fromRational . toRational) xs))
+  let prog1 = reify (reportNoisyMax (map realToFrac xs))
+  let prog2 = reify (reportNoisyMax (map realToFrac xs))
   buckets <- run $ profileIO 100 prog1
   spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
   case spec of
@@ -60,190 +60,100 @@ prop_rnmLengthConstraints (SmallList xs) = monadicIO $ do
     Right constraints -> assert (length buckets == length constraints)
 
 smartSumPrivacyTest :: L1List Double -> Property
-smartSumPrivacyTest xs = label ("smartsum input size: " ++ show (length xs)) $ monadicIO $ do
-  let xs1 = map (fromRational . toRational) (left xs)
-  let xs2 = map (fromRational . toRational) (right xs)
-  let prog1 = reify (smartSum xs1)
-  let prog2 = reify (smartSum xs2)
-  buckets <- run $ profileIO 100 prog1
-  spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
-  case spec of
-    Left err -> run (print err) >> assert False
-    Right bundles -> do
-      results <- run $ runNoLoggingT (runTests 2.0 bundles)
-      case results of
-        Left err -> run (print err) >> assert False
-        Right results' -> do
-          run (print (map (view solverResult) results'))
-          -- assert (length bundles == length buckets)
-          assert (all isOk results')
+smartSumPrivacyTest xs =
+  label ("smartsum input size: " ++ show (length xs)) $
+  monadicIO $
+    expectDP
+      2.0
+      500
+      ( reify . smartSum . map realToFrac $ left xs
+      , reify . smartSum . map realToFrac $ right xs
+      )
 
 rnmPrivacyTest :: PairWiseL1List Double -> Property
-rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $ monadicIO $ do
-  let xs1   = map (fromRational . toRational) (left xs)
-  let xs2   = map (fromRational . toRational) (right xs)
-  let prog1 = reify (reportNoisyMax xs1)
-  let prog2 = reify (reportNoisyMax xs2)
-  buckets <- run $ profileIO 100 prog1
-  spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
-  case spec of
-    Left err -> run (print err) >> assert False
-    Right bundles -> do
-      results <- run $ runNoLoggingT (runTests 2.0 bundles)
-      case results of
-        Left err -> run (print err) >> assert False
-        Right results' -> do
-          run (print (map (view solverResult) results'))
-          -- assert (length bundles == length buckets)
-          assert (all isOk results')
+rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $
+  monadicIO $
+    expectDP
+      2.0
+      500
+      ( reify . reportNoisyMax . map realToFrac $ left xs
+      , reify . reportNoisyMax . map realToFrac $ right xs
+      )
 
 rnmGapPrivacyTest :: PairWiseL1List Double -> Property
-rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $ monadicIO $ do
-  let xs1   = map (fromRational . toRational) (left xs)
-  let xs2   = map (fromRational . toRational) (right xs)
-  let prog1 = reify (reportNoisyMaxGap xs1)
-  let prog2 = reify (reportNoisyMaxGap xs2)
-  buckets <- run $ profileIO 100 prog1
-  spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
-  case spec of
-    Left err -> run (print err) >> assert False
-    Right bundles -> do
-      results <- run $ runNoLoggingT (runTests 4.0 bundles)
-      case results of
-        Left err -> run (print err) >> assert False
-        Right results' -> do
-          let failures = filter isFailed results'
-          unless (null failures) $ do
-            run (print failures)
-            stop False
-          run (print (map (view solverResult) results'))
-          assert (all isOk results')
+rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $
+  monadicIO $
+    expectDP
+      2.0
+      500
+      ( reify . reportNoisyMaxGap . map realToFrac $ left xs
+      , reify . reportNoisyMaxGap . map realToFrac $ right xs
+      )
+
 
 rnmNotPrivateTest :: Property
-rnmNotPrivateTest = monadicIO $ do
-  results <- forM ([0..50] :: [Int]) $ \_ -> do
-    (xs :: PairWiseL1List Double) <- pick (pairWiseL1 1.0)
-    let xs1   = map (fromRational . toRational) (left xs)
-    let xs2   = map (fromRational . toRational) (right xs)
-    let prog1 = reify (reportNoisyMaxBuggy xs1)
-    let prog2 = reify (reportNoisyMaxBuggy xs2)
-    buckets <- run $ runNoLoggingT (profile 300 prog1)
-    spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
-    case spec of
-      Left err -> run (print err) >> stop False
-      Right bundles -> do
-        results <- run $ runNoLoggingT (runTests 2.0 bundles)
-        case results of
-          Left err -> run (print err) >> stop False
-          Right results' -> do
-            run (print (map (view solverResult) results'))
-            if any isFailed results' then stop True else return False
-  assert (or results)
+rnmNotPrivateTest = monadicIO $
+  expectNotDP
+    2.0
+    300
+    50
+    (pairWiseL1 1.0 >>= \(xs :: PairWiseL1List Double) -> return (left xs, right xs))
+    ( reify . reportNoisyMaxBuggy . map realToFrac
+    , reify . reportNoisyMaxBuggy . map realToFrac
+    ) -- code duplication because of let bindings monomorphises the types
 
 smartSumNotPrivateTest :: Property
-smartSumNotPrivateTest = monadicIO $ do
-  results <- forM ([0..50] :: [Int]) $ \_ -> do
-    (xs :: L1List Double) <- pick (l1List 1.0)
-    let xs1   = map (fromRational . toRational) (left xs)
-    let xs2   = map (fromRational . toRational) (right xs)
-    let prog1 = reify (smartSumBuggy xs1)
-    let prog2 = reify (smartSumBuggy xs2)
-    buckets <- run $ runNoLoggingT (profile 500 prog1)
-    spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
-    case spec of
-      Left err -> run (print err) >> stop False
-      Right bundles -> do
-        results <- run $ runNoLoggingT (runTests 2.0 bundles)
-        case results of
-          Left err -> run (print err) >> stop False
-          Right results' -> do
-            run (print (map (view solverResult) results'))
-            if any isFailed results' then stop True else return False
-  assert (or results)
+smartSumNotPrivateTest = monadicIO $
+  expectNotDP
+    2.0
+    500
+    50
+    (l1List 1.0 >>= \(xs :: L1List Double) -> return (left xs, right xs))
+    ( reify . smartSumBuggy . map realToFrac
+    , reify . smartSumBuggy . map realToFrac
+    )
 
 sparseVectorPrivacyTest :: PairWiseL1List Double -> Property
 sparseVectorPrivacyTest xs =
-  label ("sparseVector input length: " ++ show (length xs)) $ monadicIO $ do
-    let xs1 = map (fromRational . toRational) (left xs)
-    let xs2 = map (fromRational . toRational) (right xs)
-    let prog1 = reify (sparseVector xs1 2 0)
-    let prog2 = reify (sparseVector xs2 2 0)
-    buckets <- run $ profileIO 100 prog1
-    spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
-    case spec of
-      Left err -> run (print err) >> assert False
-      Right bundles -> do
-        results <- run $ runNoLoggingT (runTests 1.0 bundles)
-        case results of
-          Left err -> run (print err) >> assert False
-          Right results' -> do
-            run (print (map (view solverResult) results'))
-            -- assert (length bundles == length buckets)
-            assert (all isOk results')
+  label ("sparseVector input length: " ++ show (length xs)) $
+  monadicIO $
+    expectDP
+      1.0
+      500
+      ( reify . (\xs -> sparseVector xs 2 0) . map realToFrac $ left xs
+      , reify . (\xs -> sparseVector xs 2 0) . map realToFrac $ left xs
+      )
 
 sparseVectorGapPrivacyTest :: PairWiseL1List Double -> Property
 sparseVectorGapPrivacyTest xs =
-  label ("sparseVectorGap input length: " ++ show (length xs)) $ monadicIO $ do
-    let xs1 = map (fromRational . toRational) (left xs)
-    let xs2 = map (fromRational . toRational) (right xs)
-    let prog1 = reify (sparseVectorGap xs1 2 0)
-    let prog2 = reify (sparseVectorGap xs2 2 0)
-    buckets <- run $ profileIO 100 prog1
-    spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
-    case spec of
-      Left err -> run (print err) >> assert False
-      Right bundles -> do
-        results <- run $ runNoLoggingT (runTests 1.0 bundles)
-        case results of
-          Left err -> run (print err) >> assert False
-          Right results' -> do
-            run (print (map (view solverResult) results'))
-            -- assert (length bundles == length buckets)
-            assert (all isOk results')
+  label ("sparseVectorGap input length: " ++ show (length xs)) $
+  monadicIO $
+    expectDP
+      1.0
+      500
+      ( reify . (\xs -> sparseVectorGap xs 2 0) . map realToFrac $ left xs
+      , reify . (\xs -> sparseVectorGap xs 2 0) . map realToFrac $ left xs
+      )
 
 sparseVectorNotPrivateTest :: Property
-sparseVectorNotPrivateTest = monadicIO $ do
-  results <- forM ([0..20] :: [Int]) $ \_ -> do
-    (xs :: L1List Double) <- pick (l1List 1.0)
-    let xs1   = map (fromRational . toRational) (left xs)
-    let xs2   = map (fromRational . toRational) (right xs)
-    let prog1 = reify (sparseVectorBuggy xs1 2 0)
-    let prog2 = reify (sparseVectorBuggy xs2 2 0)
-    buckets <- run $ runNoLoggingT (profile 500 prog1)
-    spec <- run $ runNoLoggingT $ symExecGeneralize buckets prog2
-    case spec of
-      Left err -> run (print err) >> stop False
-      Right bundles -> do
-        results <- run $ runNoLoggingT (runTests 1.0 bundles)
-        case results of
-          Left err -> run (print err) >> stop False
-          Right results' -> do
-            --run (print results')
-            --stop False
-            run (print (map (view solverResult) results'))
-            if any isFailed results' then stop True else return False
-  assert (or results)
+sparseVectorNotPrivateTest = monadicIO $
+  expectNotDP
+    1.0
+    500
+    50
+    (pairWiseL1 1.0 >>= \(xs :: PairWiseL1List Double) -> return (left xs, right xs))
+    ( reify . (\xs -> sparseVectorBuggy xs 2 0) . map realToFrac
+    , reify . (\xs -> sparseVectorBuggy xs 2 0) . map realToFrac
+    )
 
 privTreePrivacyTest :: BagList Double -> Property
-privTreePrivacyTest xs = monadicIO $ do
-  let xs1 = map (fromRational . toRational) (left xs)
-  let xs2 = map (fromRational . toRational) (right xs)
-  let prog1 = reify (privTree xs1)
-  let prog2 = reify (privTree xs2)
-  buckets <- run $ runNoLoggingT (profile 100 prog1)
-  spec <- run $ runNoLoggingT (symExecGeneralize buckets prog2)
-  case spec of
-    Left err -> run (print err) >> stop False
-    Right bundles -> do
-      results <- run $ runNoLoggingT (runTests k_PT_EPSILON bundles)
-      case results of
-        Left err -> run (print err) >> stop False
-        Right results' -> do
-          run (print (map (view solverResult) results'))
-          let failures = filter isFailed results'
-          unless (null failures) $
-            run (print failures)
-          assert (all isOk results')
+privTreePrivacyTest xs = monadicIO $
+  expectDP
+    1.0
+    500
+    ( reify . privTree . map realToFrac $ left xs
+    , reify . privTree . map realToFrac $ right xs
+    )
 
 prop_rnmIsDifferentiallyPrivate :: Property
 prop_rnmIsDifferentiallyPrivate =

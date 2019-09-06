@@ -4,6 +4,7 @@ module Data.Fuzzi.Test where
 
 import Control.Exception
 import Control.Lens
+import Control.Monad.Cont
 import Control.Monad.Except
 import Control.Monad.IO.Unlift
 import Control.Monad.Logger
@@ -13,9 +14,12 @@ import Data.Fuzzi.EDSL
 import Data.Fuzzi.Interp
 import Data.Fuzzi.Symbol
 import Data.Fuzzi.Types
+import Data.Kind
 import Data.Maybe (isJust)
 import Data.Text (pack)
 import Debug.Trace
+import Test.QuickCheck
+import Test.QuickCheck.Monadic
 import Type.Reflection
 import UnliftIO.Async
 import qualified Data.Fuzzi.PrettyPrint as PP
@@ -199,3 +203,169 @@ runTests :: ( MonadIO m
 runTests eps bundles = do
   results <- mapM (runTestBundle eps) bundles
   return (sequence results)
+
+type IOConstraints m = (MonadIO m, MonadLogger m, MonadUnliftIO m)
+type ConstraintsWithProvenance (c :: * -> Constraint) a =
+  (c a, c (GetProvenance a), c (DropProvenance a))
+
+expectDP' :: ( IOConstraints m
+             , Typeable m
+             , Typeable concrete
+             , Typeable symbolic
+             , Matchable concrete symbolic
+             , HasProvenance concrete
+             , HasProvenance symbolic
+             , ConstraintsWithProvenance Ord concrete
+             , ConstraintsWithProvenance Ord symbolic
+             , ConstraintsWithProvenance Show concrete
+             , ConstraintsWithProvenance Show symbolic
+             , SEq (DropProvenance concrete) (DropProvenance symbolic)
+             )
+         => (forall a. m a -> IO a)
+         -> Epsilon
+         -> Int
+         -> ( Fuzzi (TracedDist concrete)
+            , Fuzzi (SymbolicT concrete m symbolic)
+            )
+         -> PropertyM IO ()
+expectDP' logHandler eps ntrials (left, right) = do
+  success <- (run . logHandler) $ do
+    buckets <- profile ntrials left
+    spec <- symExecGeneralize buckets right
+    case spec of
+      Left err -> do
+        liftIO $ print err
+        return False
+      Right bundles -> do
+        errorOrResults <- runTests eps bundles
+        case errorOrResults of
+          Left  err     -> do
+            liftIO $ print err
+            return False
+          Right results -> do
+            liftIO $ print $ map (view solverResult) results
+            return (all isOk results)
+  Test.QuickCheck.Monadic.assert success
+
+expectDPVerbose :: ( Typeable concrete
+                   , Typeable symbolic
+                   , Matchable concrete symbolic
+                   , HasProvenance concrete
+                   , HasProvenance symbolic
+                   , ConstraintsWithProvenance Ord concrete
+                   , ConstraintsWithProvenance Ord symbolic
+                   , ConstraintsWithProvenance Show concrete
+                   , ConstraintsWithProvenance Show symbolic
+                   , SEq (DropProvenance concrete) (DropProvenance symbolic)) =>
+                   Epsilon
+                -> Int
+                -> (Fuzzi (TracedDist concrete),
+                    Fuzzi (SymbolicT concrete (LoggingT IO) symbolic))
+                -> PropertyM IO ()
+expectDPVerbose = expectDP' runStderrLoggingT
+
+expectDP :: ( Typeable concrete
+            , Typeable symbolic
+            , Matchable concrete symbolic
+            , HasProvenance concrete
+            , HasProvenance symbolic
+            , ConstraintsWithProvenance Ord concrete
+            , ConstraintsWithProvenance Ord symbolic
+            , ConstraintsWithProvenance Show concrete
+            , ConstraintsWithProvenance Show symbolic
+            , SEq (DropProvenance concrete) (DropProvenance symbolic)) =>
+            Epsilon
+         -> Int
+         -> (Fuzzi (TracedDist concrete),
+             Fuzzi (SymbolicT concrete (NoLoggingT IO) symbolic))
+         -> PropertyM IO ()
+expectDP = expectDP' runNoLoggingT
+
+expectNotDP' :: ( IOConstraints m
+                , Typeable m
+                , Typeable concrete
+                , Typeable symbolic
+                , Matchable concrete symbolic
+                , HasProvenance concrete
+                , HasProvenance symbolic
+                , ConstraintsWithProvenance Ord concrete
+                , ConstraintsWithProvenance Ord symbolic
+                , ConstraintsWithProvenance Show concrete
+                , ConstraintsWithProvenance Show symbolic
+                , Show concreteInput
+                , Show symbolicInput
+                , SEq (DropProvenance concrete) (DropProvenance symbolic)
+                )
+             => (forall a. m a -> IO a)
+             -> Epsilon
+             -> Int
+             -> Int
+             -> Gen (concreteInput, symbolicInput)
+             -> ( concreteInput -> Fuzzi (TracedDist concrete)
+                , symbolicInput -> Fuzzi (SymbolicT concrete m symbolic)
+                )
+             -> PropertyM IO ()
+expectNotDP' logHandler eps ntrials nretries gen (left, right) =
+  forM_ [0..nretries] $ \_ -> do
+    (concreteInput, symbolicInput) <- pick gen
+    buckets <- run . logHandler $ profile ntrials (left concreteInput)
+    spec <- run . logHandler $ symExecGeneralize buckets (right symbolicInput)
+    case spec of
+      Left err -> do
+        liftIO $ print err
+        stop False
+      Right bundles -> do
+        errorOrResults <- run . logHandler $ runTests eps bundles
+        case errorOrResults of
+          Left err -> do
+            liftIO $ print err
+            stop False
+          Right results -> do
+            liftIO $ print $ map (view solverResult) results
+            when (any isFailed results) (stop True)
+
+expectNotDPVerbose :: ( Typeable concrete
+                      , Typeable symbolic
+                      , Matchable concrete symbolic
+                      , HasProvenance concrete
+                      , HasProvenance symbolic
+                      , ConstraintsWithProvenance Ord concrete
+                      , ConstraintsWithProvenance Ord symbolic
+                      , ConstraintsWithProvenance Show concrete
+                      , ConstraintsWithProvenance Show symbolic
+                      , Show concreteInput
+                      , Show symbolicInput
+                      , SEq (DropProvenance concrete) (DropProvenance symbolic)
+                      )
+                   => Epsilon
+                   -> Int
+                   -> Int
+                   -> Gen (concreteInput, symbolicInput)
+                   -> ( concreteInput -> Fuzzi (TracedDist concrete)
+                      , symbolicInput -> Fuzzi (SymbolicT concrete (LoggingT IO) symbolic)
+                      )
+                   -> PropertyM IO ()
+expectNotDPVerbose = expectNotDP' runStderrLoggingT
+
+expectNotDP :: ( Typeable concrete
+               , Typeable symbolic
+               , Matchable concrete symbolic
+               , HasProvenance concrete
+               , HasProvenance symbolic
+               , ConstraintsWithProvenance Ord concrete
+               , ConstraintsWithProvenance Ord symbolic
+               , ConstraintsWithProvenance Show concrete
+               , ConstraintsWithProvenance Show symbolic
+               , Show concreteInput
+               , Show symbolicInput
+               , SEq (DropProvenance concrete) (DropProvenance symbolic)
+               )
+            => Epsilon
+            -> Int
+            -> Int
+            -> Gen (concreteInput, symbolicInput)
+            -> ( concreteInput -> Fuzzi (TracedDist concrete)
+               , symbolicInput -> Fuzzi (SymbolicT concrete (NoLoggingT IO) symbolic)
+               )
+            -> PropertyM IO ()
+expectNotDP = expectNotDP' runNoLoggingT
