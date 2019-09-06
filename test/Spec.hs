@@ -8,7 +8,9 @@ import Data.Fuzzi.NeighborGen
 import Data.Fuzzi.Symbol as S
 import Data.Fuzzi.Test
 import Data.Fuzzi.Types hiding (or)
+import Data.Maybe
 import System.Exit
+import System.Posix.Env
 import Test.HUnit (runTestTT, errors, failures)
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
@@ -270,7 +272,16 @@ main = do
                          .&&. prop_pairWiseL1ListLength
                          .&&. prop_rnmGapLemma7
 
-  let expectSuccessArgs = stdArgs{maxSuccess = 20, maxShrinks = 20}
+  githubCIEnv <- getEnv "GITHUB_WORKFLOW"
+
+  if (isJust githubCIEnv)
+  then putStrLn "running on github CI"
+  else putStrLn "running locally"
+
+  let expectSuccessArgs =
+        if isJust githubCIEnv
+        then stdArgs{maxSuccess = 100, maxShrinks = 20}
+        else stdArgs{maxSuccess = 20, maxShrinks = 20}
   let expectFailureArgs = stdArgs{maxSuccess = 5, maxShrinks = 20}
 
   quickCheckWithResult
