@@ -157,6 +157,46 @@ privTreePrivacyTest xs = monadicIO $
     , reify . privTree . map realToFrac $ right xs
     )
 
+simpleCountPrivacyTest :: BagList Int -> Property
+simpleCountPrivacyTest xs = monadicIO $
+  expectDP
+    1.0
+    500
+    ( reify . flip simpleCount 0 $ left xs
+    , reify . flip simpleCount 0 $ right xs
+    )
+
+simpleCountEpsTooSmallTest :: Property
+simpleCountEpsTooSmallTest = monadicIO $
+  expectNotDP
+    0.5
+    500
+    50
+    (bagList (-10, 10) 1 >>= \(xs :: BagList Int) -> return (left xs, right xs))
+    ( reify . flip simpleCount 0
+    , reify . flip simpleCount 0
+    )
+
+simpleMeanPrivacyTest :: Double -> BagList Double -> Property
+simpleMeanPrivacyTest clipBound xs = monadicIO $
+  expectDP
+    clipBound
+    500
+    ( reify . flip simpleMean (realToFrac clipBound) . map realToFrac $ left xs
+    , reify . flip simpleMean (realToFrac clipBound) . map realToFrac $ right xs
+    )
+
+unboundedMeanNotPrivateTest :: Property
+unboundedMeanNotPrivateTest = monadicIO $
+  expectNotDP
+    1.0
+    500
+    50
+    (bagList (-2.0, 2.0) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
+    ( reify . unboundedMean . map realToFrac
+    , reify . unboundedMean . map realToFrac
+    )
+
 prop_rnmIsDifferentiallyPrivate :: Property
 prop_rnmIsDifferentiallyPrivate =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 rnmPrivacyTest
@@ -191,6 +231,22 @@ prop_privTreeIsDifferentiallyPrivate =
 prop_sparseVectorGapIsDifferentiallyPrivate :: Property
 prop_sparseVectorGapIsDifferentiallyPrivate =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 sparseVectorGapPrivacyTest
+
+prop_simpleCountIsDifferentiallyPrivate :: Property
+prop_simpleCountIsDifferentiallyPrivate =
+  forAll (bagList (-10, 10) 1) simpleCountPrivacyTest
+
+prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate :: Property
+prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate =
+  simpleCountEpsTooSmallTest
+
+prop_simpleMeanIsDifferentiallyPrivate :: Property
+prop_simpleMeanIsDifferentiallyPrivate =
+  forAll (bagList (-2.0, 2.0) 1) (simpleMeanPrivacyTest 1.0)
+
+prop_unboundedMeanIsNotDifferentiallyPrivate :: Property
+prop_unboundedMeanIsNotDifferentiallyPrivate =
+  unboundedMeanNotPrivateTest
 
 newtype SmallList a = SmallList {
   getSmallList :: [a]
@@ -316,6 +372,15 @@ main = do
   quickCheckWithResult
     expectSuccessArgs
     prop_privTreeIsDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectSuccessArgs
+    prop_simpleCountIsDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectFailureArgs
+    prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectFailureArgs
+    prop_unboundedMeanIsNotDifferentiallyPrivate >>= printAndExitIfFailed
 
   putStrLn $
     "\n#######################################"

@@ -278,3 +278,39 @@ privTreeAux points queue leafNodes tree
                more
                leafNodes
                updatedTree)
+
+simpleCount :: forall m a.
+               (FuzziLang m a)
+            => [Int]
+            -> Int
+            -> Mon m (Fuzzi a)
+simpleCount xs threshold = do
+  let c = length (filter (>= threshold) xs)
+  cNoised <- lap (fromIntegral c) 1.0
+  return cNoised
+
+simpleMean :: forall m a.
+              (FuzziLang m a, Ord a)
+           => [Fuzzi a] -- input data
+           -> a   -- clip range
+           -> Mon m (Fuzzi a)
+simpleMean xs clipBound
+  | clipBound < 0 = error "simpleMean: received clipBound < 0"
+  | otherwise = do
+      s <- clippedSum xs 0
+      lap s 1.0
+  where clippedSum []     acc = return acc
+        clippedSum (x:xs) acc =
+          ifM (x %>= (lit clipBound))
+              (clippedSum xs (acc + (lit clipBound)))
+              (ifM (x %< (lit (-clipBound)))
+                   (clippedSum xs (acc - (lit clipBound)))
+                   (clippedSum xs (acc + x))
+              )
+
+unboundedMean :: forall m a.
+                 (FuzziLang m a)
+              => [Fuzzi a]
+              -> Mon m (Fuzzi a)
+unboundedMean xs =
+  lap (sum xs) 1.0
