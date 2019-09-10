@@ -201,6 +201,11 @@ runTests :: ( MonadIO m
          -> [TestBundle concreteResult symbolicResult]
          -> m (Either SymExecError [TestResult concreteResult symbolicResult])
 runTests eps bundles = do
+  forM_ bundles $ \bundle -> do
+    $(logInfo) "symbolic result..."
+    $(logInfo) (pack (show $ _tbSymbolicResult bundle))
+    $(logInfo) "constraints..."
+    $(logInfo) (pack (show $ _tbConstraints bundle))
   results <- mapM (runTestBundle eps) bundles
   return (sequence results)
 

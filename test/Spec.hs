@@ -180,7 +180,7 @@ simpleCountEpsTooSmallTest = monadicIO $
 simpleMeanPrivacyTest :: Double -> BagList Double -> Property
 simpleMeanPrivacyTest clipBound xs = monadicIO $
   expectDP
-    clipBound
+    (clipBound + 1.0)
     500
     ( reify . flip simpleMean (realToFrac clipBound) . map realToFrac $ left xs
     , reify . flip simpleMean (realToFrac clipBound) . map realToFrac $ right xs

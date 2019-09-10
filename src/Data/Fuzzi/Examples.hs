@@ -293,12 +293,14 @@ simpleMean :: forall m a.
               (FuzziLang m a, Ord a)
            => [Fuzzi a] -- input data
            -> a   -- clip range
-           -> Mon m (Fuzzi a)
+           -> Mon m (Fuzzi a, Fuzzi a)
 simpleMean xs clipBound
   | clipBound < 0 = error "simpleMean: received clipBound < 0"
   | otherwise = do
       s <- clippedSum xs 0
-      lap s 1.0
+      noisedS <- lap s 1.0
+      noisedC <- lap count 1.0
+      return (noisedS, noisedC)
   where clippedSum []     acc = return acc
         clippedSum (x:xs) acc =
           ifM (x %>= (lit clipBound))
@@ -308,9 +310,14 @@ simpleMean xs clipBound
                    (clippedSum xs (acc + x))
               )
 
+        count = fromIntegral_ (lit (length xs))
+
 unboundedMean :: forall m a.
                  (FuzziLang m a)
               => [Fuzzi a]
-              -> Mon m (Fuzzi a)
-unboundedMean xs =
-  lap (sum xs) 1.0
+              -> Mon m (Fuzzi a, Fuzzi a)
+unboundedMean xs = do
+  noisedS <- lap (sum xs) 1.0
+  noisedC <- lap count 1.0
+  return (noisedS, noisedC)
+  where count = fromIntegral_ (lit (length xs))
