@@ -291,7 +291,7 @@ privTreeBuggyAux :: forall m a.
                  -> Fuzzi (PrivTree1D a)         -- ^current tree
                  -> Mon m (Fuzzi (PrivTree1D a))
 privTreeBuggyAux points queue leafNodes tree
-  | length leafNodes > k_PT_MAX_LEAF_NODES
+  | length leafNodes > 10
   = abort "unreachable code: there are too many leaf nodes"
   | otherwise
   = case queue of
@@ -308,9 +308,9 @@ privTreeBuggyAux points queue leafNodes tree
             (do let (left, right) = split thisNode
                 let leafNodes' =
                       S.insert right (S.insert left (S.delete thisNode leafNodes))
-                if length leafNodes' <= k_PT_MAX_LEAF_NODES
+                if length leafNodes' <= length points
                 then privTreeBuggyAux points (more++[left,right]) leafNodes' updatedTree
-                else abort "unreachable code: there are too many leaf nodes"
+                else return updatedTree
             )
             (privTreeBuggyAux
                points

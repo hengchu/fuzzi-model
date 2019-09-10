@@ -310,7 +310,7 @@ expectNotDP' :: ( IOConstraints m
                 , symbolicInput -> Fuzzi (SymbolicT concrete m symbolic)
                 )
              -> PropertyM IO ()
-expectNotDP' logHandler eps ntrials nretries gen (left, right) =
+expectNotDP' logHandler eps ntrials nretries gen (left, right) = do
   forM_ [0..nretries] $ \_ -> do
     (concreteInput, symbolicInput) <- pick gen
     buckets <- run . logHandler $ profile ntrials (left concreteInput)
@@ -328,6 +328,7 @@ expectNotDP' logHandler eps ntrials nretries gen (left, right) =
           Right results -> do
             liftIO $ print $ map (view solverResult) results
             when (any isFailed results) (stop True)
+  Test.QuickCheck.Monadic.assert False
 
 expectNotDPVerbose :: ( Typeable concrete
                       , Typeable symbolic

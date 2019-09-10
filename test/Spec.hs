@@ -151,7 +151,7 @@ sparseVectorNotPrivateTest = monadicIO $
 privTreePrivacyTest :: BagList Double -> Property
 privTreePrivacyTest xs = monadicIO $
   expectDP
-    1.0
+    k_PT_EPSILON
     500
     ( reify . privTree . map realToFrac $ left xs
     , reify . privTree . map realToFrac $ right xs
@@ -160,8 +160,8 @@ privTreePrivacyTest xs = monadicIO $
 privTreeBuggyNotPrivateTest :: Property
 privTreeBuggyNotPrivateTest = monadicIO $
   expectNotDP
-    1.0
-    500
+    k_PT_EPSILON
+    100
     50
     (bagListSmall (0.0, 1.0) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
     ( reify . privTree . map realToFrac
@@ -358,6 +358,7 @@ main = do
   quickCheckWithResult
     stdArgs{maxSuccess=2000}
     simpleProperties >>= printAndExitIfFailed
+
 
   quickCheckWithResult
     expectSuccessArgs
