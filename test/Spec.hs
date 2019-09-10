@@ -163,7 +163,7 @@ privTreeBuggyNotPrivateTest = monadicIO $
     1.0
     500
     50
-    (bagList (0.0, 1.0) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
+    (bagListSmall (0.0, 1.0) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
     ( reify . privTree . map realToFrac
     , reify . privTree . map realToFrac
     )
@@ -183,7 +183,7 @@ simpleCountEpsTooSmallTest = monadicIO $
     0.5
     500
     50
-    (bagList (-10, 10) 1 >>= \(xs :: BagList Int) -> return (left xs, right xs))
+    (bagListLarge (-10, 10) 1 >>= \(xs :: BagList Int) -> return (left xs, right xs))
     ( reify . flip simpleCount 0
     , reify . flip simpleCount 0
     )
@@ -203,7 +203,7 @@ unboundedMeanNotPrivateTest = monadicIO $
     1.0
     500
     50
-    (bagList (-2.0, 2.0) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
+    (bagListLarge (-2.0, 2.0) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
     ( reify . unboundedMean . map realToFrac
     , reify . unboundedMean . map realToFrac
     )
@@ -237,7 +237,7 @@ prop_sparseVectorBuggyIsNotDifferentiallyPrivate =
 
 prop_privTreeIsDifferentiallyPrivate :: Property
 prop_privTreeIsDifferentiallyPrivate =
-  forAll (bagList (0.0, 1.0) 1) privTreePrivacyTest
+  forAll (bagListSmall (0.0, 1.0) 1) privTreePrivacyTest
 
 prop_privTreeBuggyIsNotDifferentiallyPrivate :: Property
 prop_privTreeBuggyIsNotDifferentiallyPrivate =
@@ -249,7 +249,7 @@ prop_sparseVectorGapIsDifferentiallyPrivate =
 
 prop_simpleCountIsDifferentiallyPrivate :: Property
 prop_simpleCountIsDifferentiallyPrivate =
-  forAll (bagList (-10, 10) 1) simpleCountPrivacyTest
+  forAll (bagListLarge (-10, 10) 1) simpleCountPrivacyTest
 
 prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate :: Property
 prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate =
@@ -257,7 +257,7 @@ prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate =
 
 prop_simpleMeanIsDifferentiallyPrivate :: Property
 prop_simpleMeanIsDifferentiallyPrivate =
-  forAll (bagList (-2.0, 2.0) 1) (simpleMeanPrivacyTest 1.0)
+  forAll (bagListLarge (-2.0, 2.0) 1) (simpleMeanPrivacyTest 1.0)
 
 prop_unboundedMeanIsNotDifferentiallyPrivate :: Property
 prop_unboundedMeanIsNotDifferentiallyPrivate =

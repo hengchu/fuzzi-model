@@ -8,6 +8,8 @@ module Data.Fuzzi.NeighborGen (
   , shrinkL1List
   , BagList
   , bagList
+  , bagListSmall
+  , bagListLarge
   ) where
 
 import Control.Lens
@@ -85,9 +87,9 @@ shrinkL1List (L1List xs diff) =
   filter (not . null . view listData) $
     L1List <$> shrinkList (:[]) xs <*> pure diff
 
-bagList :: forall a. (Random a) => (a, a) -> Int -> Gen (BagList a)
-bagList (lower, upper) nDiff = do
-  len <- choose (3,4)
+bagList :: forall a. (Random a) => (Int, Int) -> (a, a) -> Int -> Gen (BagList a)
+bagList (minLen, maxLen) (lower, upper) nDiff = do
+  len <- choose (minLen, maxLen)
   xs1 <- replicateM len   (choose (lower, upper))
   xs2 <- replicateM nDiff (choose (lower, upper))
   xs2' <- randomlyIntersperse xs1 xs2
@@ -99,6 +101,12 @@ bagList (lower, upper) nDiff = do
           if coin
           then randomlyIntersperse (x2:x1:xs1) xs2
           else randomlyIntersperse (x1:x2:xs1) xs2
+
+bagListSmall :: forall a. Random a => (a, a) -> Int -> Gen (BagList a)
+bagListSmall = bagList (3, 4)
+
+bagListLarge :: forall a. Random a => (a, a) -> Int -> Gen (BagList a)
+bagListLarge = bagList (6, 8)
 
 instance (Num a) => Neighbor (PairWiseL1List a) where
   type Element (PairWiseL1List a) = [a]

@@ -305,10 +305,10 @@ privTreeBuggyAux points queue leafNodes tree
                 let leafNodes' =
                       S.insert right (S.insert left (S.delete thisNode leafNodes))
                 if length leafNodes' <= k_PT_MAX_LEAF_NODES
-                then privTreeAux points (more++[left,right]) leafNodes' updatedTree
+                then privTreeBuggyAux points (more++[left,right]) leafNodes' updatedTree
                 else abort "unreachable code: there are too many leaf nodes"
             )
-            (privTreeAux
+            (privTreeBuggyAux
                points
                more
                leafNodes
