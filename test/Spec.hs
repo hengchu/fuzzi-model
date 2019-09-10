@@ -157,6 +157,17 @@ privTreePrivacyTest xs = monadicIO $
     , reify . privTree . map realToFrac $ right xs
     )
 
+privTreeBuggyNotPrivateTest :: Property
+privTreeBuggyNotPrivateTest = monadicIO $
+  expectNotDP
+    1.0
+    500
+    50
+    (bagList (0.0, 1.0) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
+    ( reify . privTree . map realToFrac
+    , reify . privTree . map realToFrac
+    )
+
 simpleCountPrivacyTest :: BagList Int -> Property
 simpleCountPrivacyTest xs = monadicIO $
   expectDP
@@ -227,6 +238,10 @@ prop_sparseVectorBuggyIsNotDifferentiallyPrivate =
 prop_privTreeIsDifferentiallyPrivate :: Property
 prop_privTreeIsDifferentiallyPrivate =
   forAll (bagList (0.0, 1.0) 1) privTreePrivacyTest
+
+prop_privTreeBuggyIsNotDifferentiallyPrivate :: Property
+prop_privTreeBuggyIsNotDifferentiallyPrivate =
+  privTreeBuggyNotPrivateTest
 
 prop_sparseVectorGapIsDifferentiallyPrivate :: Property
 prop_sparseVectorGapIsDifferentiallyPrivate =
@@ -343,6 +358,10 @@ main = do
   quickCheckWithResult
     stdArgs{maxSuccess=2000}
     simpleProperties >>= printAndExitIfFailed
+
+  quickCheckWithResult
+    expectSuccessArgs
+    prop_privTreeBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     expectSuccessArgs
     prop_rnmIsDifferentiallyPrivate >>= printAndExitIfFailed

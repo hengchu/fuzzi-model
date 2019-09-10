@@ -253,7 +253,7 @@ privTreeAux :: forall m a.
             -> Mon m (Fuzzi (PrivTree1D Bool))
 privTreeAux points queue leafNodes tree
   | length leafNodes > k_PT_MAX_LEAF_NODES
-  = abort "unreachable code: there are impossibly many leaf nodes"
+  = abort "unreachable code: there are too many leaf nodes"
   | otherwise
   = case queue of
       [] -> return tree
@@ -271,7 +271,42 @@ privTreeAux points queue leafNodes tree
                       S.insert right (S.insert left (S.delete thisNode leafNodes))
                 if length leafNodes' <= k_PT_MAX_LEAF_NODES
                 then privTreeAux points (more++[left,right]) leafNodes' updatedTree
-                else abort "unreachable code: there are impossibly many leaf nodes"
+                else abort "unreachable code: there are too many leaf nodes"
+            )
+            (privTreeAux
+               points
+               more
+               leafNodes
+               updatedTree)
+
+privTreeBuggy :: (FuzziLang m a) => [Double] -> Mon m (Fuzzi (PrivTree1D Bool))
+privTreeBuggy xs =
+  privTreeBuggyAux xs [rootNode] (S.singleton rootNode) (lit emptyTree)
+
+privTreeBuggyAux :: forall m a.
+                    (FuzziLang m a)
+                 => [Double]                     -- ^input points on the unit interval
+                 -> [PrivTreeNode1D]             -- ^queue of unvisited nodes
+                 -> S.Set PrivTreeNode1D         -- ^current set of leaf nodes
+                 -> Fuzzi (PrivTree1D Bool)         -- ^current tree
+                 -> Mon m (Fuzzi (PrivTree1D Bool))
+privTreeBuggyAux points queue leafNodes tree
+  | length leafNodes > k_PT_MAX_LEAF_NODES
+  = abort "unreachable code: there are too many leaf nodes"
+  | otherwise
+  = case queue of
+      [] -> return tree
+      (thisNode:more) -> do
+        let naiveCount = countPoints points thisNode
+        noisedNaiveCount1 <- lap naiveCount k_PT_LAMBDA
+        let updatedTree = updatePT (lit thisNode) true tree
+        ifM (noisedNaiveCount1 %> k_PT_THRESHOLD)
+            (do let (left, right) = split thisNode
+                let leafNodes' =
+                      S.insert right (S.insert left (S.delete thisNode leafNodes))
+                if length leafNodes' <= k_PT_MAX_LEAF_NODES
+                then privTreeAux points (more++[left,right]) leafNodes' updatedTree
+                else abort "unreachable code: there are too many leaf nodes"
             )
             (privTreeAux
                points
@@ -292,7 +327,7 @@ simpleCount xs threshold = do
 simpleMean :: forall m a.
               (FuzziLang m a, Ord a)
            => [Fuzzi a] -- input data
-           -> a   -- clip range
+           -> a         -- clip range
            -> Mon m (Fuzzi a, Fuzzi a)
 simpleMean xs clipBound
   | clipBound < 0 = error "simpleMean: received clipBound < 0"
