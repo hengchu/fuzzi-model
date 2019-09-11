@@ -291,7 +291,7 @@ privTreeBuggyAux :: forall m a.
                  -> Fuzzi (PrivTree1D a)         -- ^current tree
                  -> Mon m (Fuzzi (PrivTree1D a))
 privTreeBuggyAux points queue leafNodes tree
-  | length leafNodes > 10
+  | length leafNodes > length points
   = abort "unreachable code: there are too many leaf nodes"
   | otherwise
   = case queue of

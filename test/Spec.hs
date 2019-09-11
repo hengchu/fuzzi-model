@@ -360,9 +360,9 @@ main = do
     simpleProperties >>= printAndExitIfFailed
 
 
-  quickCheckWithResult
-    expectSuccessArgs
-    prop_privTreeBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+  --quickCheckWithResult
+  --  expectSuccessArgs
+  --  prop_privTreeBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     expectSuccessArgs
     prop_rnmIsDifferentiallyPrivate >>= printAndExitIfFailed
