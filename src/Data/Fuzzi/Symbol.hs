@@ -31,7 +31,7 @@ import qualified Text.PrettyPrint as TPP
 import qualified Z3.Base as Z3
 
 k_FLOAT_TOLERANCE :: Rational
-k_FLOAT_TOLERANCE = 1e-4
+k_FLOAT_TOLERANCE = 1e-8
 
 type ConcreteSampleSymbol = String
 type ConcreteCenterSymbol = String

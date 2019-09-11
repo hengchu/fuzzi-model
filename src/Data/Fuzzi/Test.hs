@@ -26,6 +26,8 @@ import qualified Data.Fuzzi.PrettyPrint as PP
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
 import qualified Data.Set as SS
+import Data.Time.Clock
+import Data.Fixed
 
 data TestBundle concrete symbolic = TestBundle {
   _tbConstraints :: SymbolicConstraints
@@ -322,7 +324,8 @@ expectNotDP' :: ( IOConstraints m
                 )
              -> PropertyM IO ()
 expectNotDP' logHandler eps ntrials nretries gen (left, right) = do
-  forM_ [0..nretries] $ \_ -> do
+  !startTime <- run getCurrentTime
+  forM_ [0..nretries] $ \iter -> do
     (concreteInput, symbolicInput) <- pick gen
     buckets <- run . logHandler $ profile ntrials (left concreteInput)
     spec <- run . logHandler $ symExecGeneralize buckets (right symbolicInput)
@@ -338,7 +341,13 @@ expectNotDP' logHandler eps ntrials nretries gen (left, right) = do
             stop False
           Right results -> do
             liftIO $ print $ map (view solverResult) results
-            when (any isFailed results) (stop True)
+            when (any isFailed results) $ do
+              !endTime <- run getCurrentTime
+              let dur = endTime `diffUTCTime` startTime
+              let durStr = show dur
+              let iterStr = show (iter + 1)
+              run . putStrLn $ "found a bug in " ++ durStr ++ ", " ++ iterStr ++ " iterations"
+              stop True
   Test.QuickCheck.Monadic.assert False
 
 expectNotDPVerbose :: ( Typeable concrete
