@@ -295,7 +295,7 @@ expectDP :: ( Typeable concrete
          -> (Fuzzi (TracedDist concrete),
              Fuzzi (SymbolicT concrete (LoggingT IO) symbolic))
          -> PropertyM IO ()
-expectDP = expectDP' runStdoutColoredLoggingT
+expectDP = expectDP' runStdoutColoredLoggingWarnT
 
 expectNotDP' :: ( IOConstraints m
                 , Typeable m
@@ -385,4 +385,4 @@ expectNotDP :: ( Typeable concrete
                , symbolicInput -> Fuzzi (SymbolicT concrete (LoggingT IO) symbolic)
                )
             -> PropertyM IO ()
-expectNotDP = expectNotDP' runStdoutColoredLoggingT
+expectNotDP = expectNotDP' runStdoutColoredLoggingWarnT
