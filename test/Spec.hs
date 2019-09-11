@@ -1,4 +1,3 @@
-import Control.Lens (view)
 import Control.Monad
 import Control.Monad.Logger
 import Data.Fuzzi.Distribution
@@ -161,11 +160,22 @@ privTreeBuggyNotPrivateTest :: Property
 privTreeBuggyNotPrivateTest = monadicIO $
   expectNotDP
     k_PT_EPSILON
-    500
     100
-    (bagListSmall (0.0, 1.0) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
-    ( reify . privTree . map realToFrac
-    , reify . privTree . map realToFrac
+    20
+    (bagListSmall (0, 1) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
+    ( reify . privTreeBuggy . map realToFrac
+    , reify . privTreeBuggy . map realToFrac
+    )
+
+privTreeBuggy2NotPrivateTest :: Property
+privTreeBuggy2NotPrivateTest = monadicIO $
+  expectNotDP
+    k_PT_EPSILON
+    100
+    20
+    (bagListSmall (0, 1) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
+    ( reify . privTreeBuggy2 . map realToFrac
+    , reify . privTreeBuggy2 . map realToFrac
     )
 
 simpleCountPrivacyTest :: BagList Int -> Property
@@ -242,6 +252,10 @@ prop_privTreeIsDifferentiallyPrivate =
 prop_privTreeBuggyIsNotDifferentiallyPrivate :: Property
 prop_privTreeBuggyIsNotDifferentiallyPrivate =
   privTreeBuggyNotPrivateTest
+
+prop_privTreeBuggy2IsNotDifferentiallyPrivate :: Property
+prop_privTreeBuggy2IsNotDifferentiallyPrivate =
+  privTreeBuggy2NotPrivateTest
 
 prop_sparseVectorGapIsDifferentiallyPrivate :: Property
 prop_sparseVectorGapIsDifferentiallyPrivate =
@@ -389,6 +403,9 @@ main = do
     expectSuccessArgs
     prop_privTreeIsDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
+    expectFailureArgs
+    prop_privTreeBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
     expectSuccessArgs
     prop_simpleCountIsDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
@@ -398,9 +415,6 @@ main = do
     expectFailureArgs
     prop_unboundedMeanIsNotDifferentiallyPrivate >>= printAndExitIfFailed
 
-  quickCheckWithResult
-    expectFailureArgs{maxSuccess=1}
-    prop_privTreeBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
 
   putStrLn $
     "\n#######################################"

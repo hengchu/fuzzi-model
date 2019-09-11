@@ -279,9 +279,9 @@ privTreeAux points queue leafNodes tree
                leafNodes
                updatedTree)
 
-privTreeBuggy :: (FuzziLang m a) => [Double] -> Mon m (Fuzzi (PrivTree1D Bool))
+privTreeBuggy :: (FuzziLang m a) => [Double] -> Mon m (Fuzzi (PrivTree1D a))
 privTreeBuggy xs =
-  privTreeBuggyAux2 xs [rootNode] (S.singleton rootNode) (lit emptyTree)
+  privTreeBuggyAux xs [rootNode] (S.singleton rootNode) (lit emptyTree)
 
 privTreeBuggyAux :: forall m a.
                     (FuzziLang m a)
@@ -297,38 +297,37 @@ privTreeBuggyAux points queue leafNodes tree
   = case queue of
       [] -> return tree
       (thisNode:more) -> do
-        let biasedCount = countPoints points thisNode - depth thisNode * k_PT_DELTA
-        biasedCount' <-
-          ifM (biasedCount %> (k_PT_THRESHOLD - k_PT_DELTA))
-              (return biasedCount)
-              (return $ k_PT_THRESHOLD - k_PT_DELTA)
-        noisedBiasedCount1 <- lap0 biasedCount' k_PT_LAMBDA
-        let updatedTree = updatePT (lit thisNode) noisedBiasedCount1 tree
-        ifM (noisedBiasedCount1 %> k_PT_THRESHOLD)
+        let naiveCount = countPoints points thisNode
+        noisedNaiveCount <- lap naiveCount k_PT_LAMBDA
+        let updatedTree = updatePT (lit thisNode) noisedNaiveCount tree
+        ifM (noisedNaiveCount %> k_PT_THRESHOLD)
             (do let (left, right) = split thisNode
                 let leafNodes' =
                       S.insert right (S.insert left (S.delete thisNode leafNodes))
                 if length leafNodes' <= length points
                 then privTreeBuggyAux points (more++[left,right]) leafNodes' updatedTree
-                else return updatedTree
+                else abort "unreachable code: there are too many leaf nodes"
             )
             (privTreeBuggyAux
                points
                more
                leafNodes
                updatedTree)
-  where lap0 = lap' 0
 
-privTreeBuggyAux2 :: forall m a.
-                     (FuzziLang m a)
-                  => [Double]                     -- ^input points on the unit interval
-                  -> [PrivTreeNode1D]             -- ^queue of unvisited nodes
-                  -> S.Set PrivTreeNode1D         -- ^current set of leaf nodes
-                  -> Fuzzi (PrivTree1D Bool)         -- ^current tree
-                  -> Mon m (Fuzzi (PrivTree1D Bool))
-privTreeBuggyAux2 points queue leafNodes tree
-  | length leafNodes > k_PT_MAX_LEAF_NODES2
-  = abort "unreachable code: there are impossibly many leaf nodes"
+privTreeBuggy2 :: (FuzziLang m a) => [Double] -> Mon m (Fuzzi (PrivTree1D a))
+privTreeBuggy2 xs =
+  privTreeBuggy2Aux xs [rootNode] (S.singleton rootNode) (lit emptyTree)
+
+privTreeBuggy2Aux :: forall m a.
+               (FuzziLang m a)
+            => [Double]                     -- ^input points on the unit interval
+            -> [PrivTreeNode1D]             -- ^queue of unvisited nodes
+            -> S.Set PrivTreeNode1D         -- ^current set of leaf nodes
+            -> Fuzzi (PrivTree1D a)         -- ^current tree
+            -> Mon m (Fuzzi (PrivTree1D a))
+privTreeBuggy2Aux points queue leafNodes tree
+  | length leafNodes > k_PT_MAX_LEAF_NODES
+  = abort "unreachable code: there are too many leaf nodes"
   | otherwise
   = case queue of
       [] -> return tree
@@ -339,21 +338,20 @@ privTreeBuggyAux2 points queue leafNodes tree
               (return biasedCount)
               (return $ k_PT_THRESHOLD - k_PT_DELTA)
         noisedBiasedCount1 <- lap biasedCount' k_PT_LAMBDA
-        let updatedTree = updatePT (lit thisNode) true tree
+        let updatedTree = updatePT (lit thisNode) noisedBiasedCount1 tree
         ifM (noisedBiasedCount1 %> k_PT_THRESHOLD)
             (do let (left, right) = split thisNode
                 let leafNodes' =
                       S.insert right (S.insert left (S.delete thisNode leafNodes))
-                if length leafNodes' <= length points
-                then privTreeBuggyAux2 points (more++[left,right]) leafNodes' updatedTree
-                else return updatedTree
+                if length leafNodes' <= k_PT_MAX_LEAF_NODES
+                then privTreeBuggy2Aux points (more++[left,right]) leafNodes' updatedTree
+                else abort "unreachable code: there are too many leaf nodes"
             )
-            (privTreeBuggyAux2
+            (privTreeBuggy2Aux
                points
                more
                leafNodes
                updatedTree)
-  where k_PT_MAX_LEAF_NODES2 = 10
 
 simpleCount :: forall m a.
                (FuzziLang m a)
