@@ -9,7 +9,6 @@ import Control.Exception
 import Control.Lens
 import Control.Monad.Catch
 import Control.Monad.Except
-import Control.Monad.Logger
 import Control.Monad.State.Class
 import Control.Monad.Trans.State hiding (gets, put, modify)
 import Data.Bifunctor
@@ -17,6 +16,7 @@ import Data.Coerce
 import Data.Foldable
 import Data.Fuzzi.Interp
 import Data.Fuzzi.Types
+import Data.Fuzzi.Logging
 import Data.Text (pack)
 import Data.Void
 import Debug.Trace

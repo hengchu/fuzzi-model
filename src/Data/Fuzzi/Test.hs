@@ -7,11 +7,11 @@ import Control.Lens
 import Control.Monad.Cont
 import Control.Monad.Except
 import Control.Monad.IO.Unlift
-import Control.Monad.Logger
 import Data.Either
 import Data.Fuzzi.Distribution
 import Data.Fuzzi.EDSL
 import Data.Fuzzi.Interp
+import Data.Fuzzi.Logging
 import Data.Fuzzi.Symbol
 import Data.Fuzzi.Types
 import Data.Kind
@@ -25,6 +25,7 @@ import UnliftIO.Async
 import qualified Data.Fuzzi.PrettyPrint as PP
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
+import qualified Data.Set as SS
 
 data TestBundle concrete symbolic = TestBundle {
   _tbConstraints :: SymbolicConstraints
@@ -73,7 +74,7 @@ profileIOVerbose :: ( Show (GetProvenance a)
                  => Int
                  -> Fuzzi (TracedDist a)
                  -> IO (Buckets a)
-profileIOVerbose ntimes prog = runStderrLoggingT $ profile ntimes prog
+profileIOVerbose ntimes prog = runStdoutColoredLoggingT $ profile ntimes prog
 
 buildMapAux :: ( Ord (GetProvenance a)
                , HasProvenance a
@@ -92,6 +93,8 @@ symExec :: forall m concreteResult symbolicResult.
            , Show concreteResult
            , Show symbolicResult
            , Show (GetProvenance symbolicResult)
+           , Ord (GetProvenance concreteResult)
+           , Show (GetProvenance concreteResult)
            , HasProvenance concreteResult
            , HasProvenance symbolicResult
            , Matchable concreteResult symbolicResult
@@ -104,22 +107,28 @@ symExec :: forall m concreteResult symbolicResult.
         -> m [(Bucket concreteResult, [(symbolicResult, SymbolicConstraints)])]
 symExec buckets code = do
   let codes = streamline code
-  (errorsAndPaths :: [([SymExecError], (Bucket concreteResult, [(symbolicResult, SymbolicConstraints)]))])
+  (errorsAndPaths :: [([SymExecError], (GetProvenance concreteResult, Bucket concreteResult, [(symbolicResult, SymbolicConstraints)]))])
     <- mapM
-    (\(bucket :: Bucket concreteResult) -> do
+    (\(prov, (bucket :: Bucket concreteResult)) -> do
          rs <- mapM (go bucket) codes
          let (errors, paths) = partitionEithers rs
-         return (errors, (bucket, paths))
+         return (errors, (prov, bucket, paths))
     )
-    buckets'
+    (M.toList buckets)
   -- maybe log the errors to console?
-  let branchErrors   = concatMap fst errorsAndPaths
+  let _branchErrors  = concatMap fst errorsAndPaths
   let bucketAndPaths = map snd errorsAndPaths
-  $(logInfo) ("throwing away " <> pack (show (length branchErrors)) <> " branches")
-  return bucketAndPaths
-  where
-    buckets' = map snd (M.toList buckets)
 
+  let successfulProvenances = SS.fromList $ map (view _1) bucketAndPaths
+  let originalProvenances = SS.fromList $ M.keys buckets
+  let droppedProvenances = originalProvenances SS.\\ successfulProvenances
+
+  forM (SS.toList droppedProvenances) $ \p -> do
+    $(logWarn) "dropped this provenance:"
+    $(logWarn) (pack (show p))
+
+  return $ map (\a -> (a ^. _2, a ^. _3)) bucketAndPaths
+  where
     go :: Bucket concreteResult
        -> Fuzzi (SymbolicT concreteResult m symbolicResult)
        -> m (Either SymExecError (symbolicResult, SymbolicConstraints))
@@ -131,12 +140,14 @@ symExecGeneralize :: forall m concreteResult symbolicResult.
                      , Typeable symbolicResult
                      , Typeable m
                      , Ord (GetProvenance symbolicResult)
+                     , Ord (GetProvenance concreteResult)
                      , Ord symbolicResult
                      , Show concreteResult
                      , Show symbolicResult
                      , HasProvenance concreteResult
                      , HasProvenance symbolicResult
                      , Show (GetProvenance symbolicResult)
+                     , Show (GetProvenance concreteResult)
                      , Matchable concreteResult symbolicResult
                      , MonadIO m
                      , MonadLogger m
@@ -267,7 +278,7 @@ expectDPVerbose :: ( Typeable concrete
                 -> (Fuzzi (TracedDist concrete),
                     Fuzzi (SymbolicT concrete (LoggingT IO) symbolic))
                 -> PropertyM IO ()
-expectDPVerbose = expectDP' runStderrLoggingT
+expectDPVerbose = expectDP' runStdoutColoredLoggingT
 
 expectDP :: ( Typeable concrete
             , Typeable symbolic
@@ -282,9 +293,9 @@ expectDP :: ( Typeable concrete
             Epsilon
          -> Int
          -> (Fuzzi (TracedDist concrete),
-             Fuzzi (SymbolicT concrete (NoLoggingT IO) symbolic))
+             Fuzzi (SymbolicT concrete (LoggingT IO) symbolic))
          -> PropertyM IO ()
-expectDP = expectDP' runNoLoggingT
+expectDP = expectDP' runStdoutColoredLoggingT
 
 expectNotDP' :: ( IOConstraints m
                 , Typeable m
@@ -351,7 +362,7 @@ expectNotDPVerbose :: ( Typeable concrete
                       , symbolicInput -> Fuzzi (SymbolicT concrete (LoggingT IO) symbolic)
                       )
                    -> PropertyM IO ()
-expectNotDPVerbose = expectNotDP' runStderrLoggingT
+expectNotDPVerbose = expectNotDP' runStdoutColoredLoggingT
 
 expectNotDP :: ( Typeable concrete
                , Typeable symbolic
@@ -371,7 +382,7 @@ expectNotDP :: ( Typeable concrete
             -> Int
             -> Gen (concreteInput, symbolicInput)
             -> ( concreteInput -> Fuzzi (TracedDist concrete)
-               , symbolicInput -> Fuzzi (SymbolicT concrete (NoLoggingT IO) symbolic)
+               , symbolicInput -> Fuzzi (SymbolicT concrete (LoggingT IO) symbolic)
                )
             -> PropertyM IO ()
-expectNotDP = expectNotDP' runNoLoggingT
+expectNotDP = expectNotDP' runStdoutColoredLoggingT
