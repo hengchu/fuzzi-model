@@ -93,7 +93,7 @@ rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $
 
 
 rnmNotPrivateTest :: Property
-rnmNotPrivateTest = monadicIO $
+rnmNotPrivateTest = label "rnmBuggy" $ monadicIO $
   expectNotDP
     2.0
     300
@@ -104,7 +104,7 @@ rnmNotPrivateTest = monadicIO $
     ) -- code duplication because of let bindings monomorphises the types
 
 smartSumNotPrivateTest :: Property
-smartSumNotPrivateTest = monadicIO $
+smartSumNotPrivateTest = label "smartSumBuggy" $ monadicIO $
   expectNotDP
     2.0
     500
@@ -137,7 +137,7 @@ sparseVectorGapPrivacyTest xs =
       )
 
 sparseVectorNotPrivateTest :: Property
-sparseVectorNotPrivateTest = monadicIO $
+sparseVectorNotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
   expectNotDP
     1.0
     500
@@ -148,7 +148,8 @@ sparseVectorNotPrivateTest = monadicIO $
     )
 
 privTreePrivacyTest :: BagList Double -> Property
-privTreePrivacyTest xs = monadicIO $
+privTreePrivacyTest xs = label ("privTree input length: " ++ show (bagListLength xs)) $
+  monadicIO $
   expectDP
     k_PT_EPSILON
     500
@@ -157,7 +158,8 @@ privTreePrivacyTest xs = monadicIO $
     )
 
 privTreeBuggyNotPrivateTest :: Property
-privTreeBuggyNotPrivateTest = monadicIO $
+privTreeBuggyNotPrivateTest = label "privTreeBuggy" $
+  monadicIO $
   expectNotDP
     k_PT_EPSILON
     100
@@ -168,7 +170,8 @@ privTreeBuggyNotPrivateTest = monadicIO $
     )
 
 privTreeBuggy2NotPrivateTest :: Property
-privTreeBuggy2NotPrivateTest = monadicIO $
+privTreeBuggy2NotPrivateTest = label "privTreeBuggy2" $
+  monadicIO $
   expectNotDP
     k_PT_EPSILON
     100
@@ -179,7 +182,8 @@ privTreeBuggy2NotPrivateTest = monadicIO $
     )
 
 simpleCountPrivacyTest :: BagList Int -> Property
-simpleCountPrivacyTest xs = monadicIO $
+simpleCountPrivacyTest xs = label ("simpleCount input length: " ++ (show (bagListLength xs))) $
+  monadicIO $
   expectDP
     1.0
     500
@@ -188,7 +192,7 @@ simpleCountPrivacyTest xs = monadicIO $
     )
 
 simpleCountEpsTooSmallTest :: Property
-simpleCountEpsTooSmallTest = monadicIO $
+simpleCountEpsTooSmallTest = label "simpleCountEpsTooSmall" $ monadicIO $
   expectNotDP
     0.5
     500
@@ -199,7 +203,8 @@ simpleCountEpsTooSmallTest = monadicIO $
     )
 
 simpleMeanPrivacyTest :: Double -> BagList Double -> Property
-simpleMeanPrivacyTest clipBound xs = monadicIO $
+simpleMeanPrivacyTest clipBound xs = label ("simpleMean input length: " ++ (show (bagListLength xs))) $
+  monadicIO $
   expectDP
     (clipBound + 1.0)
     500
@@ -208,7 +213,8 @@ simpleMeanPrivacyTest clipBound xs = monadicIO $
     )
 
 unboundedMeanNotPrivateTest :: Property
-unboundedMeanNotPrivateTest = monadicIO $
+unboundedMeanNotPrivateTest = label "unboundedMeanBuggy" $
+  monadicIO $
   expectNotDP
     1.0
     500

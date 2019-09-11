@@ -10,6 +10,7 @@ module Data.Fuzzi.NeighborGen (
   , bagList
   , bagListSmall
   , bagListLarge
+  , bagListLength
   ) where
 
 import Control.Lens
@@ -107,6 +108,9 @@ bagListSmall = bagList (3, 4)
 
 bagListLarge :: forall a. Random a => (a, a) -> Int -> Gen (BagList a)
 bagListLarge = bagList (6, 8)
+
+bagListLength :: BagList a -> (Int, Int)
+bagListLength (BagList left right) = (length left, length right)
 
 instance (Num a) => Neighbor (PairWiseL1List a) where
   type Element (PairWiseL1List a) = [a]
