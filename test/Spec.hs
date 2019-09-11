@@ -161,8 +161,8 @@ privTreeBuggyNotPrivateTest :: Property
 privTreeBuggyNotPrivateTest = monadicIO $
   expectNotDP
     k_PT_EPSILON
-    100
-    50
+    500
+    20
     (bagListSmall (0.0, 1.0) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
     ( reify . privTree . map realToFrac
     , reify . privTree . map realToFrac
