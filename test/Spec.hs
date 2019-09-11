@@ -162,7 +162,7 @@ privTreeBuggyNotPrivateTest = monadicIO $
   expectNotDP
     k_PT_EPSILON
     500
-    20
+    100
     (bagListSmall (0.0, 1.0) 1 >>= \(xs :: BagList Double) -> return (left xs, right xs))
     ( reify . privTree . map realToFrac
     , reify . privTree . map realToFrac
@@ -359,10 +359,6 @@ main = do
     stdArgs{maxSuccess=2000}
     simpleProperties >>= printAndExitIfFailed
 
-
-  --quickCheckWithResult
-  --  expectSuccessArgs
-  --  prop_privTreeBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     expectSuccessArgs
     prop_rnmIsDifferentiallyPrivate >>= printAndExitIfFailed
@@ -401,6 +397,10 @@ main = do
   quickCheckWithResult
     expectFailureArgs
     prop_unboundedMeanIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+
+  quickCheckWithResult
+    expectFailureArgs{maxSuccess=1}
+    prop_privTreeBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
 
   putStrLn $
     "\n#######################################"
