@@ -122,6 +122,18 @@ data DistributionProvenance (a :: *) where
   Unary         :: UOp
                 -> DistributionProvenance a
                 -> DistributionProvenance a
+  LogBase       :: DistributionProvenance a
+                -> DistributionProvenance a
+                -> DistributionProvenance a
+  Log           :: DistributionProvenance a
+                -> DistributionProvenance a
+  Pow           :: DistributionProvenance a
+                -> DistributionProvenance a
+                -> DistributionProvenance a
+  Exp           :: DistributionProvenance a
+                -> DistributionProvenance a
+  Sqrt          :: DistributionProvenance a
+                -> DistributionProvenance a
   deriving (Show, Eq, Ord)
 
 {-
@@ -142,6 +154,15 @@ instance (NotList a, Num a) => Num (DistributionProvenance a) where
 instance (NotList a, Fractional a) => Fractional (DistributionProvenance a) where
   a / b          = Arith a Div b
   fromRational v = Deterministic (fromRational v)
+
+instance Transcendental a => Transcendental (DistributionProvenance a) where
+  naturalBase = Deterministic naturalBase
+  pi_ = Deterministic pi_
+  logBase_ = LogBase
+  log_ = Log
+  pow_ = Pow
+  exp_ = Exp
+  sqrt_ = Sqrt
 
 data WithDistributionProvenance a =
   WithDistributionProvenance { value :: a
@@ -328,3 +349,14 @@ instance HasProvenance Double where
   type DropProvenance Double = Double
   getProvenance = id
   dropProvenance = id
+
+instance Transcendental a => Transcendental (WithDistributionProvenance a) where
+  naturalBase     = WithDistributionProvenance naturalBase (Deterministic naturalBase)
+  pi_             = WithDistributionProvenance pi_ (Deterministic pi_)
+  logBase_ base n = WithDistributionProvenance (logBase_ (value base) (value n))
+                                               (logBase_ (provenance base) (provenance n))
+  log_ n = WithDistributionProvenance (log_ (value n)) (log_ (provenance n))
+  pow_ base n = WithDistributionProvenance (pow_ (value base) (value n))
+                                           (pow_ (provenance base) (provenance n))
+  exp_ n = WithDistributionProvenance (exp_ (value n)) (exp_ (provenance n))
+  sqrt_ n = WithDistributionProvenance (sqrt_ (value n)) (sqrt_ (provenance n))

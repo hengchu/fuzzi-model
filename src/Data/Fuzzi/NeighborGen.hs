@@ -3,6 +3,8 @@ module Data.Fuzzi.NeighborGen (
   , PairWiseL1List
   , pairWiseL1
   , shrinkPairWiseL1
+  , L1Value
+  , l1Value
   , L1List
   , l1List
   , shrinkL1List
@@ -35,6 +37,9 @@ instance (Show a, Num a) => Show (PairWiseL1List a) where
         xs2 = right xs
     in "PairWiseL1List { left = " ++ show xs1 ++ ", right = " ++ show xs2 ++ " }"
 
+data L1Value a = L1Value { _llL1Values :: (a, a), _llL1Diff :: a }
+  deriving (Show, Eq, Ord)
+
 data L1List a = L1List {
   _llListData :: [(a, a)]
   , _llDiff :: a
@@ -47,6 +52,7 @@ data BagList a = BagList {
 
 makeLensesWith abbreviatedFields ''PairWiseL1List
 makeLensesWith abbreviatedFields ''L1List
+makeLensesWith abbreviatedFields ''L1Value
 makeLensesWith abbreviatedFields ''BagList
 
 pairWiseL1 :: forall a.
@@ -65,6 +71,14 @@ shrinkPairWiseL1 :: PairWiseL1List a -> [PairWiseL1List a]
 shrinkPairWiseL1 (PairWiseL1List xs diff) =
   filter (not . null . view dataAndDiff) $
     PairWiseL1List <$> shrinkList (:[]) xs <*> pure diff
+
+l1Value :: ( Fractional a
+           , Random a
+           ) => a -> Gen (L1Value a)
+l1Value diff = do
+  x <- choose (0.0, 1.0)
+  diff' <- choose (0.0, diff)
+  return $ L1Value (x, x+diff') diff
 
 l1List :: forall a.
           ( Fractional a
@@ -132,3 +146,8 @@ instance Neighbor (BagList a) where
   type Element (BagList a) = [a]
   left  = view dataLeft
   right = view dataRight
+
+instance Neighbor (L1Value a) where
+  type Element (L1Value a) = a
+  left  = view $ l1Values . _1
+  right = view $ l1Values . _2

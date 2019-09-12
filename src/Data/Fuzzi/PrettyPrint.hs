@@ -169,6 +169,23 @@ pretty (IMod a b) = do
   a' <- pretty a
   b' <- pretty b
   return $ hsep [a', text "%", b']
+pretty (LogBase base n) = do
+  base' <- pretty base
+  n' <- pretty n
+  return $ hsep [text "logBase", base', n']
+pretty (Log n) = do
+  n' <- pretty n
+  return $ hsep [text "log", n']
+pretty (Pow base n) = do
+  base' <- pretty base
+  n' <- pretty n
+  return $ hsep [text "pow", base', n']
+pretty (Exp n) = do
+  n' <- pretty n
+  return $ hsep [text "exp", n']
+pretty (Sqrt n) = do
+  n' <- pretty n
+  return $ hsep [text "sqrt", n']
 pretty (Lt a b) = do
   a' <- pretty a
   b' <- pretty b

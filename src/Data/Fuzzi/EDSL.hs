@@ -83,6 +83,12 @@ data Fuzzi (a :: *) where
   IDiv        :: (IntNumeric a)  => Fuzzi a -> Fuzzi a -> Fuzzi a
   IMod        :: (IntNumeric a)  => Fuzzi a -> Fuzzi a -> Fuzzi a
 
+  LogBase     :: (Transcendental a) => Fuzzi a -> Fuzzi a -> Fuzzi a
+  Log         :: (Transcendental a) => Fuzzi a -> Fuzzi a
+  Pow         :: (Transcendental a) => Fuzzi a -> Fuzzi a -> Fuzzi a
+  Exp         :: (Transcendental a) => Fuzzi a -> Fuzzi a
+  Sqrt        :: (Transcendental a) => Fuzzi a -> Fuzzi a
+
   Lt          :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
   Le          :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
   Gt          :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
@@ -253,6 +259,12 @@ subst v term filling =
     Sign a   -> Sign (subst v a filling)
     Abs  a   -> Abs  (subst v a filling)
 
+    LogBase base n -> LogBase (subst v base filling) (subst v n filling)
+    Log n -> Log (subst v n filling)
+    Pow base n -> Pow (subst v base filling) (subst v n filling)
+    Exp n -> Exp (subst v n filling)
+    Sqrt n -> Sqrt (subst v n filling)
+
     Div   a b -> Div   (subst v a filling) (subst v b filling)
     IDiv  a b -> IDiv  (subst v a filling) (subst v b filling)
     IMod  a b -> IMod  (subst v a filling) (subst v b filling)
@@ -333,6 +345,16 @@ streamlineAux var (Mult a b) =
   [Mult a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (Sub a b) =
   [Sub a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
+streamlineAux var (LogBase base n) =
+  [LogBase base' n' | base' <- streamlineAux var base, n' <- streamlineAux var n]
+streamlineAux var (Log n) =
+  [Log n' | n' <- streamlineAux var n]
+streamlineAux var (Pow base n) =
+  [Pow base' n' | base' <- streamlineAux var base, n' <- streamlineAux var n]
+streamlineAux var (Exp n) =
+  [Exp n' | n' <- streamlineAux var n]
+streamlineAux var (Sqrt n) =
+  [Sqrt n' | n' <- streamlineAux var n]
 streamlineAux var (Sign a) =
   [Sign a' | a' <- streamlineAux var a]
 streamlineAux var (Abs a) =
@@ -471,6 +493,15 @@ instance Boolean a => Boolean (Fuzzi a) where
   and = And
   or  = Or
   neg = Not
+
+instance (FuzziType a, Transcendental a) => Transcendental (Fuzzi a) where
+  naturalBase = lit naturalBase
+  pi_         = lit pi_
+  logBase_    = LogBase
+  log_        = Log
+  pow_        = Pow
+  exp_        = Exp
+  sqrt_       = Sqrt
 
 {-
 instance ( ConcreteBoolean (TestResult list)

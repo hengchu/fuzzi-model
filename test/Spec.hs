@@ -224,6 +224,16 @@ unboundedMeanNotPrivateTest = label "unboundedMeanBuggy" $
     , reify . unboundedMean . map realToFrac
     )
 
+ex5PrivacyTest :: L1Value Double -> Property
+ex5PrivacyTest x = label ("ex5 input: " ++ show x) $
+  monadicIO $
+  expectDP
+    1.0
+    500
+    ( reify . ex5 . realToFrac $ left x
+    , reify . ex5 . realToFrac $ right x
+    )
+
 prop_rnmIsDifferentiallyPrivate :: Property
 prop_rnmIsDifferentiallyPrivate =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 rnmPrivacyTest
@@ -282,6 +292,10 @@ prop_simpleMeanIsDifferentiallyPrivate =
 prop_unboundedMeanIsNotDifferentiallyPrivate :: Property
 prop_unboundedMeanIsNotDifferentiallyPrivate =
   unboundedMeanNotPrivateTest
+
+prop_ex5IsDifferentiallyPrivate :: Property
+prop_ex5IsDifferentiallyPrivate =
+  forAll (l1Value 1.0) ex5PrivacyTest
 
 newtype SmallList a = SmallList {
   getSmallList :: [a]

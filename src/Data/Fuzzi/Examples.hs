@@ -32,6 +32,13 @@ ex4 = do
           return $ if_ (x4 %> x2) x4 x2
       )
 
+ex5 :: FuzziLangExt m a => a -> Mon m (Fuzzi a)
+ex5 x = do
+  noisedX <- lap (lit x) 1.0
+  ifM (noisedX %> 0)
+      (return (sqrt_ noisedX))
+      (return 0)
+
 reportNoisyMaxAux :: (FuzziLang m a)
                   => [Fuzzi a]
                   -> Fuzzi Int

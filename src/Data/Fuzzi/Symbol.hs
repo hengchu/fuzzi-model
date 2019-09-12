@@ -95,6 +95,12 @@ data SymbolicExpr :: * where
   Ge  :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
   Eq_ :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
 
+  LogBase :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
+  Log     :: SymbolicExpr -> SymbolicExpr
+  Pow     :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
+  Exp     :: SymbolicExpr -> SymbolicExpr
+  Sqrt    :: SymbolicExpr -> SymbolicExpr
+
   And :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
   Or  :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
   Not :: SymbolicExpr -> SymbolicExpr
@@ -181,6 +187,18 @@ prettySymbolic currPrec (Eq_ x y) =
     prettySymbolic thisPrec x
     TPP.<+> TPP.text "=="
     TPP.<+> prettySymbolic (thisPrec + thisFixity) y
+prettySymbolic _ (LogBase base n) =
+  TPP.text "logBase" TPP.<>
+  TPP.parens (prettySymbolic 0 base `PP.commaSep` prettySymbolic 0 n)
+prettySymbolic _ (Log n) =
+  TPP.text "log" TPP.<> TPP.parens (prettySymbolic 0 n)
+prettySymbolic _ (Pow base n) =
+  TPP.text "pow" TPP.<>
+  TPP.parens (prettySymbolic 0 base `PP.commaSep` prettySymbolic 0 n)
+prettySymbolic _ (Exp n) =
+  TPP.text "exp" TPP.<> TPP.parens (prettySymbolic 0 n)
+prettySymbolic _ (Sqrt n) =
+  TPP.text "sqrt" TPP.<> TPP.parens (prettySymbolic 0 n)
 prettySymbolic currPrec (And x y) =
   let thisPrec = PP.precedence M.! "&&" in
   let thisFixity = PP.fixity M.! "&&" in
@@ -277,6 +295,9 @@ data SymExecError =
   | AbsurdConstraints [String] -- ^ the unsat core
   | InternalError String
   deriving (Show, Eq, Ord, Typeable)
+
+abortError :: SymExecError
+abortError = InternalError "symbolic execution aborted due to unrecoverable error"
 
 initialSymbolicState :: Bucket r -> PP.SomeFuzzi -> SymbolicState r
 initialSymbolicState =
@@ -420,7 +441,7 @@ solve_ conditions symCost eps = do
         liftIO (Z3.solverAssertAndTrack cxt solver ast trackedBoolVar)
         --liftIO (Z3.optimizerAssertAndTrack cxt solver ast trackedBoolVar)
       toZ3 cond = do
-        ast <- liftIO $ symbolicExprToZ3AST cxt (getBoolExpr cond)
+        ast <- symbolicExprToZ3AST cxt (getBoolExpr cond)
         let prettyStr = pretty (getBoolExpr cond)
         return (prettyStr, ast)
       --toZ3R val = do
@@ -446,9 +467,9 @@ solve_ conditions symCost eps = do
       model <- liftIO $ Z3.solverGetModel cxt solver
       --model <- liftIO $ Z3.optimizerGetModel cxt solver
       let getCostValue sym = do
-            ast <- liftIO $ symbolicExprToZ3AST cxt (getRealExpr sym)
+            ast <- symbolicExprToZ3AST cxt (getRealExpr sym)
             liftIO $ Z3.evalReal cxt model ast
-      cost <- liftIO $ getCostValue symCost
+      cost <- getCostValue symCost
       case cost of
         Just cost' -> do
           costForced <- liftIO $ evaluate (force cost')
@@ -499,7 +520,7 @@ isAbsurd sc = do
         trackedBoolVar <- liftIO $ Z3.mkFreshBoolVar cxt label
         liftIO (Z3.solverAssertAndTrack cxt solver ast trackedBoolVar)
   let toZ3 cond = do
-        ast <- liftIO $ symbolicExprToZ3AST cxt (getBoolExpr cond)
+        ast <- symbolicExprToZ3AST cxt (getBoolExpr cond)
         let prettyStr = pretty (getBoolExpr cond)
         return (prettyStr, ast)
   forM_ (sc ^. pathConstraints) $ \(cond, truth) -> do
@@ -554,7 +575,10 @@ gatherConstraints bucket code computation = do
           . flip runStateT (initialSymbolicState bucket code)
           . runSymbolicT_
 
-symbolicExprToZ3AST :: (MonadIO m) => Z3.Context -> SymbolicExpr -> m Z3.AST
+symbolicExprToZ3AST :: ( MonadIO m
+                       , MonadLogger m
+                       )
+                    => Z3.Context -> SymbolicExpr -> m Z3.AST
 symbolicExprToZ3AST ctx (RealVar name) = do
   sym <- liftIO (Z3.mkStringSymbol ctx name)
   liftIO (Z3.mkRealVar ctx sym)
@@ -578,6 +602,23 @@ symbolicExprToZ3AST ctx (Div a b) = do
   a' <- symbolicExprToZ3AST ctx a
   b' <- symbolicExprToZ3AST ctx b
   liftIO (Z3.mkDiv ctx a' b')
+symbolicExprToZ3AST ctx expr@(LogBase base _) = do
+  $(logError) ("did not simplify away " <> (pack (pretty expr)))
+  $(logError) ("please make sure " <> (pack (pretty base)) <> " can reduce to a constant")
+  liftIO (throwIO abortError)
+symbolicExprToZ3AST ctx expr@(Log _) = do
+  $(logError) ("did not simplify away " <> (pack (pretty expr)))
+  liftIO (throwIO abortError)
+symbolicExprToZ3AST ctx expr@(Pow base _) = do
+  $(logError) ("did not simplify away " <> (pack (pretty expr)))
+  $(logError) ("please make sure " <> (pack (pretty base)) <> " can reduce to a constant")
+  liftIO (throwIO abortError)
+symbolicExprToZ3AST ctx expr@(Exp _) = do
+  $(logError) ("did not simplify away " <> (pack (pretty expr)))
+  liftIO (throwIO abortError)
+symbolicExprToZ3AST ctx expr@(Sqrt _) = do
+  $(logError) ("did not simplify away " <> (pack (pretty expr)))
+  liftIO (throwIO abortError)
 symbolicExprToZ3AST ctx (Lt a b) = do
   a' <- symbolicExprToZ3AST ctx a
   b' <- symbolicExprToZ3AST ctx b
@@ -904,6 +945,20 @@ instance SEq Bool Bool where
   symEq a b = bool (a == b)
 
 instance SEq Double RealExpr where
+  symEq a (RealExpr tol (LogBase (tryEvalReal' -> Just base) n))
+    | base > 0 =
+      let n' = RealExpr tol n in
+      symEq ((fromRational base) ** a) n' --`Data.Fuzzi.Types.and` (n' %> 0)
+  symEq a (RealExpr tol (Log n)) =
+    let n' = RealExpr tol n in
+    symEq (exp a) n' --`Data.Fuzzi.Types.and` (n' %> 0)
+  symEq a (RealExpr tol (Pow (tryEvalReal' -> Just base) n)) =
+    symEq (logBase (fromRational base) a) (RealExpr tol n)
+  symEq a (RealExpr tol (Exp n)) =
+    symEq (log a) (RealExpr tol n)
+  symEq a (RealExpr tol (Sqrt n)) =
+    let n' = RealExpr tol n in
+    symEq (a * a) n' --`Data.Fuzzi.Types.and` (n' %>= 0)
   symEq a b =
     let tol = getTolerance b
     in if tol == 0
@@ -951,21 +1006,26 @@ doSubst (RealVar x) substs =
     Just (_, t) -> t
 doSubst e@(Rat _) _ = e
 doSubst e@(JustBool _) _ = e
-doSubst (Add x y)      substs = Add (doSubst x substs) (doSubst y substs)
-doSubst (Sub x y)      substs = Sub (doSubst x substs) (doSubst y substs)
-doSubst (Mul x y)      substs = Mul (doSubst x substs) (doSubst y substs)
-doSubst (Div x y)      substs = Div (doSubst x substs) (doSubst y substs)
-doSubst (Lt x y)       substs = Lt  (doSubst x substs) (doSubst y substs)
-doSubst (Le x y)       substs = Le  (doSubst x substs) (doSubst y substs)
-doSubst (Gt x y)       substs = Gt  (doSubst x substs) (doSubst y substs)
-doSubst (Ge x y)       substs = Ge  (doSubst x substs) (doSubst y substs)
-doSubst (Eq_ x y)      substs = Eq_ (doSubst x substs) (doSubst y substs)
-doSubst (And x y)      substs = And (doSubst x substs) (doSubst y substs)
-doSubst (Or x y)       substs = Or  (doSubst x substs) (doSubst y substs)
-doSubst (Not x)        substs = Not (doSubst x substs)
-doSubst (Ite cond x y) substs = Ite (doSubst cond substs)
-                                    (doSubst x substs)
-                                    (doSubst y substs)
+doSubst (Add x y)        substs = Add (doSubst x substs) (doSubst y substs)
+doSubst (Sub x y)        substs = Sub (doSubst x substs) (doSubst y substs)
+doSubst (Mul x y)        substs = Mul (doSubst x substs) (doSubst y substs)
+doSubst (Div x y)        substs = Div (doSubst x substs) (doSubst y substs)
+doSubst (LogBase base n) substs = LogBase (doSubst base substs) (doSubst n substs)
+doSubst (Log n)          substs = Log (doSubst n substs)
+doSubst (Pow base n)     substs = Pow (doSubst base substs) (doSubst n substs)
+doSubst (Exp n)          substs = Exp (doSubst n substs)
+doSubst (Sqrt n)         substs = Sqrt (doSubst n substs)
+doSubst (Lt x y)         substs = Lt  (doSubst x substs) (doSubst y substs)
+doSubst (Le x y)         substs = Le  (doSubst x substs) (doSubst y substs)
+doSubst (Gt x y)         substs = Gt  (doSubst x substs) (doSubst y substs)
+doSubst (Ge x y)         substs = Ge  (doSubst x substs) (doSubst y substs)
+doSubst (Eq_ x y)        substs = Eq_ (doSubst x substs) (doSubst y substs)
+doSubst (And x y)        substs = And (doSubst x substs) (doSubst y substs)
+doSubst (Or x y)         substs = Or  (doSubst x substs) (doSubst y substs)
+doSubst (Not x)          substs = Not (doSubst x substs)
+doSubst (Ite cond x y)   substs = Ite (doSubst cond substs)
+                                      (doSubst x substs)
+                                      (doSubst y substs)
 doSubst (Substitute x substs) substs' = doSubst x (substs ++ substs')
 
 tryEvalBool :: BoolExpr -> Maybe Bool
@@ -1014,7 +1074,21 @@ instance Monad m => MonadThrow (SymbolicT r m) where
       _          -> throwError (InternalError ("unexpected exception: " ++ show exc))
 
 instance D.HasProvenance (D.WithDistributionProvenance RealExpr) where
-  type GetProvenance (D.WithDistributionProvenance RealExpr) = D.DistributionProvenance RealExpr
-  type DropProvenance (D.WithDistributionProvenance RealExpr) = RealExpr
+  type GetProvenance (D.WithDistributionProvenance RealExpr) =
+    D.DistributionProvenance RealExpr
+  type DropProvenance (D.WithDistributionProvenance RealExpr) =
+    RealExpr
   getProvenance = D.provenance
   dropProvenance = D.value
+
+instance Transcendental RealExpr where
+  naturalBase = RealExpr 0 $ Rat (realToFrac (naturalBase :: Double))
+  pi_         = RealExpr 0 $ Rat (realToFrac (pi_ :: Double))
+  logBase_ (RealExpr tol1 base) (RealExpr tol2 n) =
+    RealExpr (max tol1 tol2) (LogBase base n)
+  log_  (RealExpr tol n)                       = RealExpr tol (Log n)
+  pow_  (RealExpr tol1 base) (RealExpr tol2 n) = RealExpr (max tol1 tol2) (Pow base n)
+  exp_  (RealExpr tol n)                       = RealExpr tol (Exp n)
+  sqrt_ (RealExpr tol n)                       = RealExpr tol (Sqrt n)
+
+instance Exception SymExecError

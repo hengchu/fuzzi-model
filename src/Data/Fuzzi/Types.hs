@@ -26,6 +26,24 @@ class LiteIntegral (a :: *) where
   idiv :: a -> a -> a
   imod :: a -> a -> a
 
+class Transcendental a where
+  naturalBase :: a
+  pi_         :: a
+  logBase_    :: a -> a -> a
+  log_        :: a -> a
+  pow_        :: a -> a -> a
+  exp_        :: a -> a
+  sqrt_       :: a -> a
+
+instance Transcendental Double where
+  naturalBase = exp 1
+  pi_         = pi
+  logBase_    = logBase
+  log_        = log
+  pow_        = (**)
+  exp_        = exp
+  sqrt_       = sqrt
+
 instance LiteIntegral Int where
   idiv = div
   imod = mod
@@ -83,6 +101,7 @@ class Matchable concrete symbolic where
 type Distribution m a    = (MonadDist m, NumDomain m ~ a, FuzziType a, FracNumeric a)
 type Assertion    m bool = (MonadAssert m, BoolType m ~ bool, IfCxt (ConcreteBoolean bool))
 type FuzziLang    m a    = (Distribution m a, Assertion m (CmpResult a))
+type FuzziLangExt m a    = (FuzziLang m a, Transcendental a)
 
 instance Boolean Bool where
   and = (&&)
