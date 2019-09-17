@@ -135,6 +135,21 @@ smartSumAuxBuggy (x:xs) next n i sum results = do
           smartSumAuxBuggy xs next' n  (i+1) sum' (results `snoc` next'))
   where lapNoTolerance = lap' 0
 
+prefixSum :: forall m a.
+             (FuzziLang m a)
+          => [Fuzzi a]
+          -> Mon m (Fuzzi [a])
+prefixSum xs = do
+  xsNoised <- mapM (`lap` 1.0) xs
+  return (prefixSumAux (reverse xsNoised) nil)
+
+prefixSumAux :: (FuzziType a, Numeric a)
+             => [Fuzzi a]
+             -> Fuzzi [a]
+             -> Fuzzi [a]
+prefixSumAux []           acc = acc
+prefixSumAux input@(_x:xs) acc = prefixSumAux xs (sum input `cons` acc)
+
 smartSum :: forall m a.
             (FuzziLang m a)
          => [Fuzzi a]

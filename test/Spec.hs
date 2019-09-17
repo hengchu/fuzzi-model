@@ -71,6 +71,17 @@ smartSumPrivacyTest xs =
       , reify . smartSum . map realToFrac $ right xs
       )
 
+prefixSumPrivacyTest :: L1List Double -> Property
+prefixSumPrivacyTest xs =
+  label ("prefixsum input size: " ++ show (length xs)) $
+  monadicIO $
+    expectDP
+      1.0
+      500
+      ( reify . prefixSum . map realToFrac $ left xs
+      , reify . prefixSum . map realToFrac $ right xs
+      )
+
 rnmPrivacyTest :: PairWiseL1List Double -> Property
 rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $
   monadicIO $
@@ -239,6 +250,10 @@ prop_smartSumIsDifferentiallyPrivate :: Property
 prop_smartSumIsDifferentiallyPrivate =
   forAll (l1List 1.0) smartSumPrivacyTest
 
+prop_prefixSumIsDifferentiallyPrivate :: Property
+prop_prefixSumIsDifferentiallyPrivate =
+  forAll (l1List 1.0) prefixSumPrivacyTest
+
 prop_smartSumBuggyIsNotDifferentiallyPrivate :: Property
 prop_smartSumBuggyIsNotDifferentiallyPrivate =
   smartSumNotPrivateTest
@@ -390,6 +405,9 @@ main = do
   quickCheckWithResult
     expectFailureArgs
     prop_rnmBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectSuccessArgs
+    prop_prefixSumIsDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     expectSuccessArgs
     prop_smartSumIsDifferentiallyPrivate >>= printAndExitIfFailed
