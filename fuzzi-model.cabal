@@ -46,6 +46,7 @@ library
                 , Data.Fuzzi.PrettyPrint
                 , Data.Fuzzi.NeighborGen
                 , Data.Fuzzi.Logging
+                , Data.Fuzzi.Rosette
   other-modules:
       Paths_fuzzi_model
   hs-source-dirs:
