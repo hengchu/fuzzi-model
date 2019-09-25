@@ -285,8 +285,6 @@ instance HasProvenance Double where
   getProvenance = id
   dropProvenance = id
 
-instance HasSymbolicRepr a => HasSymbolicRepr (WithDistributionProvenance a) where
-  type SymbolicRepr (WithDistributionProvenance a) =
-    WithDistributionProvenance (SymbolicRepr a)
+instance SymbolicRepr a => SymbolicRepr (WithDistributionProvenance a) where
   into = undefined
   merge = undefined

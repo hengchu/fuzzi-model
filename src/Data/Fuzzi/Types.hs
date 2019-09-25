@@ -23,13 +23,12 @@ guarded = MkGuarded (bool True)
 
 type GuardedSymbolicUnion = Compose SymbolicUnion Guarded
 
-class HasSymbolicRepr a where
-  type SymbolicRepr a :: *
+class SymbolicRepr a where
   into  :: a
-        -> GuardedSymbolicUnion (SymbolicRepr a)
+        -> GuardedSymbolicUnion a
   merge :: Guarded a
-        -> GuardedSymbolicUnion (SymbolicRepr a)
-        -> GuardedSymbolicUnion (SymbolicRepr a)
+        -> GuardedSymbolicUnion a
+        -> GuardedSymbolicUnion a
 
 newtype IntExpr = IntExpr { getIntExpr :: SymbolicExpr }
   deriving (Show, Eq, Ord)
@@ -45,7 +44,7 @@ data SymbolicUnion (a :: *) where
 
 -- |This constraint is only satisfied by first-class datatypes supported in
 -- Fuzzi.
-class (HasSymbolicRepr a, Typeable a, Show a) => FuzziType (a :: *)
+class (Typeable a, Show a) => FuzziType (a :: *)
 
 -- |Order operators in the semantic domain.
 class (Boolean (CmpResult a), Typeable a) => Ordered (a :: *) where
@@ -326,28 +325,19 @@ instance Ordered RealExpr where
   lhs %== rhs = BoolExpr (getRealExpr lhs `Eq_` getRealExpr rhs)
   a %/= b = neg (a %== b)
 
-instance HasSymbolicRepr Double where
-  type SymbolicRepr Double = RealExpr
+instance SymbolicRepr Double where
   into = undefined
   merge = undefined
 
-instance HasSymbolicRepr Bool where
-  type SymbolicRepr Bool = BoolExpr
+instance SymbolicRepr Bool where
   into = undefined
   merge = undefined
 
-instance HasSymbolicRepr Int where
-  type SymbolicRepr Int = IntExpr
-  into = undefined
-  merge = undefined
-
-instance HasSymbolicRepr RealExpr where
-  type SymbolicRepr RealExpr = RealExpr
+instance SymbolicRepr RealExpr where
   into = pure
   merge = undefined
 
-instance HasSymbolicRepr BoolExpr where
-  type SymbolicRepr BoolExpr = BoolExpr
+instance SymbolicRepr BoolExpr where
   into = pure
   merge = undefined
 
@@ -365,28 +355,19 @@ instance FuzziType a => FuzziType (Maybe a)
 instance FuzziType PrivTreeNode1D
 instance (FuzziType a, FuzziType b) => FuzziType (a, b)
 
-instance HasSymbolicRepr a => HasSymbolicRepr (PrivTree1D a) where
-  type SymbolicRepr (PrivTree1D a) = PrivTree1D (SymbolicRepr a)
+instance SymbolicRepr a => SymbolicRepr (PrivTree1D a) where
   into = undefined
   merge = undefined
 
-instance HasSymbolicRepr a => HasSymbolicRepr [a] where
-  type SymbolicRepr [a] = [SymbolicRepr a]
+instance SymbolicRepr a => SymbolicRepr [a] where
   into = undefined
   merge = undefined
 
-instance HasSymbolicRepr a => HasSymbolicRepr (Maybe a) where
-  type SymbolicRepr (Maybe a) = Maybe (SymbolicRepr a)
+instance SymbolicRepr a => SymbolicRepr (Maybe a) where
   into = undefined
   merge = undefined
 
-instance HasSymbolicRepr PrivTreeNode1D where
-  type SymbolicRepr PrivTreeNode1D = PrivTreeNode1D
-  into = pure
-  merge = undefined
-
-instance (HasSymbolicRepr a, HasSymbolicRepr b) => HasSymbolicRepr (a, b) where
-  type SymbolicRepr (a, b) = (SymbolicRepr a, SymbolicRepr b)
+instance (SymbolicRepr a, SymbolicRepr b) => SymbolicRepr (a, b) where
   into = undefined
   merge = undefined
 

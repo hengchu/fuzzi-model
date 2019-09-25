@@ -7,5 +7,5 @@ import Data.Fuzzi.EDSL
 import Data.Fuzzi.Symbol
 import Data.Fuzzi.Types
 
-eval :: Fuzzi a -> GuardedSymbolicUnion (SymbolicRepr a)
+eval :: Fuzzi a -> GuardedSymbolicUnion a
 eval = undefined
