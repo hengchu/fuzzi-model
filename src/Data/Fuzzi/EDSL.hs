@@ -36,9 +36,8 @@ import Type.Reflection (Typeable, typeRep, eqTypeRep, (:~~:)(..))
 import Data.Fuzzi.Types hiding (SymbolicExpr(..))
 import Control.Monad.Catch
 
-newtype Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
-  deriving (Functor)--, Applicative, Monad)
-  -- via (Codensity (Compose Fuzzi m))
+newtype Mon m a = Mon { runMon :: forall b. (FuzziType b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
+  deriving (Functor)
 
 -- |The main typeclass for reification and reflection.
 class Typeable (DeepRepr a) => Syntactic a where
@@ -53,11 +52,11 @@ class Syntactic1 (m :: * -> *) where
 
 data Fuzzi (a :: *) where
   Lam         :: (FuzziType a, FuzziType b) => (Fuzzi a -> Fuzzi b) -> Fuzzi (a -> b)
-  App         :: (Typeable a) => Fuzzi (a -> b) -> Fuzzi a -> Fuzzi b
+  App         :: (FuzziType a, FuzziType b) => Fuzzi (a -> b) -> Fuzzi a -> Fuzzi b
 
   Return      :: (Monad m, FuzziType a) => Fuzzi a -> Fuzzi (m a)
   Sequence    :: (Monad m, Typeable m, FuzziType a) => Fuzzi (m ()) -> Fuzzi (m a) -> Fuzzi (m a)
-  Bind        :: (Monad m, Typeable m, FuzziType a, Typeable b) => Fuzzi (m a) -> (Fuzzi a -> Fuzzi (m b)) -> Fuzzi (m b)
+  Bind        :: (Monad m, Typeable m, FuzziType a, FuzziType b) => Fuzzi (m a) -> (Fuzzi a -> Fuzzi (m b)) -> Fuzzi (m b)
   Lit         :: (FuzziType a) => a -> Fuzzi a
   If          :: (ConcreteBoolean bool) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
   IfM         :: (FuzziType a, Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a) -> Fuzzi (m a)

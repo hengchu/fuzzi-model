@@ -19,7 +19,6 @@ import Data.Fuzzi.Types
 import Data.Fuzzi.Logging
 import Data.Text (pack)
 import Data.Void
-import Debug.Trace
 import Type.Reflection
 import qualified Data.Fuzzi.Distribution as D
 import qualified Data.Fuzzi.EDSL as EDSL

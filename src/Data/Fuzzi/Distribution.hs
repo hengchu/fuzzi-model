@@ -10,7 +10,6 @@ import Data.Random.RVar
 import Data.Sequence
 import Type.Reflection
 import Data.Fuzzi.Types hiding (SymbolicExpr(..))
-import qualified Data.Fuzzi.Types as T
 import qualified Control.Monad.Trans.Class as MT
 import qualified Data.Map.Strict as M
 import qualified Data.Random as R

@@ -5,9 +5,7 @@ import Data.Bifunctor
 import Data.Coerce
 import Data.Functor.Compose
 import Data.Fuzzi.IfCxt
-import Data.Kind (Constraint)
 import Data.Text (Text)
-import GHC.TypeLits
 import Prelude hiding (and)
 import Type.Reflection
 import qualified Data.Map.Merge.Strict as MM
@@ -18,8 +16,11 @@ import qualified Text.PrettyPrint as TPP
 singleton :: a -> SymbolicUnion a
 singleton = Singleton
 
-guarded :: a -> Guarded a
-guarded = MkGuarded (bool True)
+guarded :: BoolExpr -> a -> Guarded a
+guarded = MkGuarded
+
+guardedSingleton :: BoolExpr -> a -> GuardedSymbolicUnion a
+guardedSingleton cond = Compose . singleton . guarded cond
 
 type GuardedSymbolicUnion = Compose SymbolicUnion Guarded
 
@@ -29,6 +30,9 @@ class SymbolicRepr a where
   merge :: Guarded a
         -> GuardedSymbolicUnion a
         -> GuardedSymbolicUnion a
+
+mergeUnion :: SymbolicRepr a => GuardedSymbolicUnion a -> GuardedSymbolicUnion a -> GuardedSymbolicUnion a
+mergeUnion left right = foldr merge right (getCompose left)
 
 newtype IntExpr = IntExpr { getIntExpr :: SymbolicExpr }
   deriving (Show, Eq, Ord)
@@ -44,7 +48,7 @@ data SymbolicUnion (a :: *) where
 
 -- |This constraint is only satisfied by first-class datatypes supported in
 -- Fuzzi.
-class (Typeable a, Show a) => FuzziType (a :: *)
+class (SymbolicRepr a, Typeable a, Show a) => FuzziType (a :: *)
 
 -- |Order operators in the semantic domain.
 class (Boolean (CmpResult a), Typeable a) => Ordered (a :: *) where
@@ -87,7 +91,7 @@ class (Monad m, Typeable m, FracNumeric (NumDomain m)) => MonadDist m where
   gaussian  ::             NumDomain m -> Double -> m (NumDomain m)
   gaussian' :: Rational -> NumDomain m -> Double -> m (NumDomain m)
 
-class (Monad m, Typeable m, Boolean (BoolType m), MonadThrow m) => MonadAssert m where
+class (Monad m, Typeable m, Boolean (BoolType m), MonadThrow m, FuzziType (BoolType m)) => MonadAssert m where
   type BoolType m :: *
   assertTrue  :: BoolType m -> m ()
   assertFalse :: BoolType m -> m ()
@@ -325,6 +329,10 @@ instance Ordered RealExpr where
   lhs %== rhs = BoolExpr (getRealExpr lhs `Eq_` getRealExpr rhs)
   a %/= b = neg (a %== b)
 
+instance SymbolicRepr Int where
+  into = undefined
+  merge = undefined
+
 instance SymbolicRepr Double where
   into = undefined
   merge = undefined
@@ -354,6 +362,10 @@ instance FuzziType a => FuzziType [a]
 instance FuzziType a => FuzziType (Maybe a)
 instance FuzziType PrivTreeNode1D
 instance (FuzziType a, FuzziType b) => FuzziType (a, b)
+
+instance SymbolicRepr PrivTreeNode1D where
+  into = undefined
+  merge = undefined
 
 instance SymbolicRepr a => SymbolicRepr (PrivTree1D a) where
   into = undefined
@@ -468,7 +480,7 @@ commaSep :: TPP.Doc -> TPP.Doc -> TPP.Doc
 commaSep a b = a TPP.<> TPP.comma TPP.<+> b
 
 instance Applicative Guarded where
-  pure = guarded
+  pure = guarded (bool True)
   (MkGuarded cond1 f) <*> (MkGuarded cond2 a) =
     MkGuarded (cond1 `and` cond2) (f a)
 
@@ -479,3 +491,17 @@ instance Applicative SymbolicUnion where
   (f1 `Union` f2) <*> (Singleton a)   = (fmap ($ a) f1) `Union` (fmap ($ a) f2)
   (f1 `Union` f2) <*> (u1 `Union` u2) =
     (f1 <*> u1) `Union` (f1 <*> u2) `Union` (f2 <*> u1) `Union` (f2 <*> u2)
+
+instance Monad GuardedSymbolicUnion where
+  return = pure
+  a >>= f =
+    let ua  = getCompose a
+        uub = fmap f a
+    in joinGuardedSymbolicUnion uub
+
+joinGuardedSymbolicUnion :: GuardedSymbolicUnion (GuardedSymbolicUnion a) -> GuardedSymbolicUnion a
+joinGuardedSymbolicUnion (Compose (Singleton (MkGuarded conds union))) = (Compose $ Singleton (MkGuarded conds ())) *> union
+joinGuardedSymbolicUnion (Compose (Union u1 u2)) =
+  let j1 = getCompose $ joinGuardedSymbolicUnion (Compose u1)
+      j2 = getCompose $ joinGuardedSymbolicUnion (Compose u2)
+  in Compose $ Union j1 j2

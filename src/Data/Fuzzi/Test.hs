@@ -17,17 +17,14 @@ import Data.Fuzzi.Types
 import Data.Kind
 import Data.Maybe (isJust)
 import Data.Text (pack)
-import Debug.Trace
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
 import Type.Reflection
-import UnliftIO.Async
 import qualified Data.Fuzzi.PrettyPrint as PP
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
 import qualified Data.Set as SS
 import Data.Time.Clock
-import Data.Fixed
 
 data TestBundle concrete symbolic = TestBundle {
   _tbConstraints :: SymbolicConstraints

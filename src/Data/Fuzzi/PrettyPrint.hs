@@ -1,6 +1,5 @@
 module Data.Fuzzi.PrettyPrint where
 
-import Data.Text (Text)
 import Prelude hiding ((<>))
 import Control.Lens
 import Control.Monad.State.Strict
