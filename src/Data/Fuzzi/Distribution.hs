@@ -9,7 +9,8 @@ import Data.Random.Distribution.Uniform
 import Data.Random.RVar
 import Data.Sequence
 import Type.Reflection
-import Data.Fuzzi.Types
+import Data.Fuzzi.Types hiding (SymbolicExpr(..))
+import qualified Data.Fuzzi.Types as T
 import qualified Control.Monad.Trans.Class as MT
 import qualified Data.Map.Strict as M
 import qualified Data.Random as R
@@ -131,7 +132,7 @@ deriving instance (Ord a) => Ord (DistributionProvenance a)
 deriving instance Typeable DistributionProvenance
 -}
 
-instance (NotList a, Num a) => Num (DistributionProvenance a) where
+instance Num a => Num (DistributionProvenance a) where
   a + b         = Arith a Add  b
   a * b         = Arith a Mult b
   a - b         = Arith a Sub  b
@@ -139,7 +140,7 @@ instance (NotList a, Num a) => Num (DistributionProvenance a) where
   signum        = Unary Sign
   fromInteger v = Deterministic (fromInteger v)
 
-instance (NotList a, Fractional a) => Fractional (DistributionProvenance a) where
+instance Fractional a => Fractional (DistributionProvenance a) where
   a / b          = Arith a Div b
   fromRational v = Deterministic (fromRational v)
 
@@ -153,7 +154,7 @@ data WithDistributionProvenance a =
 instance Show a => Show (WithDistributionProvenance a) where
   show a = show (value a)
 
-instance (NotList a, Num a) => Num (WithDistributionProvenance a) where
+instance Num a => Num (WithDistributionProvenance a) where
   a + b = WithDistributionProvenance (value a + value b) (provenance a + provenance b)
   a * b = WithDistributionProvenance (value a * value b) (provenance a * provenance b)
   a - b = WithDistributionProvenance (value a - value b) (provenance a - provenance b)
@@ -161,7 +162,7 @@ instance (NotList a, Num a) => Num (WithDistributionProvenance a) where
   signum a = WithDistributionProvenance (signum (value a)) (signum (provenance a))
   fromInteger v = WithDistributionProvenance (fromInteger v) (fromInteger v)
 
-instance (NotList a, Fractional a) => Fractional (WithDistributionProvenance a) where
+instance Fractional a => Fractional (WithDistributionProvenance a) where
   a / b = WithDistributionProvenance (value a / value b) (provenance a / provenance b)
   fromRational v = WithDistributionProvenance (fromRational v) (fromRational v)
 
@@ -174,54 +175,9 @@ instance Ordered a => Ordered (WithDistributionProvenance a) where
   a %== b = value a %== value b
   a %/= b = value a %/= value b
 
-{-
-unsnoc :: [a] -> Maybe ([a], a)
-unsnoc xs =
-  case Prelude.reverse xs of
-    x:xs' -> Just (Prelude.reverse xs', x)
-    _     -> Nothing
-
-instance (Show a, Eq a, Ord a, Typeable a)
-  => ListLike (WithDistributionProvenance [a]) where
-  type Elem       (WithDistributionProvenance [a]) =
-    WithDistributionProvenance (Elem [a])
-  type TestResult (WithDistributionProvenance [a])   = TestResult [a]
-  type LengthResult (WithDistributionProvenance [a]) = LengthResult [a]
-
-  nil       = WithDistributionProvenance nil ListEmpty
-  cons x xs = WithDistributionProvenance
-                (cons (value x) (value xs))
-                (ListCons (provenance x) (provenance xs))
-  snoc xs x = WithDistributionProvenance
-                (snoc (value xs) (value x))
-                (ListSnoc (provenance xs) (provenance x))
-  isNil xs  = isNil (value xs)
-
-  filter_ pred xs =
-    case (value xs, provenance xs) of
-      ([]  , ListEmpty)     -> xs
-      (x:xs, ListCons p ps) ->
-        if pred (WithDistributionProvenance x p)
-        then let rest = filter_ pred (WithDistributionProvenance xs ps)
-                 v'   = value rest
-                 p'   = provenance rest
-             in WithDistributionProvenance (x:v') (ListCons p p')
-        else filter_ pred (WithDistributionProvenance xs ps)
-      (unsnoc -> Just (xs, x), ListSnoc ps p) ->
-        let rest = filter_ pred (WithDistributionProvenance xs ps)
-        in if pred (WithDistributionProvenance x p)
-           then snoc rest (WithDistributionProvenance x p)
-           else rest
-      _ -> error $ "WithDistributionProvenance: list value "
-                   ++ "and provenance are not synchronized, "
-                   ++ "i.e. they are not built with cons and snoc"
-  length_ = length_ . value
--}
-
-instance (NotList a, Numeric a)     => Numeric (WithDistributionProvenance a)
-instance (NotList a, FracNumeric a) => FracNumeric (WithDistributionProvenance a)
-instance {-# OVERLAPPABLE #-} FuzziType a   => FuzziType (WithDistributionProvenance a)
-instance {-# OVERLAPS #-}     FuzziType a   => FuzziType (WithDistributionProvenance [a])
+instance Numeric a     => Numeric (WithDistributionProvenance a)
+instance FracNumeric a => FracNumeric (WithDistributionProvenance a)
+instance FuzziType a => FuzziType (WithDistributionProvenance a)
 
 instance MonadDist ConcreteDist where
   type NumDomain ConcreteDist = Double
@@ -328,3 +284,9 @@ instance HasProvenance Double where
   type DropProvenance Double = Double
   getProvenance = id
   dropProvenance = id
+
+instance HasSymbolicRepr a => HasSymbolicRepr (WithDistributionProvenance a) where
+  type SymbolicRepr (WithDistributionProvenance a) =
+    WithDistributionProvenance (SymbolicRepr a)
+  into = undefined
+  merge = undefined

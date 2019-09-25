@@ -33,7 +33,7 @@ module Data.Fuzzi.EDSL (
 
 import Data.Coerce
 import Type.Reflection (Typeable, typeRep, eqTypeRep, (:~~:)(..))
-import Data.Fuzzi.Types
+import Data.Fuzzi.Types hiding (SymbolicExpr(..))
 import Control.Monad.Catch
 
 newtype Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
@@ -52,7 +52,7 @@ class Syntactic1 (m :: * -> *) where
   fromDeepRepr1 :: (Syntactic a, FuzziType (DeepRepr a)) => Fuzzi (DeepRepr1 m (DeepRepr a)) -> m a
 
 data Fuzzi (a :: *) where
-  Lam         :: (FuzziType a, Typeable a, Typeable b) => (Fuzzi a -> Fuzzi b) -> Fuzzi (a -> b)
+  Lam         :: (FuzziType a, FuzziType b) => (Fuzzi a -> Fuzzi b) -> Fuzzi (a -> b)
   App         :: (Typeable a) => Fuzzi (a -> b) -> Fuzzi a -> Fuzzi b
 
   Return      :: (Monad m, Typeable a) => Fuzzi a -> Fuzzi (m a)
@@ -405,9 +405,8 @@ instance ( Syntactic a
 
 instance ( Syntactic a
          , Syntactic b
-         , Typeable (DeepRepr a)
-         , Typeable (DeepRepr b)
-         , FuzziType (DeepRepr a)) => Syntactic (a -> b) where
+         , FuzziType (DeepRepr a)
+         , FuzziType (DeepRepr b)) => Syntactic (a -> b) where
   type DeepRepr (a -> b) = (DeepRepr a -> DeepRepr b)
   toDeepRepr f = Lam (toDeepRepr . f . fromDeepRepr)
   fromDeepRepr f = fromDeepRepr . App f . toDeepRepr
@@ -420,7 +419,6 @@ instance Typeable a => Syntactic (Fuzzi a) where
 instance ( Monad m
          , Syntactic a
          , FuzziType (DeepRepr a)
-         , Typeable (DeepRepr a)
          , Typeable m) => Syntactic (Mon m a) where
   type DeepRepr (Mon m a) = m (DeepRepr a)
   toDeepRepr (Mon m) = m (Return . toDeepRepr)
@@ -471,19 +469,3 @@ instance Boolean a => Boolean (Fuzzi a) where
   and = And
   or  = Or
   neg = Not
-
-{-
-instance ( ConcreteBoolean (TestResult list)
-         , FuzziType (Elem list)
-         , ListLike list
-         ) => ListLike (Fuzzi list) where
-  type Elem (Fuzzi list)         = Fuzzi (Elem list)
-  type TestResult (Fuzzi list)   = Fuzzi (TestResult list)
-  type LengthResult (Fuzzi list) = Fuzzi (LengthResult list)
-  nil   = ListNil
-  cons  = ListCons
-  snoc  = ListSnoc
-  isNil = ListIsNil
-  filter_ f xs = ListFilter (toDeepRepr f) xs
-  length_ = ListLength
--}

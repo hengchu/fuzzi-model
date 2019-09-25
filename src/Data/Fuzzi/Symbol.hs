@@ -27,7 +27,6 @@ import qualified Data.Fuzzi.PrettyPrint as PP
 import qualified Data.Map.Merge.Strict as MM
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
-import qualified Text.PrettyPrint as TPP
 import qualified Z3.Base as Z3
 
 k_FLOAT_TOLERANCE :: Rational
@@ -78,163 +77,9 @@ data MergingSymbolicConstraints = MergingSymbolicConstraints {
   , _mscSourceCode          :: [PP.SomeFuzzi]
   } deriving (Show, Eq, Ord)
 
-data SymbolicExpr :: * where
-  RealVar :: String -> SymbolicExpr
-
-  Rat      :: Rational -> SymbolicExpr
-  JustBool :: Bool     -> SymbolicExpr
-
-  Add :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-  Sub :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-  Mul :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-  Div :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-
-  Lt  :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-  Le  :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-  Gt  :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-  Ge  :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-  Eq_ :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-
-  And :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-  Or  :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-  Not :: SymbolicExpr -> SymbolicExpr
-
-  Ite :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr -> SymbolicExpr
-
-  Substitute :: SymbolicExpr -> [(String, SymbolicExpr)] -> SymbolicExpr
-  deriving (Eq, Ord)
-
-instance Show SymbolicExpr where
-  show = pretty
-
-pretty :: SymbolicExpr -> String
-pretty = TPP.render . prettySymbolic 0
-
-parensIf :: Bool -> TPP.Doc -> TPP.Doc
-parensIf True  = TPP.parens
-parensIf False = id
-
-prettySymbolic :: Int -> SymbolicExpr -> TPP.Doc
-prettySymbolic _ (RealVar x) = TPP.text x
-prettySymbolic _ (Rat r) = TPP.text (show r) --TPP.double (fromRational r)
-prettySymbolic _ (JustBool b) = TPP.text (show b)
-prettySymbolic currPrec (Add x y) =
-  let thisPrec = PP.precedence M.! "+" in
-  let thisFixity = PP.fixity M.! "+" in
-  parensIf (currPrec > thisPrec) $
-    prettySymbolic thisPrec x
-    TPP.<+> TPP.text "+"
-    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
-prettySymbolic currPrec (Sub x y) =
-  let thisPrec = PP.precedence M.! "-" in
-  let thisFixity = PP.fixity M.! "-" in
-  parensIf (currPrec > thisPrec) $
-    prettySymbolic thisPrec x
-    TPP.<+> TPP.text "-"
-    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
-prettySymbolic currPrec (Mul x y) =
-  let thisPrec = PP.precedence M.! "*" in
-  let thisFixity = PP.fixity M.! "*" in
-  parensIf (currPrec > thisPrec) $
-    prettySymbolic thisPrec x
-    TPP.<+> TPP.text "*"
-    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
-prettySymbolic currPrec (Div x y) =
-  let thisPrec = PP.precedence M.! "/" in
-  let thisFixity = PP.fixity M.! "/" in
-  parensIf (currPrec > thisPrec) $
-    prettySymbolic thisPrec x
-    TPP.<+> TPP.text "/"
-    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
-prettySymbolic currPrec (Lt x y) =
-  let thisPrec = PP.precedence M.! "<" in
-  let thisFixity = PP.fixity M.! "<" in
-  parensIf (currPrec > thisPrec) $
-    prettySymbolic thisPrec x
-    TPP.<+> TPP.text "<"
-    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
-prettySymbolic currPrec (Le x y) =
-  let thisPrec = PP.precedence M.! "<=" in
-  let thisFixity = PP.fixity M.! "<=" in
-  parensIf (currPrec > thisPrec) $
-    prettySymbolic thisPrec x
-    TPP.<+> TPP.text "<="
-    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
-prettySymbolic currPrec (Gt x y) =
-  let thisPrec = PP.precedence M.! ">" in
-  let thisFixity = PP.fixity M.! ">" in
-  parensIf (currPrec > thisPrec) $
-    prettySymbolic thisPrec x
-    TPP.<+> TPP.text ">"
-    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
-prettySymbolic currPrec (Ge x y) =
-  let thisPrec = PP.precedence M.! ">=" in
-  let thisFixity = PP.fixity M.! ">=" in
-  parensIf (currPrec > thisPrec) $
-    prettySymbolic thisPrec x
-    TPP.<+> TPP.text ">="
-    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
-prettySymbolic currPrec (Eq_ x y) =
-  let thisPrec = PP.precedence M.! "==" in
-  let thisFixity = PP.fixity M.! "==" in
-  parensIf (currPrec > thisPrec) $
-    prettySymbolic thisPrec x
-    TPP.<+> TPP.text "=="
-    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
-prettySymbolic currPrec (And x y) =
-  let thisPrec = PP.precedence M.! "&&" in
-  let thisFixity = PP.fixity M.! "&&" in
-  parensIf (currPrec > thisPrec) $
-    prettySymbolic thisPrec x
-    TPP.<+> TPP.text "&&"
-    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
-prettySymbolic currPrec (Or x y) =
-  let thisPrec = PP.precedence M.! "||" in
-  let thisFixity = PP.fixity M.! "||" in
-  parensIf (currPrec > thisPrec) $
-    prettySymbolic thisPrec x
-    TPP.<+> TPP.text "||"
-    TPP.<+> prettySymbolic (thisPrec + thisFixity) y
-prettySymbolic _ (Not x) =
-  TPP.text "not" TPP.<> TPP.parens (prettySymbolic 0 x)
-prettySymbolic _ (Ite (e1 `Ge` Rat 0) e2 (Rat 0 `Sub` e3)) -- an optimization for our encoding of absolute values
-  | e1 == e2 && e2 == e3 =
-    TPP.text "abs" TPP.<> TPP.parens prettyExpr
-  where prettyExpr = prettySymbolic 0 e1
-prettySymbolic _ (Ite cond x y) =
-  TPP.text "ite" TPP.<> TPP.parens (prettyCond `PP.commaSep`
-                                    prettyX    `PP.commaSep`
-                                    prettyY)
-  where prettyX    = prettySymbolic 0 x
-        prettyY    = prettySymbolic 0 y
-        prettyCond = prettySymbolic 0 cond
-prettySymbolic _ (Substitute x substs) =
-  TPP.text "subst" TPP.<> TPP.parens (prettyX `PP.commaSep`
-                                      prettySubsts3)
-  where prettyX       = prettySymbolic 0 x
-        prettySubsts1 = map (first TPP.text . second (prettySymbolic 0)) substs
-        prettySubsts2 =
-          foldr (\(f,t) acc -> TPP.parens (f `PP.commaSep` t) `PP.commaSep` acc)
-                TPP.empty
-                prettySubsts1
-        prettySubsts3 = TPP.brackets prettySubsts2
 
 class Matchable a b => SEq a b where
   symEq :: a -> b -> BoolExpr
-
-data RealExpr = RealExpr { getTolerance :: Rational
-                         , getRealExpr :: SymbolicExpr
-                         }
-  deriving (Eq, Ord)
-
-instance Show RealExpr where
-  show a = show (getRealExpr a)
-
-newtype BoolExpr = BoolExpr { getBoolExpr :: SymbolicExpr }
-  deriving (Eq, Ord)
-
-instance Show BoolExpr where
-  show a = show (getBoolExpr a)
 
 makeLensesWith abbreviatedFields ''SymbolicState
 makeLensesWith abbreviatedFields ''SymbolicConstraints
@@ -313,12 +158,6 @@ z3InitOpt = do
   optimizer <- liftIO (Z3.mkOptimizer ctx)
   $(logInfo) "initialized Z3 optimizer and context"
   return (ctx, optimizer)
-
-double :: Double -> RealExpr
-double = fromRational . toRational
-
-bool :: Bool -> BoolExpr
-bool = BoolExpr . JustBool
 
 runSymbolic :: Symbolic Void a -> Either SymExecError a
 runSymbolic = runExcept . (`evalStateT` initialSt) . runSymbolicT_
@@ -826,43 +665,6 @@ generalize (x:xs) =
     go ((cond, Keep b) S.:<| xs) = (cond, b) S.:<| go xs
     go ((_,    Drop)   S.:<| xs) = go xs
 
-instance Num RealExpr where
-  RealExpr tol left + RealExpr tol' right = RealExpr (max tol tol') (Add left right)
-  RealExpr tol left - RealExpr tol' right = RealExpr (max tol tol') (Sub left right)
-  RealExpr tol left * RealExpr tol' right = RealExpr (max tol tol') (Mul left right)
-  abs (RealExpr tol ast) =
-    let geZero = ast `Ge` Rat 0
-        negAst = Rat 0 `Sub` ast
-    in RealExpr tol $ Ite geZero ast negAst
-  signum (RealExpr tol ast) =
-    let eqZero = ast `Eq_` Rat 0
-        gtZero = ast `Gt` Rat 0
-    in RealExpr tol $ Ite eqZero (Rat 0) (Ite gtZero (Rat 1) (Rat (-1)))
-  fromInteger v = RealExpr 0 $ Rat (fromInteger v)
-
-instance Fractional RealExpr where
-  RealExpr tol left / RealExpr tol' right = RealExpr (max tol tol') (Div left right)
-  fromRational = RealExpr 0 . Rat
-
-instance Boolean BoolExpr where
-  and = coerce And
-  or  = coerce Or
-  neg = coerce Not
-
-instance Ordered RealExpr where
-  type CmpResult RealExpr = BoolExpr
-
-  lhs %< rhs  = BoolExpr (getRealExpr lhs `Lt` getRealExpr rhs)
-  lhs %<= rhs = BoolExpr (getRealExpr lhs `Le` getRealExpr rhs)
-  lhs %> rhs  = BoolExpr (getRealExpr lhs `Gt` getRealExpr rhs)
-  lhs %>= rhs = BoolExpr (getRealExpr lhs `Ge` getRealExpr rhs)
-  lhs %== rhs = BoolExpr (getRealExpr lhs `Eq_` getRealExpr rhs)
-  a %/= b = neg (a %== b)
-
-instance Numeric     RealExpr
-instance FracNumeric RealExpr
-instance FuzziType   RealExpr
-instance FuzziType   BoolExpr
 
 instance (Monad m, Typeable m, Typeable r)
   => MonadDist (SymbolicT r m) where

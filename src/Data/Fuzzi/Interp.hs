@@ -6,7 +6,7 @@ import Data.Proxy
 import Prelude hiding (and, or)
 import Data.Fuzzi.IfCxt
 import Data.Fuzzi.EDSL
-import Data.Fuzzi.Types
+import Data.Fuzzi.Types hiding (SymbolicExpr(..))
 import Type.Reflection hiding (App)
 import Control.Monad.Catch
 

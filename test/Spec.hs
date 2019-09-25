@@ -44,8 +44,8 @@ allTests = H.TestList [
 
 prop_symbolCongruence :: Double -> Double -> Bool
 prop_symbolCongruence a b =
-  let sa = realToFrac a :: S.RealExpr
-      sb = realToFrac b :: S.RealExpr
+  let sa = realToFrac a :: RealExpr
+      sb = realToFrac b :: RealExpr
   in if a == b
      then sa == sb
      else sa /= sb
