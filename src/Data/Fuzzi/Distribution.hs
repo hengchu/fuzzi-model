@@ -285,5 +285,4 @@ instance HasProvenance Double where
   dropProvenance = id
 
 instance SymbolicRepr a => SymbolicRepr (WithDistributionProvenance a) where
-  into = undefined
   merge = undefined

@@ -9,7 +9,10 @@ import Data.Fuzzi.Types
 import Data.Fuzzi.Interp
 import Control.Monad.Catch
 
-evalM :: (MonadDist m, MonadAssert m, NumDomain m ~ RealExpr, BoolType m ~ BoolExpr) => Fuzzi (m a) -> m (GuardedSymbolicUnion a)
+-- TODO: Also need MonadState to keep track of concrete traces, and for
+-- generating fresh symbols
+evalM :: (MonadDist m, MonadAssert m, NumDomain m ~ RealExpr, BoolType m ~ BoolExpr)
+      => Fuzzi (m a) -> m (GuardedSymbolicUnion a)
 evalM (Return a) = return (pure $ evalPure a)
 evalM (Sequence a b) = do
   ua <- evalM a
@@ -25,7 +28,7 @@ evalM (IfM cond a b) = do
   -- we can't let them diverge after the if statement
   a' <- evalM a
   b' <- evalM b
-  return $ mergeUnion
+  return $ mergeUnion cond'
     (joinGuardedSymbolicUnion $ guardedSingleton cond' a')
     (joinGuardedSymbolicUnion $ guardedSingleton (neg cond') b')
 evalM (Abort reason) = throwM (AbortException reason)

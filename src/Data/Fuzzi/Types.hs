@@ -1,15 +1,22 @@
 module Data.Fuzzi.Types where
 
+import Control.Lens hiding (matching)
 import Control.Monad.Catch
 import Data.Bifunctor
 import Data.Coerce
+import Data.Foldable hiding (and, or)
 import Data.Functor.Compose
 import Data.Fuzzi.IfCxt
+import Data.Graph.MaxBipartiteMatching
+import Data.List (nub)
+import Data.Maybe
 import Data.Text (Text)
-import Prelude hiding (and)
+import Prelude hiding (and, or)
+import Text.Show.Deriving (deriveShow1)
 import Type.Reflection
 import qualified Data.Map.Merge.Strict as MM
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import qualified Prelude
 import qualified Text.PrettyPrint as TPP
 
@@ -19,20 +26,151 @@ singleton = Singleton
 guarded :: BoolExpr -> a -> Guarded a
 guarded = MkGuarded
 
+union :: GuardedSymbolicUnion a -> GuardedSymbolicUnion a -> GuardedSymbolicUnion a
+union (Compose u1) (Compose u2) = Compose $ u1 `Union` u2
+
+flatten :: GuardedSymbolicUnion a -> [(BoolExpr, a)]
+flatten (Compose u) = map (\(MkGuarded cond v) -> (cond, v)) (toList u)
+
+flattenMaybe :: Maybe (GuardedSymbolicUnion a) -> [(BoolExpr, a)]
+flattenMaybe Nothing = []
+flattenMaybe (Just u) = flatten u
+
 guardedSingleton :: BoolExpr -> a -> GuardedSymbolicUnion a
 guardedSingleton cond = Compose . singleton . guarded cond
 
+conjunct :: BoolExpr -> Guarded a -> Guarded a
+conjunct cond (MkGuarded cond2 a) = MkGuarded (cond `and` cond2) a
+
+disjunct :: BoolExpr -> Guarded a -> Guarded a
+disjunct cond (MkGuarded cond2 a) = MkGuarded (cond `or` cond2) a
+
+imply :: BoolExpr -> Guarded a -> Guarded a
+imply cond (MkGuarded cond2 a) = MkGuarded (neg cond `or` cond2) a
+
+conjunctAll :: BoolExpr -> GuardedSymbolicUnion a -> GuardedSymbolicUnion a
+conjunctAll cond union = Compose $ fmap (conjunct cond) (getCompose union)
+
+disjunctAll :: BoolExpr -> GuardedSymbolicUnion a -> GuardedSymbolicUnion a
+disjunctAll cond union = Compose $ fmap (disjunct cond) (getCompose union)
+
+implyAll :: BoolExpr -> GuardedSymbolicUnion a -> GuardedSymbolicUnion a
+implyAll cond union = Compose $ fmap (imply cond) (getCompose union)
+
+popGuarded :: Matchable a a
+           => a
+           -> GuardedSymbolicUnion a
+           -> Maybe (Maybe (GuardedSymbolicUnion a), Guarded a)
+popGuarded v (Compose (Singleton ga@(MkGuarded _ u)))
+  | v `match` u = Just (Nothing, ga)
+  | otherwise   = Nothing
+popGuarded v (Compose (Union u1 u2)) =
+  case popGuarded v (Compose u1) of
+    Just (Just leftOver, guardedValue) ->
+      Just (Just (leftOver `union` coerce u2), guardedValue)
+    Just (Nothing, guardedValue) ->
+      Just (Just (Compose u2), guardedValue)
+    Nothing ->
+      case popGuarded v (Compose u2) of
+        Just (Just rightOver, guardedValue) ->
+          Just (Just (coerce u1 `union` rightOver), guardedValue)
+        Just (Nothing, guardedValue) ->
+          Just (Just (Compose u1), guardedValue)
+        Nothing -> Nothing
+
+isFreeSingleton :: GuardedSymbolicUnion a -> Maybe a
+isFreeSingleton (Compose (Singleton (MkGuarded (tryEvalBool -> Just True) a))) = Just a
+isFreeSingleton _ = Nothing
+
+isSingleton' :: GuardedSymbolicUnion a -> Maybe (Guarded a)
+isSingleton' (Compose (Singleton a)) = Just a
+isSingleton' _                       = Nothing
+
+isSingleton :: GuardedSymbolicUnion a -> Bool
+isSingleton = isJust . isSingleton'
+
+isUnion :: GuardedSymbolicUnion a -> Bool
+isUnion = not . isSingleton
+
+filterGuardedSymbolicUnion :: (a -> Bool) -> GuardedSymbolicUnion a -> Maybe (GuardedSymbolicUnion a)
+filterGuardedSymbolicUnion p (Compose (Singleton ga@(MkGuarded _ a)))
+  | p a       = Just (Compose (Singleton ga))
+  | otherwise = Nothing
+filterGuardedSymbolicUnion p (Compose (Union u1 u2)) =
+  case (filterGuardedSymbolicUnion p (Compose u1), filterGuardedSymbolicUnion p (Compose u2)) of
+    (Just (Compose u1'), Just (Compose u2')) -> Just (Compose $ u1' `Union` u2')
+    (Just (Compose u1'), _                 ) -> Just (Compose u1')
+    (_                 , Just (Compose u2')) -> Just (Compose u2')
+    _                                        -> Nothing
+
 type GuardedSymbolicUnion = Compose SymbolicUnion Guarded
 
-class SymbolicRepr a where
-  into  :: a
-        -> GuardedSymbolicUnion a
-  merge :: Guarded a
-        -> GuardedSymbolicUnion a
+class Matchable a a => SymbolicRepr a where
+  merge :: BoolExpr
+        -> a
+        -> a
         -> GuardedSymbolicUnion a
 
-mergeUnion :: SymbolicRepr a => GuardedSymbolicUnion a -> GuardedSymbolicUnion a -> GuardedSymbolicUnion a
-mergeUnion left right = foldr merge right (getCompose left)
+-- |Here, we find a maximum matching between the two sets of symbolic
+-- unions. The first item in the triple is the matched core, the second is the
+-- leftover from left union, and the third is leftover from right union.
+symmetricDiff :: (SymbolicRepr a, Ord a)
+              => GuardedSymbolicUnion a
+              -> GuardedSymbolicUnion a
+              -> ( [(BoolExpr, BoolExpr, a, a)]
+                 , Maybe (GuardedSymbolicUnion a)
+                 , Maybe (GuardedSymbolicUnion a)
+                 )
+symmetricDiff left right =
+  let edges =
+        S.fromList [ ((condA, a), (condB, b))
+                   | (condA, a) <- flatten left
+                   , (condB, b) <- flatten right
+                   , match a b]
+      core  = map (\((condA, a), (condB, b)) -> (condA, condB, a, b)) $ M.toList (matching edges)
+      elems = nub $ map (view _3) core ++ map (view _4) core
+      leftOver  = filterGuardedSymbolicUnion (\v -> not $ v `elem` elems) left
+      rightOver = filterGuardedSymbolicUnion (\v -> not $ v `elem` elems) right
+  in (core, leftOver, rightOver)
+
+-- |Merge two guarded symbolic unions. This is the mu function in the Rosette
+-- paper.
+mergeUnion :: ( SymbolicRepr a
+              , Ord a
+              )
+           => BoolExpr
+           -> GuardedSymbolicUnion a
+           -> GuardedSymbolicUnion a
+           -> GuardedSymbolicUnion a
+mergeUnion (tryEvalBool -> Just True)  left _right = left
+mergeUnion (tryEvalBool -> Just False) _left right = right
+mergeUnion _                           left right | getCompose left == getCompose right = left
+mergeUnion cond (isFreeSingleton -> Just left) (isFreeSingleton -> Just right) = merge cond left right
+mergeUnion cond left (Compose (Singleton ga))  = undefined
+mergeUnion cond (Compose (Singleton ga)) right = undefined
+mergeUnion cond left right =
+  let (w, u, v) = symmetricDiff left right
+      mkW = \(bi, bj, ui, vj) ->
+        let cond' = (cond `and` bi) `or` ((neg cond) `and` bj)
+        in getCompose $ conjunctAll cond' (mergeUnion cond (pure ui) (pure vj))
+      subWUnions = map mkW w
+  in case (subWUnions, u, v) of
+       (x:xs, Just u', Just v') ->
+         (Compose (foldl' Union x xs))
+         `union` (conjunctAll cond u')
+         `union` (conjunctAll (neg cond) v')
+       (x:xs, Just u', Nothing) ->
+         (Compose (foldl' Union x xs))
+         `union` (conjunctAll cond u')
+       (x:xs, Nothing, Just v') ->
+         (Compose (foldl' Union x xs))
+         `union` (conjunctAll (neg cond) v')
+       (x:xs, Nothing, Nothing) ->
+         Compose $ (foldl' Union x xs)
+       ([], Just left', Just right') ->
+         left' `union` right'
+       ([], _,          _) ->
+         error "mergeUnion: the impossible happened, symmetricDiff lost some data"
 
 newtype IntExpr = IntExpr { getIntExpr :: SymbolicExpr }
   deriving (Show, Eq, Ord)
@@ -48,7 +186,13 @@ data SymbolicUnion (a :: *) where
 
 -- |This constraint is only satisfied by first-class datatypes supported in
 -- Fuzzi.
-class (SymbolicRepr a, Typeable a, Show a) => FuzziType (a :: *)
+class ( SymbolicRepr a
+      , Typeable a
+      , Show a
+      , Eq a
+      , Ord a
+      , Matchable a a
+      ) => FuzziType (a :: *)
 
 -- |Order operators in the semantic domain.
 class (Boolean (CmpResult a), Typeable a) => Ordered (a :: *) where
@@ -91,7 +235,12 @@ class (Monad m, Typeable m, FracNumeric (NumDomain m)) => MonadDist m where
   gaussian  ::             NumDomain m -> Double -> m (NumDomain m)
   gaussian' :: Rational -> NumDomain m -> Double -> m (NumDomain m)
 
-class (Monad m, Typeable m, Boolean (BoolType m), MonadThrow m, FuzziType (BoolType m)) => MonadAssert m where
+class ( Monad m
+      , Typeable m
+      , Boolean (BoolType m)
+      , MonadThrow m
+      , FuzziType (BoolType m)
+      ) => MonadAssert m where
   type BoolType m :: *
   assertTrue  :: BoolType m -> m ()
   assertFalse :: BoolType m -> m ()
@@ -112,7 +261,6 @@ instance Boolean Bool where
 instance ConcreteBoolean Bool where
   toBool   = id
   fromBool = id
-
 
 instance {-# OVERLAPS #-} IfCxt (ConcreteBoolean Bool) where
   ifCxt _ t _ = t
@@ -138,6 +286,7 @@ instance Ordered Int where
 data SymbolicExpr :: * where
   RealVar :: String -> SymbolicExpr
 
+  JustInt  :: Integer  -> SymbolicExpr
   Rat      :: Rational -> SymbolicExpr
   JustBool :: Bool     -> SymbolicExpr
 
@@ -162,7 +311,8 @@ data SymbolicExpr :: * where
   deriving (Eq, Ord)
 
 instance Show SymbolicExpr where
-  show = pretty
+  showsPrec prec expr = showParen (prec > 10) $
+    showString (pretty expr)
 
 pretty :: SymbolicExpr -> String
 pretty = TPP.render . prettySymbolic 0
@@ -174,6 +324,7 @@ parensIf False = id
 prettySymbolic :: Int -> SymbolicExpr -> TPP.Doc
 prettySymbolic _ (RealVar x) = TPP.text x
 prettySymbolic _ (Rat r) = TPP.text (show r) --TPP.double (fromRational r)
+prettySymbolic _ (JustInt i) = TPP.text (show i)
 prettySymbolic _ (JustBool b) = TPP.text (show b)
 prettySymbolic currPrec (Add x y) =
   let thisPrec = precedence M.! "+" in
@@ -276,6 +427,9 @@ prettySymbolic _ (Substitute x substs) =
                 prettySubsts1
         prettySubsts3 = TPP.brackets prettySubsts2
 
+int :: Integer -> IntExpr
+int = IntExpr . JustInt
+
 double :: Double -> RealExpr
 double = fromRational . toRational
 
@@ -310,13 +464,41 @@ instance Num RealExpr where
     in RealExpr tol $ Ite eqZero (Rat 0) (Ite gtZero (Rat 1) (Rat (-1)))
   fromInteger v = RealExpr 0 $ Rat (fromInteger v)
 
+instance Num IntExpr where
+  (+) = coerce Add
+  (-) = coerce Sub
+  (*) = coerce Mul
+  negate v = IntExpr $ Rat 0 `Sub` (getIntExpr v)
+  abs (IntExpr ast) =
+    let geZero = ast `Ge` Rat 0
+        negAst = Rat 0 `Sub` ast
+    in IntExpr $ Ite geZero ast negAst
+  signum (IntExpr ast) =
+    let eqZero = ast `Eq_` Rat 0
+        gtZero = ast `Gt` Rat 0
+    in IntExpr $ Ite eqZero (Rat 0) (Ite gtZero (Rat 1) (Rat (-1)))
+  fromInteger = IntExpr . JustInt
+
 instance Fractional RealExpr where
   RealExpr tol left / RealExpr tol' right = RealExpr (max tol tol') (Div left right)
   fromRational = RealExpr 0 . Rat
 
 instance Boolean BoolExpr where
-  and = coerce And
-  or  = coerce Or
+  -- we only optimize `and` so that condensing symbolic unions do not cause
+  -- boolean expression explosion
+  and (tryEvalBool -> Just True) b  = b
+  and a (tryEvalBool -> Just True)  = a
+  and (tryEvalBool -> Just False) _ = bool False
+  and _ (tryEvalBool -> Just False) = bool False
+  and a b | a == b    = a
+          | otherwise = coerce And a b
+  or  (tryEvalBool -> Just False) b = b
+  or  b (tryEvalBool -> Just False) = b
+  or  (tryEvalBool -> Just True) _ = bool True
+  or  _ (tryEvalBool -> Just True) = bool True
+  or  a b | a == neg b = bool True
+          | neg a == b = bool True
+          | otherwise = coerce Or a b
   neg = coerce Not
 
 instance Ordered RealExpr where
@@ -330,29 +512,38 @@ instance Ordered RealExpr where
   a %/= b = neg (a %== b)
 
 instance SymbolicRepr Int where
-  into = undefined
-  merge = undefined
+  merge cond left right
+    | left == right = pure left
+    | otherwise     = guardedSingleton cond left `union` guardedSingleton (neg cond) right
 
 instance SymbolicRepr Double where
-  into = undefined
-  merge = undefined
+  merge cond left right
+    | left == right = pure left
+    | otherwise     = guardedSingleton cond left `union` guardedSingleton (neg cond) right
 
 instance SymbolicRepr Bool where
-  into = undefined
-  merge = undefined
+  merge cond left right
+    | left == right = pure left
+    | otherwise     = guardedSingleton cond left `union` guardedSingleton (neg cond) right
 
 instance SymbolicRepr RealExpr where
-  into = pure
-  merge = undefined
+  merge cond left right =
+    let tol' = max (getTolerance left) (getTolerance right)
+    in pure $ RealExpr tol' (Ite (getBoolExpr cond) (getRealExpr left) (getRealExpr right))
 
 instance SymbolicRepr BoolExpr where
-  into = pure
-  merge = undefined
+  merge cond left right =
+    pure $ BoolExpr (Ite (getBoolExpr cond) (getBoolExpr left) (getBoolExpr right))
+
+instance SymbolicRepr IntExpr where
+  merge cond left right =
+    pure $ IntExpr (Ite (getBoolExpr cond) (getIntExpr left) (getIntExpr right))
 
 instance Numeric     RealExpr
 instance FracNumeric RealExpr
 instance FuzziType   RealExpr
 instance FuzziType   BoolExpr
+instance FuzziType   IntExpr
 
 instance FuzziType Double
 instance FuzziType Bool
@@ -364,23 +555,26 @@ instance FuzziType PrivTreeNode1D
 instance (FuzziType a, FuzziType b) => FuzziType (a, b)
 
 instance SymbolicRepr PrivTreeNode1D where
-  into = undefined
-  merge = undefined
+  merge cond left right
+    | left == right = pure left
+    | otherwise     = guardedSingleton cond left `union` guardedSingleton (neg cond) right
 
 instance SymbolicRepr a => SymbolicRepr (PrivTree1D a) where
-  into = undefined
   merge = undefined
 
 instance SymbolicRepr a => SymbolicRepr [a] where
-  into = undefined
-  merge = undefined
+  merge cond lefts rights
+    | length lefts == length rights =
+      let unions = zipWith (merge cond) lefts rights
+      in case sequenceA (map isFreeSingleton unions) of
+           Just singletonList -> pure singletonList
+           Nothing -> guardedSingleton cond lefts `union` guardedSingleton (neg cond) rights
+    | otherwise = guardedSingleton cond lefts `union` guardedSingleton (neg cond) rights
 
 instance SymbolicRepr a => SymbolicRepr (Maybe a) where
-  into = undefined
   merge = undefined
 
 instance (SymbolicRepr a, SymbolicRepr b) => SymbolicRepr (a, b) where
-  into = undefined
   merge = undefined
 
 instance Numeric Double
@@ -397,6 +591,12 @@ instance Matchable Integer Integer where
 instance Matchable Bool Bool where
   match a b = a == b
 
+instance Matchable Double Double where
+  match a b = a == b
+
+instance Matchable PrivTreeNode1D PrivTreeNode1D where
+  match a b = a == b
+
 instance ( Matchable a b
          , Matchable c d
          ) => Matchable (a,c) (b,d) where
@@ -411,6 +611,16 @@ instance Matchable a b => Matchable [a] [b] where
   match []     []     = True
   match (x:xs) (y:ys) = match x y && match xs ys
   match _      _      = False
+
+instance Matchable BoolExpr BoolExpr where
+  match _ _ = True
+
+instance Matchable IntExpr  IntExpr where
+  match _ _ = True
+
+instance Matchable RealExpr RealExpr where
+  match (tryEvalReal -> Just r1) (tryEvalReal -> Just r2) = r1 == r2
+  match _                        _                        = True
 
 data PrivTree1DDir = LeftDir | RightDir
   deriving (Show, Eq, Ord)
@@ -505,3 +715,92 @@ joinGuardedSymbolicUnion (Compose (Union u1 u2)) =
   let j1 = getCompose $ joinGuardedSymbolicUnion (Compose u1)
       j2 = getCompose $ joinGuardedSymbolicUnion (Compose u2)
   in Compose $ Union j1 j2
+
+reduceSubst :: SymbolicExpr -> SymbolicExpr
+reduceSubst e = doSubst e []
+
+reduceSubstB :: BoolExpr -> BoolExpr
+reduceSubstB = coerce reduceSubst
+
+doSubst :: SymbolicExpr -> [(String, SymbolicExpr)] -> SymbolicExpr
+doSubst (RealVar x) substs =
+  case find (\(f, _) -> f == x) substs of
+    Nothing -> RealVar x
+    Just (_, t) -> t
+doSubst e@(Rat _) _ = e
+doSubst e@(JustBool _) _ = e
+doSubst (Add x y)      substs = Add (doSubst x substs) (doSubst y substs)
+doSubst (Sub x y)      substs = Sub (doSubst x substs) (doSubst y substs)
+doSubst (Mul x y)      substs = Mul (doSubst x substs) (doSubst y substs)
+doSubst (Div x y)      substs = Div (doSubst x substs) (doSubst y substs)
+doSubst (Lt x y)       substs = Lt  (doSubst x substs) (doSubst y substs)
+doSubst (Le x y)       substs = Le  (doSubst x substs) (doSubst y substs)
+doSubst (Gt x y)       substs = Gt  (doSubst x substs) (doSubst y substs)
+doSubst (Ge x y)       substs = Ge  (doSubst x substs) (doSubst y substs)
+doSubst (Eq_ x y)      substs = Eq_ (doSubst x substs) (doSubst y substs)
+doSubst (And x y)      substs = And (doSubst x substs) (doSubst y substs)
+doSubst (Or x y)       substs = Or  (doSubst x substs) (doSubst y substs)
+doSubst (Not x)        substs = Not (doSubst x substs)
+doSubst (Ite cond x y) substs = Ite (doSubst cond substs)
+                                    (doSubst x substs)
+                                    (doSubst y substs)
+doSubst (Substitute x substs) substs' = doSubst x (substs ++ substs')
+
+tryEvalBool :: BoolExpr -> Maybe Bool
+tryEvalBool = tryEvalBool' . getBoolExpr
+
+tryEvalBool' :: SymbolicExpr -> Maybe Bool
+tryEvalBool' (JustBool b) = Just b
+tryEvalBool' (Lt a b)  = (<)  <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalBool' (Le a b)  = (<=) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalBool' (Gt a b)  = (>)  <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalBool' (Ge a b)  = (>=) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalBool' (Eq_ a b) =
+  case (==) <$> tryEvalReal' a <*> tryEvalReal' b of
+    Just a -> Just a
+    Nothing -> (==) <$> tryEvalBool' a <*> tryEvalBool' b
+tryEvalBool' (And a b) = (&&) <$> tryEvalBool' a <*> tryEvalBool' b
+tryEvalBool' (Or  a b) = (||) <$> tryEvalBool' a <*> tryEvalBool' b
+tryEvalBool' (Not a)   = not <$> tryEvalBool' a
+tryEvalBool' (Ite cond a b) = do
+  cond' <- tryEvalBool' cond
+  if cond'
+  then tryEvalBool' a
+  else tryEvalBool' b
+tryEvalBool' _ = Nothing
+
+tryEvalReal :: RealExpr -> Maybe Rational
+tryEvalReal = tryEvalReal' . getRealExpr
+
+tryEvalInt :: IntExpr -> Maybe Integer
+tryEvalInt = tryEvalInt' . getIntExpr
+
+tryEvalReal' :: SymbolicExpr -> Maybe Rational
+tryEvalReal' (Rat v) = Just v
+tryEvalReal' (JustInt v) = Just $ fromInteger v
+tryEvalReal' (Add a b) = (+) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalReal' (Sub a b) = (-) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalReal' (Mul a b) = (*) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalReal' (Div a b) = (/) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalReal' (Ite cond a b) = do
+  cond' <- tryEvalBool' cond
+  if cond'
+  then tryEvalReal' a
+  else tryEvalReal' b
+tryEvalReal' _ = Nothing
+
+tryEvalInt' :: SymbolicExpr -> Maybe Integer
+tryEvalInt' (JustInt v) = Just v
+tryEvalInt' (Add a b) = (+) <$> tryEvalInt' a <*> tryEvalInt' b
+tryEvalInt' (Sub a b) = (-) <$> tryEvalInt' a <*> tryEvalInt' b
+tryEvalInt' (Mul a b) = (*) <$> tryEvalInt' a <*> tryEvalInt' b
+tryEvalInt' (Ite cond a b) = do
+  cond' <- tryEvalBool' cond
+  if cond'
+  then tryEvalInt' a
+  else tryEvalInt' b
+tryEvalInt' _ = Nothing
+
+-- this is just to make ghci happy to show Compose f g
+$(deriveShow1 ''SymbolicUnion)
+$(deriveShow1 ''Guarded)
