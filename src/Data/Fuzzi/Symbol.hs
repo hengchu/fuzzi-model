@@ -145,7 +145,7 @@ z3Init = do
   cfg <- liftIO Z3.mkConfig
   ctx <- liftIO (Z3.mkContext cfg)
   liftIO (Z3.setASTPrintMode ctx Z3.Z3_PRINT_SMTLIB2_COMPLIANT)
-  solver <- liftIO (Z3.mkSolverForLogic ctx Z3.QF_NRA)
+  solver <- liftIO (Z3.mkSolver ctx)-- Z3.QF_NRA)
   $(logInfo) "initialized Z3 solver and context"
   return (ctx, solver)
 
