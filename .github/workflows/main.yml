@@ -11,7 +11,7 @@ jobs:
   build:
 
     runs-on: macOS-latest
-    
+
     steps:
     - uses: actions/checkout@v1
     - name: Run brew update
@@ -21,4 +21,18 @@ jobs:
     - name: Install stack
       run: curl -sSL https://get.haskellstack.org/ | sh
     - name: Run stack test
-      run: stack test
+      shell: bash
+      run: |
+        stack test > test.out.log 2> test.err.log
+    - name: Upload test.out log
+      if: always()
+      uses: actions/upload-artifact@v1
+      with:
+        name: test.out
+        path: test.out.log
+    - name: Upload test.err log
+      if: always()
+      uses: actions/upload-artifact@v1
+      with:
+        name: test.err
+        path: test.err.log
