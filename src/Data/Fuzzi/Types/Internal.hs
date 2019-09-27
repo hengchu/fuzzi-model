@@ -19,14 +19,24 @@ import qualified Text.PrettyPrint as TPP
 
 data Guarded (a :: *) where
   MkGuarded :: BoolExpr -> a -> Guarded a
-  deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
+  deriving (Eq, Ord, Functor, Foldable, Traversable)
 
-data SymbolicUnion (a :: *) where
-  Singleton :: a -> SymbolicUnion a
-  Union     :: SymbolicUnion a -> SymbolicUnion a -> SymbolicUnion a
-  deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
+instance Show a => Show (Guarded a) where
+  show (MkGuarded cond v) = "MkGuarded (" ++ show cond ++ ") (" ++ show v ++")"
 
-type GuardedSymbolicUnion = Compose SymbolicUnion Guarded
+newtype GuardedSymbolicUnion a =
+  GuardedSymbolicUnion { unwrapGuardedSymbolicUnion :: [Guarded a] }
+  deriving (Show)
+  deriving (Functor, Applicative, Foldable) via (Compose [] Guarded)
+  deriving (Traversable)
+
+instance SymbolicRepr a => Eq (GuardedSymbolicUnion a) where
+  (GuardedSymbolicUnion a) == (GuardedSymbolicUnion b) =
+    S.fromList a == S.fromList b
+
+instance SymbolicRepr a => Ord (GuardedSymbolicUnion a) where
+  compare (GuardedSymbolicUnion a) (GuardedSymbolicUnion b) =
+    compare (S.fromList a) (S.fromList b)
 
 -- |This constraint is only satisfied by first-class datatypes supported in
 -- Fuzzi.
@@ -41,7 +51,7 @@ class ( SymbolicRepr a
 -- |This typeclass is defined for values that have a symbolic representation,
 -- and provides a method on how to merge two symbolic values into a union of
 -- such values.
-class Matchable a a => SymbolicRepr a where
+class (Matchable a a, Ord a) => SymbolicRepr a where
   merge :: BoolExpr
         -> a
         -> a
@@ -564,3 +574,8 @@ tryEvalInt' (Ite cond a b) = do
   then tryEvalInt' a
   else tryEvalInt' b
 tryEvalInt' _ = Nothing
+
+instance Applicative Guarded where
+  pure = MkGuarded (bool True)
+  (MkGuarded cond1 f) <*> (MkGuarded cond2 a) =
+    MkGuarded (cond1 `and` cond2) (f a)
