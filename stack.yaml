@@ -38,7 +38,6 @@ packages:
 # using the same syntax as the packages field.
 # (e.g., acme-missiles-0.3)
 extra-deps:
-- set-monad-0.3.0.0@sha256:4b6e63bf9aa80b0d64c078ce17aaf12b17f89cba581a98fdaa98efc824f93450
 - git: https://github.com/hengchu/haskell-z3
   commit: 8719d05b1caef73676d389f5ee38624ccdd89969
 - git: https://github.com/s5k6/maxBipartiteMatching.git
