@@ -8,6 +8,7 @@ import Data.Fuzzi.Symbol as S
 import Data.Fuzzi.Test
 import Data.Fuzzi.Types hiding (or)
 import Data.Maybe
+import Spec.Types.Structures
 import System.Exit
 import System.Posix.Env
 import Test.HUnit (runTestTT, errors, failures)

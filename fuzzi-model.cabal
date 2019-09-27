@@ -170,7 +170,6 @@ executable fuzzi-model-exe
                    , PolyKinds
                    , QuantifiedConstraints
 
-
 test-suite fuzzi-model-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
