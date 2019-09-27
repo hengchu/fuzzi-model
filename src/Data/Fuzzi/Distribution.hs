@@ -286,3 +286,8 @@ instance HasProvenance Double where
 
 instance SymbolicRepr a => SymbolicRepr (WithDistributionProvenance a) where
   merge = undefined
+
+instance SEq
+  (WithDistributionProvenance Double)
+  (WithDistributionProvenance RealExpr) where
+  symEq a b = symEq (value a) (value b)

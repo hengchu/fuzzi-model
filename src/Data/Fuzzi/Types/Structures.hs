@@ -111,7 +111,7 @@ mergeUnion' cond left (isFreeSingleton -> Just right) =
                       conjunctAll
                         (neg cond `or` condU) -- cond ==> condU
                           $ merge cond u right)
-                   (flatten left)
+                   (flatten core)
 mergeUnion' cond (isFreeSingleton -> Just left) right = mergeUnion (neg cond) right (pure left)
 mergeUnion' cond left right =
   let (w, u, v) = symmetricDiff left right

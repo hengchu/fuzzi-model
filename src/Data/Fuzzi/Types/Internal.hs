@@ -59,6 +59,11 @@ class (Matchable a a, Ord a) => SymbolicRepr a where
         -> a
         -> GuardedSymbolicUnion a
 
+-- |This typeclass is defined for values that we can establish a symbolic
+-- equality condition over.
+class Matchable a b => SEq a b where
+  symEq :: a -> b -> BoolExpr
+
 -- |Order operators in the semantic domain.
 class (Boolean (CmpResult a), Typeable a) => Ordered (a :: *) where
   type CmpResult a :: *
@@ -400,6 +405,12 @@ instance Matchable Double Double where
 instance Matchable PrivTreeNode1D PrivTreeNode1D where
   match a b = a == b
 
+instance Matchable Double RealExpr where
+  match v sv =
+    case tryEvalReal sv of
+      Just v' -> toRational v == v'
+      Nothing -> True
+
 instance ( Matchable a b
          , Matchable c d
          ) => Matchable (a,c) (b,d) where
@@ -595,3 +606,45 @@ instance Applicative Guarded where
   pure = MkGuarded (bool True)
   (MkGuarded cond1 f) <*> (MkGuarded cond2 a) =
     MkGuarded (cond1 `and` cond2) (f a)
+
+instance SEq Int Int where
+  symEq a b = bool (a == b)
+
+instance SEq Bool Bool where
+  symEq a b = bool (a == b)
+
+instance SEq Double RealExpr where
+  symEq a b =
+    let tol = getTolerance b
+    in if tol == 0
+    then double a %== b
+    else abs (double a - b) %<= fromRational (getTolerance b)
+
+instance SEq RealExpr RealExpr where
+  symEq (getRealExpr -> a) (getRealExpr -> b) =
+    BoolExpr (a `Eq_` b)
+
+instance (SEq a b, SEq c d) => SEq (a, c) (b, d) where
+  symEq (a, c) (b, d) =
+    BoolExpr (And (getBoolExpr (a `symEq` b)) (getBoolExpr (c `symEq` d)))
+
+instance SEq a b => SEq (Maybe a) (Maybe b) where
+  symEq (Just a) (Just b) = symEq a b
+  symEq Nothing  Nothing  = bool True
+  symEq _        _        = bool False
+
+instance SEq a b => SEq [a] [b] where
+  symEq [] []         = BoolExpr (JustBool True)
+  symEq (x:xs) (y:ys) =
+    BoolExpr $
+    And (getBoolExpr (x `symEq` y))
+        (getBoolExpr (xs `symEq` ys))
+  symEq _      _      = BoolExpr (JustBool False)
+
+instance SEq a b => SEq (PrivTree1D a) (PrivTree1D b) where
+  symEq (PrivTree1D a) (PrivTree1D b) =
+    case MM.mergeA whenMissing whenMissing whenMatched a b of
+      Nothing         -> bool False
+      Just equalities -> foldr and (bool True) equalities
+    where whenMissing = MM.traverseMissing (\_ _ -> Nothing)
+          whenMatched = MM.zipWithAMatched (\_ c s -> Just (symEq c s))

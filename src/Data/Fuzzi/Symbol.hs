@@ -74,9 +74,6 @@ data MergingSymbolicConstraints = MergingSymbolicConstraints {
   } deriving (Show, Eq, Ord)
 
 
-class Matchable a b => SEq a b where
-  symEq :: a -> b -> BoolExpr
-
 makeLensesWith abbreviatedFields ''SymbolicState
 makeLensesWith abbreviatedFields ''SymbolicConstraints
 makeLensesWith abbreviatedFields ''MergingSymbolicConstraints
@@ -594,54 +591,6 @@ instance (Monad m, Typeable m, Typeable r)
       Just False -> return ()
       Just True ->
         throwError (AssertImpossible cond False)
-
-instance Matchable Double RealExpr where
-  match v sv =
-    case tryEvalReal sv of
-      Just v' -> toRational v == v'
-      Nothing -> True
-
-instance SEq Int Int where
-  symEq a b = bool (a == b)
-
-instance SEq Bool Bool where
-  symEq a b = bool (a == b)
-
-instance SEq Double RealExpr where
-  symEq a b =
-    let tol = getTolerance b
-    in if tol == 0
-    then double a %== b
-    else abs (double a - b) %<= fromRational (getTolerance b)
-
-instance SEq (D.WithDistributionProvenance Double) (D.WithDistributionProvenance RealExpr) where
-  symEq a b = symEq (D.value a) (D.value b)
-
-instance (SEq a b, SEq c d) => SEq (a, c) (b, d) where
-  symEq (a, c) (b, d) =
-    BoolExpr (And (getBoolExpr (a `symEq` b)) (getBoolExpr (c `symEq` d)))
-
-instance SEq a b => SEq (Maybe a) (Maybe b) where
-  symEq (Just a) (Just b) = symEq a b
-  symEq Nothing  Nothing  = bool True
-  symEq _        _        = bool False
-
-instance SEq a b => SEq [a] [b] where
-  symEq [] []         = BoolExpr (JustBool True)
-  symEq (x:xs) (y:ys) =
-    BoolExpr $
-    And (getBoolExpr (x `symEq` y))
-        (getBoolExpr (xs `symEq` ys))
-  symEq _      _      = BoolExpr (JustBool False)
-
-instance SEq a b => SEq (PrivTree1D a) (PrivTree1D b) where
-  symEq (PrivTree1D a) (PrivTree1D b) =
-    case MM.mergeA whenMissing whenMissing whenMatched a b of
-      Nothing         -> bool False
-      Just equalities -> foldr Data.Fuzzi.Types.and (bool True) equalities
-    where whenMissing = MM.traverseMissing (\_ _ -> Nothing)
-          whenMatched = MM.zipWithAMatched (\_ c s -> Just (symEq c s))
-
 
 instance Monad m => MonadThrow (SymbolicT r m) where
   throwM (exc :: e) =

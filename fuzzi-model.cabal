@@ -189,39 +189,46 @@ test-suite fuzzi-model-test
               , monad-logger >= 0.3.30 && <0.4
               , lens >= 4.17.1 && <4.18
               , unix >= 2.7.2.2 && <2.8
+              , text >= 1.2.3.1 && <1.3
               , fuzzi-model
   default-language: Haskell2010
-  default-extensions:
-                     DataKinds
-                   , DeriveGeneric
-                   , DuplicateRecordFields
-                   , FlexibleContexts
-                   , TypeApplications
-                   , DeriveFunctor
-                   , DeriveFoldable
-                   , DeriveTraversable
-                   , TypeOperators
-                   , ApplicativeDo
-                   , ViewPatterns
-                   , LambdaCase
-                   , GeneralizedNewtypeDeriving
-                   , TypeFamilies
-                   , ScopedTypeVariables
-                   , RankNTypes
-                   , FlexibleInstances
-                   , DeriveDataTypeable
-                   , QuasiQuotes
-                   , TemplateHaskell
-                   , ConstraintKinds
-                   , UndecidableInstances
-                   , MultiParamTypeClasses
-                   , KindSignatures
-                   , FunctionalDependencies
-                   , DataKinds
-                   , GADTs
-                   , StandaloneDeriving
-                   , ViewPatterns
-                   , CPP
-                   , PartialTypeSignatures
-                   , PolyKinds
-                   , QuantifiedConstraints
+  default-extensions: DataKinds
+                    , DeriveGeneric
+                    , DuplicateRecordFields
+                    , FlexibleContexts
+                    , TypeApplications
+                    , DeriveFunctor
+                    , DeriveFoldable
+                    , DeriveTraversable
+                    , TypeOperators
+                    , ApplicativeDo
+                    , LambdaCase
+                    , GeneralizedNewtypeDeriving
+                    , TypeFamilies
+                    , ScopedTypeVariables
+                    , RankNTypes
+                    , FlexibleInstances
+                    , DeriveDataTypeable
+                    , QuasiQuotes
+                    , TemplateHaskell
+                    , ConstraintKinds
+                    , UndecidableInstances
+                    , MultiParamTypeClasses
+                    , KindSignatures
+                    , FunctionalDependencies
+                    , DataKinds
+                    , GADTs
+                    , StandaloneDeriving
+                    , ViewPatterns
+                    , CPP
+                    , PartialTypeSignatures
+                    , PolyKinds
+                    , QuantifiedConstraints
+                    , DerivingVia
+                    , BangPatterns
+                    , PatternSynonyms
+                    , DuplicateRecordFields
+                    , OverloadedLabels
+                    , LambdaCase
+                    , TypeFamilyDependencies
+                    , OverloadedStrings
