@@ -108,7 +108,7 @@ symExec buckets code = do
   let codes = streamline code
   (errorsAndPaths :: [([SymExecError], (GetProvenance concreteResult, Bucket concreteResult, [(symbolicResult, SymbolicConstraints)]))])
     <- mapM
-    (\(prov, (bucket :: Bucket concreteResult)) -> do
+    (\(prov, bucket :: Bucket concreteResult) -> do
          rs <- mapM (go bucket) codes
          let (errors, paths) = partitionEithers rs
          return (errors, (prov, bucket, paths))
@@ -122,7 +122,7 @@ symExec buckets code = do
   let originalProvenances = SS.fromList $ M.keys buckets
   let droppedProvenances = originalProvenances SS.\\ successfulProvenances
 
-  forM (SS.toList droppedProvenances) $ \p -> do
+  forM_ (SS.toList droppedProvenances) $ \p -> do
     $(logWarn) "dropped this provenance:"
     $(logWarn) (pack (show p))
 

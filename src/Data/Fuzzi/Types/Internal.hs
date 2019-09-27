@@ -17,6 +17,8 @@ import qualified Data.Set as S
 import qualified Prelude
 import qualified Text.PrettyPrint as TPP
 
+{- HLINT ignore "Use camelCase" -}
+
 data Guarded (a :: *) where
   MkGuarded :: BoolExpr -> a -> Guarded a
   deriving (Eq, Ord, Functor, Foldable, Traversable)
@@ -334,7 +336,7 @@ instance Num IntExpr where
   (+) = coerce Add
   (-) = coerce Sub
   (*) = coerce Mul
-  negate v = IntExpr $ Rat 0 `Sub` (getIntExpr v)
+  negate v = IntExpr $ Rat 0 `Sub` getIntExpr v
   abs (IntExpr ast) =
     let geZero = ast `Ge` Rat 0
         negAst = Rat 0 `Sub` ast
@@ -520,6 +522,11 @@ doSubst (Ite cond x y) substs = Ite (doSubst cond substs)
                                     (doSubst y substs)
 doSubst (Substitute x substs) substs' = doSubst x (substs ++ substs')
 
+ite' :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr -> SymbolicExpr
+ite' cond a b
+  | a == b    = a
+  | otherwise = Ite cond a b
+
 tryEvalBool :: BoolExpr -> Maybe Bool
 tryEvalBool = tryEvalBool' . getBoolExpr
 
@@ -574,6 +581,15 @@ tryEvalInt' (Ite cond a b) = do
   then tryEvalInt' a
   else tryEvalInt' b
 tryEvalInt' _ = Nothing
+
+sReal :: String -> RealExpr
+sReal = RealExpr k_FLOAT_TOLERANCE . RealVar
+
+sReal' :: Rational -> String -> RealExpr
+sReal' tol = RealExpr tol . RealVar
+
+k_FLOAT_TOLERANCE :: Rational
+k_FLOAT_TOLERANCE = 1e-6
 
 instance Applicative Guarded where
   pure = MkGuarded (bool True)

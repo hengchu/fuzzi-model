@@ -375,8 +375,7 @@ simpleCount :: forall m a.
             -> Mon m (Fuzzi a)
 simpleCount xs threshold = do
   let c = length (filter (>= threshold) xs)
-  cNoised <- lap (fromIntegral c) 1.0
-  return cNoised
+  lap (fromIntegral c) 1.0
 
 simpleMean :: forall m a.
               (FuzziLang m a, Ord a)
@@ -392,10 +391,10 @@ simpleMean xs clipBound
       return (noisedS, noisedC)
   where clippedSum []     acc = return acc
         clippedSum (x:xs) acc =
-          ifM (x %>= (lit clipBound))
-              (clippedSum xs (acc + (lit clipBound)))
-              (ifM (x %< (lit (-clipBound)))
-                   (clippedSum xs (acc - (lit clipBound)))
+          ifM (x %>= lit clipBound)
+              (clippedSum xs (acc + lit clipBound))
+              (ifM (x %< lit (-clipBound))
+                   (clippedSum xs (acc - lit clipBound))
                    (clippedSum xs (acc + x))
               )
 

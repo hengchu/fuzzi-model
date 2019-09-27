@@ -14,10 +14,10 @@ import System.Log.FastLogger
 import qualified Data.ByteString.Char8 as S8
 
 runStdoutColoredLoggingWarnT :: MonadIO m => LoggingT m a -> m a
-runStdoutColoredLoggingWarnT m = runStdoutColoredLoggingT $ filterLogger (const $ (>= LevelWarn)) m
+runStdoutColoredLoggingWarnT m = runStdoutColoredLoggingT $ filterLogger (const (>= LevelWarn)) m
 
 runStderrColoredLoggingWarnT :: MonadIO m => LoggingT m a -> m a
-runStderrColoredLoggingWarnT m = runStderrColoredLoggingT $ filterLogger (const $ (>= LevelWarn)) m
+runStderrColoredLoggingWarnT m = runStderrColoredLoggingT $ filterLogger (const (>= LevelWarn)) m
 
 coloredOutput :: Handle
               -> Loc

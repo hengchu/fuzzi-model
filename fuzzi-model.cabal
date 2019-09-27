@@ -49,6 +49,7 @@ library
                 , Data.Fuzzi.Types
                 , Data.Fuzzi.Types.Internal
                 , Data.Fuzzi.Types.Structures
+                , Data.Fuzzi.Z3
   other-modules:
       Paths_fuzzi_model
   hs-source-dirs:

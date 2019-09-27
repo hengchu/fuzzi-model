@@ -16,11 +16,11 @@ evalM :: (MonadDist m, MonadAssert m, NumDomain m ~ RealExpr, BoolType m ~ BoolE
 evalM (Return a) = return (pure $ evalPure a)
 evalM (Sequence a b) = do
   ua <- evalM a
-  ub <- sequence $ fmap (evalM . const b) ua
+  ub <- traverse (evalM . const b) ua
   return (joinGuardedSymbolicUnion ub)
 evalM (Bind a f) = do
   ua <- evalM a
-  ub <- sequence $ fmap (evalM . f . Lit) ua
+  ub <- traverse (evalM . f . Lit) ua
   return (joinGuardedSymbolicUnion ub)
 evalM (IfM cond a b) = do
   let cond' = evalPure cond

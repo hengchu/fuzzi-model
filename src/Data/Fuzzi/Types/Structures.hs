@@ -31,10 +31,10 @@ flatten :: GuardedSymbolicUnion a -> [(BoolExpr, a)]
 flatten (unwrap -> u) = map (\(MkGuarded cond v) -> (cond, v)) u
 
 fromList :: [(BoolExpr, a)] -> GuardedSymbolicUnion a
-fromList xs = foldr (\(cond, v) acc -> (guardedSingleton cond v) `union` acc) (wrap []) xs
+fromList = foldr (\(cond, v) acc -> guardedSingleton cond v `union` acc) (wrap [])
 
 diff :: SymbolicRepr a => GuardedSymbolicUnion a -> GuardedSymbolicUnion a -> GuardedSymbolicUnion a
-diff ua ub = fromList . S.toList $ (S.fromList $ flatten ua) S.\\ (S.fromList $ flatten ub)
+diff ua ub = fromList . S.toList $ S.fromList (flatten ua) S.\\ S.fromList (flatten ub)
 
 same :: SymbolicRepr a => GuardedSymbolicUnion a -> GuardedSymbolicUnion a -> Bool
 same ua ub = null (diff ua ub) && null (diff ub ua)
@@ -68,8 +68,8 @@ symmetricDiff :: SymbolicRepr a
               => GuardedSymbolicUnion a
               -> GuardedSymbolicUnion a
               -> ( [(BoolExpr, BoolExpr, a, a)]
-                 , (GuardedSymbolicUnion a)
-                 , (GuardedSymbolicUnion a)
+                 , GuardedSymbolicUnion a
+                 , GuardedSymbolicUnion a
                  )
 symmetricDiff left right =
   let edges =
@@ -79,8 +79,8 @@ symmetricDiff left right =
                    , match a b]
       core  = map (\((condA, a), (condB, b)) -> (condA, condB, a, b)) $ M.toList (matching edges)
       elems = nub $ map (view _3) core ++ map (view _4) core
-      leftOver  = filterGuardedSymbolicUnion (\v -> not $ v `elem` elems) left
-      rightOver = filterGuardedSymbolicUnion (\v -> not $ v `elem` elems) right
+      leftOver  = filterGuardedSymbolicUnion (`notElem` elems) left
+      rightOver = filterGuardedSymbolicUnion (`notElem` elems) right
   in (core, leftOver, rightOver)
 
 -- |Merge two guarded symbolic unions. This is the mu function in the Rosette
@@ -115,11 +115,11 @@ mergeUnion' cond left (isFreeSingleton -> Just right) =
 mergeUnion' cond (isFreeSingleton -> Just left) right = mergeUnion (neg cond) right (pure left)
 mergeUnion' cond left right =
   let (w, u, v) = symmetricDiff left right
-      mkW = \(bi, bj, ui, vj) ->
+      mkW (bi, bj, ui, vj) =
         let cond' = (cond `and` bi) `or` ((neg cond) `and` bj)
         in conjunctAll cond' (mergeUnion cond (pure ui) (pure vj))
       subWUnions = map mkW w
-      init = (conjunctAll cond u) `union` (conjunctAll (neg cond) v)
+      init = conjunctAll cond u `union` conjunctAll (neg cond) v
   in foldr union init subWUnions
 
 instance SymbolicRepr Int where
@@ -140,15 +140,15 @@ instance SymbolicRepr Bool where
 instance SymbolicRepr RealExpr where
   merge cond left right =
     let tol' = max (getTolerance left) (getTolerance right)
-    in pure $ RealExpr tol' (Ite (getBoolExpr cond) (getRealExpr left) (getRealExpr right))
+    in pure $ RealExpr tol' (ite' (getBoolExpr cond) (getRealExpr left) (getRealExpr right))
 
 instance SymbolicRepr BoolExpr where
   merge cond left right =
-    pure $ BoolExpr (Ite (getBoolExpr cond) (getBoolExpr left) (getBoolExpr right))
+    pure $ BoolExpr (ite' (getBoolExpr cond) (getBoolExpr left) (getBoolExpr right))
 
 instance SymbolicRepr IntExpr where
   merge cond left right =
-    pure $ IntExpr (Ite (getBoolExpr cond) (getIntExpr left) (getIntExpr right))
+    pure $ IntExpr (ite' (getBoolExpr cond) (getIntExpr left) (getIntExpr right))
 
 instance Numeric     RealExpr
 instance FracNumeric RealExpr
@@ -177,7 +177,7 @@ instance SymbolicRepr a => SymbolicRepr [a] where
   merge cond lefts rights
     | length lefts == length rights =
       let unions = zipWith (merge cond) lefts rights
-      in case sequenceA (map isFreeSingleton unions) of
+      in case traverse isFreeSingleton unions of
            Just singletonList -> pure singletonList
            Nothing -> guardedSingleton cond lefts `union` guardedSingleton (neg cond) rights
     | otherwise = guardedSingleton cond lefts `union` guardedSingleton (neg cond) rights
@@ -197,4 +197,4 @@ instance Monad GuardedSymbolicUnion where
 joinGuardedSymbolicUnion :: GuardedSymbolicUnion (GuardedSymbolicUnion a) -> GuardedSymbolicUnion a
 joinGuardedSymbolicUnion (unwrap -> []) = wrap []
 joinGuardedSymbolicUnion (unwrap -> (MkGuarded conds u):guardedUnions) =
-  (conjunctAll conds u) `union` (joinGuardedSymbolicUnion (wrap guardedUnions))
+  conjunctAll conds u `union` joinGuardedSymbolicUnion (wrap guardedUnions)
