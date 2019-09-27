@@ -174,7 +174,7 @@ test-suite fuzzi-model-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Paths_fuzzi_model
+      Spec.Types.Structures
   hs-source-dirs:
       test
   ghc-options: -O2 -rtsopts
