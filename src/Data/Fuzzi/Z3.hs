@@ -1,8 +1,27 @@
 module Data.Fuzzi.Z3 where
 
 import Control.Monad.IO.Class
+import Data.Fuzzi.Logging
 import Data.Fuzzi.Types
 import qualified Z3.Base as Z3
+
+z3Init :: (MonadIO m, MonadLogger m) => m (Z3.Context, Z3.Solver)
+z3Init = do
+  cfg <- liftIO Z3.mkConfig
+  ctx <- liftIO (Z3.mkContext cfg)
+  liftIO (Z3.setASTPrintMode ctx Z3.Z3_PRINT_SMTLIB2_COMPLIANT)
+  solver <- liftIO (Z3.mkSolver ctx)-- Z3.QF_NRA)
+  $(logInfo) "initialized Z3 solver and context"
+  return (ctx, solver)
+
+z3InitOpt :: (MonadIO m, MonadLogger m) => m (Z3.Context, Z3.Optimizer)
+z3InitOpt = do
+  cfg <- liftIO Z3.mkConfig
+  ctx <- liftIO (Z3.mkContext cfg)
+  liftIO (Z3.setASTPrintMode ctx Z3.Z3_PRINT_SMTLIB2_COMPLIANT)
+  optimizer <- liftIO (Z3.mkOptimizer ctx)
+  $(logInfo) "initialized Z3 optimizer and context"
+  return (ctx, optimizer)
 
 symbolicExprToZ3AST :: MonadIO m => Z3.Context -> SymbolicExpr -> m Z3.AST
 symbolicExprToZ3AST ctx (RealVar name) = do
