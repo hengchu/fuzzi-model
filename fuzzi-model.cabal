@@ -36,7 +36,6 @@ library
                   Data.Fuzzi
                 , Data.Fuzzi.EDSL
                 , Data.Fuzzi.Distribution
-                , Data.Fuzzi.Types
                 , Data.Fuzzi.Interp
                 , Data.Fuzzi.Symbol
                 , Data.Fuzzi.IfCxt
@@ -47,6 +46,9 @@ library
                 , Data.Fuzzi.NeighborGen
                 , Data.Fuzzi.Logging
                 , Data.Fuzzi.Rosette
+                , Data.Fuzzi.Types
+                , Data.Fuzzi.Types.Internal
+                , Data.Fuzzi.Types.Structures
   other-modules:
       Paths_fuzzi_model
   hs-source-dirs:
@@ -77,6 +79,7 @@ library
               , time >= 1.8.0.2 && <1.9
               , deriving-compat >= 0.5.6 && <0.6
               , maxBipartiteMatching >= 0.1.0.0 && <0.2
+              , set-monad >= 0.3.0.0 && <0.4
   default-language: Haskell2010
   default-extensions:
                      DataKinds
