@@ -82,8 +82,14 @@ subset' small large = do
 newtype SimpleSRealAtom = SimpleSRealAtom RealExpr
   deriving (Show, Eq, Ord)
 
+newtype SimpleBoolAtom = SimpleBoolAtom BoolExpr
+  deriving (Show, Eq, Ord)
+
 atom2expr :: SimpleSRealAtom -> SimpleRealExpr
 atom2expr (SimpleSRealAtom s) = SimpleRealExpr s
+
+atom2bool :: SimpleBoolAtom -> SimpleBoolExpr
+atom2bool (SimpleBoolAtom b) = SimpleBoolExpr b
 
 expr2sexpr :: SimpleRealExpr -> (Rational, SymbolicExpr)
 expr2sexpr (SimpleRealExpr s) = (getTolerance s, getRealExpr s)
@@ -109,6 +115,12 @@ instance Arbitrary SimpleSRealAtom where
   arbitrary = do
     idx <- elements [0..9]
     return . SimpleSRealAtom . sReal $ "s" ++ show idx
+  shrink _ = []
+
+instance Arbitrary SimpleBoolAtom where
+  arbitrary = do
+    realAtom <- atom2expr <$> arbitrary
+    return (coerce $ realAtom %> 0)
   shrink _ = []
 
 instance Arbitrary SimpleRealExpr where
@@ -142,8 +154,8 @@ instance Arbitrary SimpleRealExpr where
 
 instance Arbitrary SimpleBoolExpr where
   arbitrary =
-    frequency [ (5, return $ SimpleBoolExpr (bool True))
-              , (5, return $ SimpleBoolExpr (bool False))
+    frequency [ (10, atom2bool <$> arbitrary )
+              --, (5, return $ SimpleBoolExpr (bool False))
               , (1, and <$> arbitrary <*> arbitrary)
               , (1, or <$> arbitrary <*> arbitrary)
               , (1, neg <$> arbitrary)
