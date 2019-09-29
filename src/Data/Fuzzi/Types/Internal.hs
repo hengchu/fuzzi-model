@@ -573,7 +573,10 @@ tryEvalReal' (JustInt v) = Just $ fromInteger v
 tryEvalReal' (Add a b) = (+) <$> tryEvalReal' a <*> tryEvalReal' b
 tryEvalReal' (Sub a b) = (-) <$> tryEvalReal' a <*> tryEvalReal' b
 tryEvalReal' (Mul a b) = (*) <$> tryEvalReal' a <*> tryEvalReal' b
-tryEvalReal' (Div a b) = (/) <$> tryEvalReal' a <*> tryEvalReal' b
+tryEvalReal' (Div a b) =
+  case tryEvalReal' b of
+    Just 0 -> Nothing
+    _ -> (/) <$> tryEvalReal' a <*> tryEvalReal' b
 tryEvalReal' (Ite cond a b) = do
   cond' <- tryEvalBool' cond
   if cond'

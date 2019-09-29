@@ -48,6 +48,9 @@ checkImplicationAndEquality :: (SEq a b, MonadIO m, MonadLogger m)
 checkImplicationAndEquality cxt solver smallCond smallValue largeCond largeValue =
   AnyIO $ do
     liftIO $ Z3.solverReset cxt solver
+    atoms <- liftIO $ mapM (symbolicExprToZ3AST cxt) simpleAtomSet
+    atomsAllDistinct <- liftIO $ Z3.mkDistinct cxt atoms
+    liftIO $ Z3.solverAssertCnstr cxt solver atomsAllDistinct
     let implicationSExpr = neg largeCond `or` smallCond
     let equalitySExpr = smallValue `symEq` largeValue
     implication <- symbolicExprToZ3AST cxt . getBoolExpr $ implicationSExpr
@@ -110,6 +113,9 @@ newtype SimpleRealExpr = SimpleRealExpr RealExpr
 newtype SimpleBoolExpr = SimpleBoolExpr BoolExpr
   deriving (Show, Eq, Ord)
   deriving (Boolean) via BoolExpr
+
+simpleAtomSet :: [SymbolicExpr]
+simpleAtomSet = RealVar <$> ["s" ++ show i | i <- [0..9]]
 
 instance Arbitrary SimpleSRealAtom where
   arbitrary = do
