@@ -394,6 +394,10 @@ main = do
   quickCheckWithResult
     stdArgs{maxSuccess=2000}
     simpleProperties >>= printAndExitIfFailed
+  quickCheckWithResult
+    stdArgs{maxSuccess=500, maxShrinks=20}
+    prop_mergeUnionResultIsSuperSet >>= printAndExitIfFailed
+
 
   quickCheckWithResult
     expectSuccessArgs
