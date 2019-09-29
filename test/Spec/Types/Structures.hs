@@ -34,24 +34,22 @@ instance MonadIO m => Semigroup (AnyIO m) where
       then return True
       else runAnyIO mb
 
-subset :: SEq a b => GuardedSymbolicUnion a -> GuardedSymbolicUnion b -> IO Bool
-subset small large = runStdoutColoredLoggingWarnT $ subset' (unwrap small) (unwrap large)
+subset :: SEq a b => BoolExpr -> GuardedSymbolicUnion a -> GuardedSymbolicUnion b -> IO Bool
+subset cond small large = runStdoutColoredLoggingWarnT $ subset' cond (unwrap small) (unwrap large)
 
 checkImplicationAndEquality :: (SEq a b, MonadIO m, MonadLogger m)
                             => Z3.Context
                             -> Z3.Solver
                             -> BoolExpr
+                            -> BoolExpr
                             -> a
                             -> BoolExpr
                             -> b
                             -> AnyIO m
-checkImplicationAndEquality cxt solver smallCond smallValue largeCond largeValue =
+checkImplicationAndEquality cxt solver cond smallCond smallValue largeCond largeValue =
   AnyIO $ do
     liftIO $ Z3.solverReset cxt solver
-    atoms <- liftIO $ mapM (symbolicExprToZ3AST cxt) simpleAtomSet
-    atomsAllDistinct <- liftIO $ Z3.mkDistinct cxt atoms
-    liftIO $ Z3.solverAssertCnstr cxt solver atomsAllDistinct
-    let implicationSExpr = neg largeCond `or` smallCond
+    let implicationSExpr = (neg (cond `and` largeCond)) `or` smallCond
     let equalitySExpr = smallValue `symEq` largeValue
     implication <- symbolicExprToZ3AST cxt . getBoolExpr $ implicationSExpr
     equality <- symbolicExprToZ3AST cxt . getBoolExpr $ equalitySExpr
@@ -71,15 +69,15 @@ subset' :: forall m a b.
            ( SEq a b
            , MonadIO m
            , MonadLogger m
-           ) => [Guarded a] -> [Guarded b] -> m Bool
-subset' small large = do
+           ) => BoolExpr -> [Guarded a] -> [Guarded b] -> m Bool
+subset' cond small large = do
   (cxt, solver) <- z3Init
   runAllIO $ foldMap (AllIO . forEachSmall cxt solver) small
   where forEachSmall :: Z3.Context -> Z3.Solver -> Guarded a -> m Bool
         forEachSmall cxt solver (MkGuarded smallCond smallValue) = runAnyIO $
           foldMap (\(MkGuarded largeCond largeValue) ->
                      checkImplicationAndEquality
-                       cxt solver smallCond smallValue largeCond largeValue)
+                       cxt solver cond smallCond smallValue largeCond largeValue)
                   large
 
 newtype SimpleSRealAtom = SimpleSRealAtom RealExpr
@@ -131,8 +129,8 @@ instance Arbitrary SimpleBoolAtom where
 
 instance Arbitrary SimpleRealExpr where
   arbitrary =
-    frequency [ (6, atom2expr <$> arbitrary)
-              , (1, fromRational <$> arbitrary)
+    frequency [ --(6, atom2expr <$> arbitrary)
+                (5, fromRational <$> arbitrary)
               , (1, (+) <$> arbitrary <*> arbitrary)
               , (1, (*) <$> arbitrary <*> (fromRational <$> arbitrary))
               , (1, (*) <$> (fromRational <$> arbitrary) <*> arbitrary)
@@ -161,7 +159,6 @@ instance Arbitrary SimpleRealExpr where
 instance Arbitrary SimpleBoolExpr where
   arbitrary =
     frequency [ (10, atom2bool <$> arbitrary )
-              --, (5, return $ SimpleBoolExpr (bool False))
               , (1, and <$> arbitrary <*> arbitrary)
               , (1, or <$> arbitrary <*> arbitrary)
               , (1, neg <$> arbitrary)
@@ -235,9 +232,9 @@ prop_mergeUnionResultIsSuperSet (SimpleBoolExpr cond) s1 s2 = monadicIO $ do
     s1' = fmap unwrapSimpleRealExpr s1
     s2' = fmap unwrapSimpleRealExpr s2
     u = mergeUnion cond s1' s2'
-  r1 <- run $ subset s1' u
+  r1 <- run $ subset cond s1' u
   assert r1
-  r2 <- run $ subset s2' u
+  r2 <- run $ subset (neg cond) s2' u
   assert r2
   where unwrapSimpleRealExpr (SimpleRealExpr s) = s
 
@@ -265,3 +262,15 @@ GuardedSymbolicUnion {unwrapGuardedSymbolicUnion = [MkGuarded (s2 > 0 % 1) (Simp
 GuardedSymbolicUnion {unwrapGuardedSymbolicUnion = [MkGuarded (s3 > 0 % 1) (SimpleRealExpr s6),MkGuarded (not(s2 + (-1447922192308) % 929748654031 == s8)) (SimpleRealExpr s4),MkGuarded (((-22598647323272) % 9322564761029 + s5 / 14406561909965 % 5435786934498) / 4610059516427 % 1175001968606 < s2) (SimpleRealExpr s7)]}
 
 -}
+
+cond :: BoolExpr
+cond = neg (sReal "s7" %== sReal "s0")
+
+u1 :: GuardedSymbolicUnion RealExpr
+u1 = guardedSingleton (sReal "s2" %> 0) (sReal "s7")
+
+u2 :: GuardedSymbolicUnion RealExpr
+u2 = fromList [ (sReal "s3" %> 0, sReal "s6")
+              , (neg $ (sReal "s2" + 1) %== sReal "s8", sReal "s4")
+              , (1 %< sReal "s2", sReal "s7")
+              ]
