@@ -76,7 +76,7 @@ symmetricDiff left right =
         S.fromList [ ((condA, a), (condB, b))
                    | (condA, a) <- flatten left
                    , (condB, b) <- flatten right
-                   , match a b]
+                   , reduceable a b]
       core  = map (\((condA, a), (condB, b)) -> (condA, condB, a, b)) $ M.toList (matching edges)
       elems = nub $ map (view _3) core ++ map (view _4) core
       leftOver  = filterGuardedSymbolicUnion (`notElem` elems) left
@@ -102,7 +102,7 @@ mergeUnion' (tryEvalBool -> Just False) _left right = right
 mergeUnion' _                           left right | left == right = left
 mergeUnion' cond (isFreeSingleton -> Just left) (isFreeSingleton -> Just right) = merge cond left right
 mergeUnion' cond left (isFreeSingleton -> Just right) =
-  case filterGuardedSymbolicUnion (`match` right) left of
+  case filterGuardedSymbolicUnion (`reduceable` right) left of
     core ->
       case left `diff` core of
         complement ->
@@ -123,30 +123,36 @@ mergeUnion' cond left right =
   in foldr union init subWUnions
 
 instance SymbolicRepr Int where
+  reduceable left right = left == right
   merge cond left right
     | left == right = pure left
     | otherwise     = guardedSingleton cond left `union` guardedSingleton (neg cond) right
 
 instance SymbolicRepr Double where
+  reduceable left right = left == right
   merge cond left right
     | left == right = pure left
     | otherwise     = guardedSingleton cond left `union` guardedSingleton (neg cond) right
 
 instance SymbolicRepr Bool where
+  reduceable left right = left == right
   merge cond left right
     | left == right = pure left
     | otherwise     = guardedSingleton cond left `union` guardedSingleton (neg cond) right
 
 instance SymbolicRepr RealExpr where
+  reduceable _    _     = True
   merge cond left right =
     let tol' = max (getTolerance left) (getTolerance right)
     in pure $ RealExpr tol' (ite' (getBoolExpr cond) (getRealExpr left) (getRealExpr right))
 
 instance SymbolicRepr BoolExpr where
+  reduceable _    _     = True
   merge cond left right =
     pure $ BoolExpr (ite' (getBoolExpr cond) (getBoolExpr left) (getBoolExpr right))
 
 instance SymbolicRepr IntExpr where
+  reduceable _    _     = True
   merge cond left right =
     pure $ IntExpr (ite' (getBoolExpr cond) (getIntExpr left) (getIntExpr right))
 

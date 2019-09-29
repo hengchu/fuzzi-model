@@ -49,15 +49,15 @@ checkImplicationAndEquality :: (SEq a b, MonadIO m, MonadLogger m)
 checkImplicationAndEquality cxt solver cond smallCond smallValue largeCond largeValue =
   AnyIO $ do
     liftIO $ Z3.solverReset cxt solver
-    let implicationSExpr = (neg (cond `and` largeCond)) `or` smallCond
     let equalitySExpr = smallValue `symEq` largeValue
-    implication <- symbolicExprToZ3AST cxt . getBoolExpr $ implicationSExpr
-    equality <- symbolicExprToZ3AST cxt . getBoolExpr $ equalitySExpr
-    liftIO $ Z3.solverAssertCnstr cxt solver implication
-    liftIO $ Z3.solverAssertCnstr cxt solver equality
-    let logMsg = "checking implication = "
-                 ++ show implicationSExpr
-                 ++ ", equality = " ++ show equalitySExpr
+    let clause = (neg (cond `and` largeCond)) `or` (smallCond `and` equalitySExpr)
+    formula <- symbolicExprToZ3AST cxt . getBoolExpr $ clause
+    liftIO $ Z3.solverAssertCnstr cxt solver formula
+    $(logInfo) (pack . show $ "cond = " ++ show cond)
+    $(logInfo) (pack . show $ "smallCond = " ++ show smallCond)
+    $(logInfo) (pack . show $ "largeCond = " ++ show largeCond)
+    $(logInfo) (pack . show $ "equaity = " ++ show equalitySExpr)
+    let logMsg = "checking " ++ show cond ++ " /\\ " ++ show largeCond ++ " ==> " ++ show smallCond ++ " /\\ " ++ show equalitySExpr
     $(logInfo) (pack logMsg)
     r <- liftIO $ Z3.solverCheck cxt solver
     $(logInfo) (pack $ show "result = " ++ show r)
@@ -130,13 +130,13 @@ instance Arbitrary SimpleBoolAtom where
 instance Arbitrary SimpleRealExpr where
   arbitrary =
     frequency [ --(6, atom2expr <$> arbitrary)
-                (5, fromRational <$> arbitrary)
+                (5, fromRational <$> elements [0..9])
               , (1, (+) <$> arbitrary <*> arbitrary)
               , (1, (*) <$> arbitrary <*> (fromRational <$> arbitrary))
               , (1, (*) <$> (fromRational <$> arbitrary) <*> arbitrary)
               , (1, (/) <$> arbitrary <*> (fromRational <$> arbitrary))
               ]
-  shrink (expr2sexpr -> (_, Rat v)) = fromRational <$> shrink v
+  shrink (expr2sexpr -> (_, Rat v)) = []
   shrink (expr2sexpr -> (_, RealVar _)) = []
   shrink (expr2sexpr -> (tol, lhs `Add` rhs)) =
     let ls = shrink (rebuildReal tol lhs)
@@ -263,6 +263,7 @@ GuardedSymbolicUnion {unwrapGuardedSymbolicUnion = [MkGuarded (s3 > 0 % 1) (Simp
 
 -}
 
+{-
 cond :: BoolExpr
 cond = neg (sReal "s7" %== sReal "s0")
 
@@ -274,3 +275,9 @@ u2 = fromList [ (sReal "s3" %> 0, sReal "s6")
               , (neg $ (sReal "s2" + 1) %== sReal "s8", sReal "s4")
               , (1 %< sReal "s2", sReal "s7")
               ]
+-}
+
+--cond = sReal "s8" %> 0
+cond = bool True
+u1 = guardedSingleton ((sReal "s9" %> 0) `or` (sReal "s3" %> 0)) (2 / (3 :: RealExpr))
+u2 = guardedSingleton (4 %< (5 :: RealExpr)) (-1 * 2 :: RealExpr)

@@ -53,7 +53,8 @@ class ( SymbolicRepr a
 -- |This typeclass is defined for values that have a symbolic representation,
 -- and provides a method on how to merge two symbolic values into a union of
 -- such values.
-class (Matchable a a, Ord a) => SymbolicRepr a where
+class Ord a => SymbolicRepr a where
+  reduceable :: a -> a -> Bool
   merge :: BoolExpr
         -> a
         -> a
@@ -427,10 +428,12 @@ instance Matchable a b => Matchable [a] [b] where
   match _      _      = False
 
 instance Matchable BoolExpr BoolExpr where
-  match _ _ = True
+  match (tryEvalBool -> Just b1) (tryEvalBool -> Just b2) = b1 == b2
+  match _                        _                        = True
 
 instance Matchable IntExpr  IntExpr where
-  match _ _ = True
+  match (tryEvalInt -> Just i1) (tryEvalInt -> Just i2) = i1 == i2
+  match _                       _                       = True
 
 instance Matchable RealExpr RealExpr where
   match (tryEvalReal -> Just r1) (tryEvalReal -> Just r2) = r1 == r2
