@@ -260,4 +260,8 @@ symmetric diff is wrong, matchable instances are wrong, the two sides should
 express the same set of values, right now, a constant 1 and a symbol s matches,
 and it may cause s to be dropped and only keep s1
 
+SimpleBoolExpr not(s7 == s0)
+GuardedSymbolicUnion {unwrapGuardedSymbolicUnion = [MkGuarded (s2 > 0 % 1) (SimpleRealExpr s7)]}
+GuardedSymbolicUnion {unwrapGuardedSymbolicUnion = [MkGuarded (s3 > 0 % 1) (SimpleRealExpr s6),MkGuarded (not(s2 + (-1447922192308) % 929748654031 == s8)) (SimpleRealExpr s4),MkGuarded (((-22598647323272) % 9322564761029 + s5 / 14406561909965 % 5435786934498) / 4610059516427 % 1175001968606 < s2) (SimpleRealExpr s7)]}
+
 -}
