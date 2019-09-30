@@ -190,6 +190,7 @@ test-suite fuzzi-model-test
               , lens >= 4.17.1 && <4.18
               , unix >= 2.7.2.2 && <2.8
               , text >= 1.2.3.1 && <1.3
+              , mtl  >= 2.2.2 && <2.3
               , fuzzi-model
   default-language: Haskell2010
   default-extensions: DataKinds
