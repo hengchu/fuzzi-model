@@ -8,14 +8,14 @@ import Control.Exception
 import Control.Lens
 import Control.Monad.Catch
 import Control.Monad.Except
+import Control.Monad.Reader
 import Control.Monad.State.Class
 import Control.Monad.Trans.State hiding (gets, put, modify)
 import Data.Bifunctor
-import Data.Coerce
 import Data.Foldable
 import Data.Fuzzi.Interp
-import Data.Fuzzi.Types
 import Data.Fuzzi.Logging
+import Data.Fuzzi.Types
 import Data.Fuzzi.Z3
 import Data.Text (pack)
 import Data.Void
@@ -234,7 +234,7 @@ solve_ conditions symCost eps = do
         liftIO (Z3.solverAssertAndTrack cxt solver ast trackedBoolVar)
         --liftIO (Z3.optimizerAssertAndTrack cxt solver ast trackedBoolVar)
       toZ3 cond = do
-        ast <- liftIO $ symbolicExprToZ3AST cxt (getBoolExpr cond)
+        ast <- liftIO $ flip runReaderT M.empty $ symbolicExprToZ3AST cxt (getBoolExpr cond)
         let prettyStr = pretty (getBoolExpr cond)
         return (prettyStr, ast)
       --toZ3R val = do
@@ -260,7 +260,7 @@ solve_ conditions symCost eps = do
       model <- liftIO $ Z3.solverGetModel cxt solver
       --model <- liftIO $ Z3.optimizerGetModel cxt solver
       let getCostValue sym = do
-            ast <- liftIO $ symbolicExprToZ3AST cxt (getRealExpr sym)
+            ast <- liftIO $ flip runReaderT M.empty $ symbolicExprToZ3AST cxt (getRealExpr sym)
             liftIO $ Z3.evalReal cxt model ast
       cost <- liftIO $ getCostValue symCost
       case cost of
@@ -313,7 +313,7 @@ isAbsurd sc = do
         trackedBoolVar <- liftIO $ Z3.mkFreshBoolVar cxt label
         liftIO (Z3.solverAssertAndTrack cxt solver ast trackedBoolVar)
   let toZ3 cond = do
-        ast <- liftIO $ symbolicExprToZ3AST cxt (getBoolExpr cond)
+        ast <- liftIO $ flip runReaderT M.empty $ symbolicExprToZ3AST cxt (getBoolExpr cond)
         let prettyStr = pretty (getBoolExpr cond)
         return (prettyStr, ast)
   forM_ (sc ^. pathConstraints) $ \(cond, truth) -> do

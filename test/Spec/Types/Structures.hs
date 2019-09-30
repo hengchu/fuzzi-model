@@ -1,6 +1,8 @@
 module Spec.Types.Structures where
 
 import Control.Monad.IO.Class
+import Control.Monad.Reader
+import Data.Coerce
 import Data.Fuzzi.Logging
 import Data.Fuzzi.Types
 import Data.Fuzzi.Z3
@@ -8,8 +10,8 @@ import Data.Text (pack)
 import Prelude hiding (and, or)
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
+import qualified Data.Map.Strict as M
 import qualified Z3.Base as Z3
-import Data.Coerce
 
 newtype AnyIO m = AnyIO { runAnyIO :: m Bool }
 newtype AllIO m = AllIO { runAllIO :: m Bool }
@@ -51,7 +53,7 @@ checkImplicationAndEquality cxt solver cond smallCond smallValue largeCond large
     liftIO $ Z3.solverReset cxt solver
     let equalitySExpr = smallValue `symEq` largeValue
     let clause = (neg (cond `and` largeCond)) `or` (smallCond `and` equalitySExpr)
-    formula <- symbolicExprToZ3AST cxt . getBoolExpr $ clause
+    formula <- flip runReaderT M.empty $ symbolicExprToZ3AST cxt . getBoolExpr $ clause
     liftIO $ Z3.solverAssertCnstr cxt solver formula
     $(logInfo) (pack . show $ "cond = " ++ show cond)
     $(logInfo) (pack . show $ "smallCond = " ++ show smallCond)

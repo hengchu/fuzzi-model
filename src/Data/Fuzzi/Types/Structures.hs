@@ -1,14 +1,12 @@
 module Data.Fuzzi.Types.Structures where
 
+import Control.Applicative
 import Control.Lens hiding (matching)
 import Data.Foldable hiding (and, or)
-import Data.Functor.Compose
 import Data.Fuzzi.Types.Internal
 import Data.Graph.MaxBipartiteMatching
-import Data.List (nub, (\\))
-import Data.Maybe (isNothing, isJust)
+import Data.List (nub)
 import Prelude hiding (and, or)
-import Text.Show.Deriving (deriveShow1)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -23,6 +21,9 @@ reduce (unwrap -> u) = wrap . S.toList . S.fromList $ u
 
 guarded :: BoolExpr -> a -> Guarded a
 guarded = MkGuarded
+
+singleton :: Guarded a -> GuardedSymbolicUnion a
+singleton (MkGuarded cond a) = fromList [(cond, a)]
 
 union :: GuardedSymbolicUnion a -> GuardedSymbolicUnion a -> GuardedSymbolicUnion a
 union (unwrap -> u1) (unwrap -> u2) = wrap $ u1 ++ u2
@@ -204,3 +205,38 @@ joinGuardedSymbolicUnion :: GuardedSymbolicUnion (GuardedSymbolicUnion a) -> Gua
 joinGuardedSymbolicUnion (unwrap -> []) = wrap []
 joinGuardedSymbolicUnion (unwrap -> (MkGuarded conds u):guardedUnions) =
   conjunctAll conds u `union` joinGuardedSymbolicUnion (wrap guardedUnions)
+joinGuardedSymbolicUnion _ = error "joinGuardedSymbolicUnion: dead code"
+
+joinGuarded :: Guarded (Guarded a) -> Guarded a
+joinGuarded (MkGuarded cond1 (MkGuarded cond2 a)) =
+  MkGuarded (cond1 `and` cond2) a
+
+instance Boolean a => Boolean (Guarded a) where
+  and = liftA2 and
+  or  = liftA2 or
+  neg = fmap neg
+
+instance Ordered a => Ordered (Guarded a) where
+  type CmpResult (Guarded a) = Guarded (CmpResult a)
+  (%<)  = liftA2 (%<)
+  (%<=) = liftA2 (%<=)
+  (%>)  = liftA2 (%>)
+  (%>=) = liftA2 (%>=)
+  (%==) = liftA2 (%==)
+  (%/=) = liftA2 (%/=)
+
+instance Num a => Num (Guarded a) where
+  (+) = liftA2 (+)
+  (-) = liftA2 (-)
+  (*) = liftA2 (*)
+  negate = fmap negate
+  abs = fmap abs
+  signum = fmap signum
+  fromInteger = MkGuarded (bool True) . fromInteger
+
+instance Fractional a => Fractional (Guarded a) where
+  (/) = liftA2 (/)
+  fromRational = MkGuarded (bool True) . fromRational
+
+instance Numeric a => Numeric (Guarded a)
+instance FracNumeric a => FracNumeric (Guarded a)

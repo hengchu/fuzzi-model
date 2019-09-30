@@ -156,6 +156,7 @@ instance Ordered Int where
 
 data SymbolicExpr :: * where
   RealVar :: String -> SymbolicExpr
+  RealArrayVar :: String -> SymbolicExpr
 
   JustInt  :: Integer  -> SymbolicExpr
   Rat      :: Rational -> SymbolicExpr
@@ -176,6 +177,8 @@ data SymbolicExpr :: * where
   Or  :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
   Not :: SymbolicExpr -> SymbolicExpr
 
+  RealArrayIndex :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
+
   Ite :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr -> SymbolicExpr
 
   Substitute :: SymbolicExpr -> [(String, SymbolicExpr)] -> SymbolicExpr
@@ -194,6 +197,7 @@ parensIf False = id
 
 prettySymbolic :: Int -> SymbolicExpr -> TPP.Doc
 prettySymbolic _ (RealVar x) = TPP.text x
+prettySymbolic _ (RealArrayVar x) = TPP.text x
 prettySymbolic _ (Rat r) = TPP.text (show r) --TPP.double (fromRational r)
 prettySymbolic _ (JustInt i) = TPP.text (show i)
 prettySymbolic _ (JustBool b) = TPP.text (show b)
@@ -287,6 +291,11 @@ prettySymbolic _ (Ite cond x y) =
   where prettyX    = prettySymbolic 0 x
         prettyY    = prettySymbolic 0 y
         prettyCond = prettySymbolic 0 cond
+prettySymbolic currPrec (RealArrayIndex arr idx) =
+  let prec = precedence M.! "index"
+  in parensIf (currPrec > prec)
+       $ prettySymbolic (precedence M.! "index") arr
+         TPP.<> TPP.brackets (prettySymbolic 0 idx)
 prettySymbolic _ (Substitute x substs) =
   TPP.text "subst" TPP.<> TPP.parens (prettyX `commaSep`
                                       prettySubsts3)
@@ -306,6 +315,9 @@ double = fromRational . toRational
 
 bool :: Bool -> BoolExpr
 bool = BoolExpr . JustBool
+
+newtype ArrayExpr = ArrayExpr { getArrayExpr :: SymbolicExpr }
+  deriving (Show, Eq, Ord)
 
 newtype IntExpr = IntExpr { getIntExpr :: SymbolicExpr }
   deriving (Show, Eq, Ord)
@@ -489,6 +501,7 @@ precedence = M.fromList [("||", 0), ("&&", 1),
                          ("<", 3), ("<=", 3), (">", 3), (">=", 3),
                          ("+", 4), ("-", 4),
                          ("*", 5), ("/", 5),
+                         ("index", 1000000), -- array index
                          ("app", 1000000) -- function application
                         ]
 
@@ -517,8 +530,13 @@ doSubst (RealVar x) substs =
   case find (\(f, _) -> f == x) substs of
     Nothing -> RealVar x
     Just (_, t) -> t
+doSubst (RealArrayVar x) substs =
+  case find (\(f, _) -> f == x) substs of
+    Nothing -> RealArrayVar x
+    Just (_, t) -> t
 doSubst e@(Rat _) _ = e
 doSubst e@(JustBool _) _ = e
+doSubst e@(JustInt _) _ = e
 doSubst (Add x y)      substs = Add (doSubst x substs) (doSubst y substs)
 doSubst (Sub x y)      substs = Sub (doSubst x substs) (doSubst y substs)
 doSubst (Mul x y)      substs = Mul (doSubst x substs) (doSubst y substs)
@@ -534,12 +552,19 @@ doSubst (Not x)        substs = Not (doSubst x substs)
 doSubst (Ite cond x y) substs = Ite (doSubst cond substs)
                                     (doSubst x substs)
                                     (doSubst y substs)
+doSubst (RealArrayIndex arr idx) substs = RealArrayIndex (doSubst arr substs) (doSubst idx substs)
 doSubst (Substitute x substs) substs' = doSubst x (substs ++ substs')
 
 ite' :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr -> SymbolicExpr
 ite' cond a b
   | a == b    = a
   | otherwise = Ite cond a b
+
+simplifyBool :: BoolExpr -> BoolExpr
+simplifyBool b = maybe b bool (tryEvalBool b)
+
+simplifyInt :: IntExpr -> IntExpr
+simplifyInt b = maybe b int (tryEvalInt b)
 
 tryEvalBool :: BoolExpr -> Maybe Bool
 tryEvalBool = tryEvalBool' . getBoolExpr
@@ -604,6 +629,15 @@ sReal = RealExpr k_FLOAT_TOLERANCE . RealVar
 
 sReal' :: Rational -> String -> RealExpr
 sReal' tol = RealExpr tol . RealVar
+
+sArray :: String -> ArrayExpr
+sArray = ArrayExpr . RealArrayVar
+
+at' :: Rational -> ArrayExpr -> IntExpr -> RealExpr
+at' tol (ArrayExpr arr) (IntExpr idx) = RealExpr tol (RealArrayIndex arr idx)
+
+at :: ArrayExpr -> IntExpr -> RealExpr
+at = at' k_FLOAT_TOLERANCE
 
 k_FLOAT_TOLERANCE :: Rational
 k_FLOAT_TOLERANCE = 1e-6

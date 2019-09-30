@@ -4,6 +4,8 @@ import Control.Monad.IO.Class
 import Data.Fuzzi.Logging
 import Data.Fuzzi.Types
 import qualified Z3.Base as Z3
+import qualified Data.Map.Strict as M
+import Control.Monad.Reader.Class
 
 z3Init :: (MonadIO m, MonadLogger m) => m (Z3.Context, Z3.Solver)
 z3Init = do
@@ -23,10 +25,17 @@ z3InitOpt = do
   $(logInfo) "initialized Z3 optimizer and context"
   return (ctx, optimizer)
 
-symbolicExprToZ3AST :: MonadIO m => Z3.Context -> SymbolicExpr -> m Z3.AST
+type AllocatedArrays = M.Map String Z3.FuncDecl
+
+symbolicExprToZ3AST :: ( MonadReader AllocatedArrays m
+                       , MonadIO m
+                       ) => Z3.Context -> SymbolicExpr -> m Z3.AST
 symbolicExprToZ3AST ctx (RealVar name) = do
   sym <- liftIO (Z3.mkStringSymbol ctx name)
   liftIO (Z3.mkRealVar ctx sym)
+symbolicExprToZ3AST _ (RealArrayVar name) =
+  error $ "symbolicExprToZ3AST: found free-standing real array variable " ++ name ++ "\n"
+          ++ "arrays should always appear in an indexed expression"
 symbolicExprToZ3AST ctx (JustInt v) =
   liftIO (Z3.mkInteger ctx v)
 symbolicExprToZ3AST ctx (Rat v) =
@@ -85,6 +94,15 @@ symbolicExprToZ3AST ctx (Ite a b c) = do
   b' <- symbolicExprToZ3AST ctx b
   c' <- symbolicExprToZ3AST ctx c
   liftIO (Z3.mkIte ctx a' b' c')
+symbolicExprToZ3AST ctx (RealArrayIndex (RealArrayVar x) idx) = do
+  arrayDecls <- ask
+  case M.lookup x arrayDecls of
+    Nothing -> error $ "symbolicExprToZ3AST: unknown array " ++ x
+    Just decl -> do
+      idxAst <- symbolicExprToZ3AST ctx idx
+      liftIO $ Z3.mkApp ctx decl [idxAst]
+symbolicExprToZ3AST _ e@(RealArrayIndex _ _) =
+  error $ "symbolicExprToZ3AST: unsupported array indexing in expression " ++ show e
 symbolicExprToZ3AST ctx (Substitute a fts) = do
   let f (from, to) = do
         fromSym <- liftIO $ Z3.mkStringSymbol ctx from
