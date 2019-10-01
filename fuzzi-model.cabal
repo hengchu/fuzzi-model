@@ -49,6 +49,8 @@ library
                 , Data.Fuzzi.Types
                 , Data.Fuzzi.Types.Internal
                 , Data.Fuzzi.Types.Structures
+                , Data.Fuzzi.Types.Optimize
+                , Data.Fuzzi.Types.SymbolicExpr
                 , Data.Fuzzi.Z3
   other-modules:
       Paths_fuzzi_model

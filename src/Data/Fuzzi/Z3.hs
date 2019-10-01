@@ -1,11 +1,13 @@
 module Data.Fuzzi.Z3 where
 
+import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Reader.Class
+import Control.Monad.Trans.Reader hiding (ask)
 import Data.Fuzzi.Logging
 import Data.Fuzzi.Types
-import qualified Z3.Base as Z3
 import qualified Data.Map.Strict as M
-import Control.Monad.Reader.Class
+import qualified Z3.Base as Z3
 
 z3Init :: (MonadIO m, MonadLogger m) => m (Z3.Context, Z3.Solver)
 z3Init = do
@@ -24,6 +26,23 @@ z3InitOpt = do
   optimizer <- liftIO (Z3.mkOptimizer ctx)
   $(logInfo) "initialized Z3 optimizer and context"
   return (ctx, optimizer)
+
+z3NewRealArray :: MonadIO m => Z3.Context -> Z3.Solver -> String -> [Double] -> m Z3.FuncDecl
+z3NewRealArray ctx solver name values = do
+  sym      <- liftIO (Z3.mkStringSymbol ctx name)
+  intSort  <- liftIO (Z3.mkIntSort ctx)
+  realSort <- liftIO (Z3.mkRealSort ctx)
+  f        <- liftIO $ Z3.mkFuncDecl ctx sym [intSort] realSort
+
+  forM_ (zip [0..] values) $ \(idx, value) -> do
+    let env = M.fromList [(name, f)]
+    let eqAssert = (double value) %== (at' 0 (ArrayExpr (RealArrayVar name)) (IntExpr (JustInt idx)))
+    let eqAssertPretty = pretty (getBoolExpr eqAssert)
+    label <- liftIO $ Z3.mkFreshBoolVar ctx eqAssertPretty
+    equalityAssertion <- flip runReaderT env (symbolicExprToZ3AST ctx (getBoolExpr eqAssert))
+    liftIO $ Z3.solverAssertAndTrack ctx solver equalityAssertion label
+
+  return f
 
 type AllocatedArrays = M.Map String Z3.FuncDecl
 
@@ -86,6 +105,10 @@ symbolicExprToZ3AST ctx (Or a b) = do
   a' <- symbolicExprToZ3AST ctx a
   b' <- symbolicExprToZ3AST ctx b
   liftIO (Z3.mkOr ctx [a', b'])
+symbolicExprToZ3AST ctx (Imply a b) = do
+  a' <- symbolicExprToZ3AST ctx a
+  b' <- symbolicExprToZ3AST ctx b
+  liftIO (Z3.mkImplies ctx a' b')
 symbolicExprToZ3AST ctx (Not a) = do
   a' <- symbolicExprToZ3AST ctx a
   liftIO (Z3.mkNot ctx a')

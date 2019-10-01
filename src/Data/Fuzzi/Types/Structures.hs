@@ -2,8 +2,11 @@ module Data.Fuzzi.Types.Structures where
 
 import Control.Applicative
 import Control.Lens hiding (matching)
+import Data.Bifunctor
 import Data.Foldable hiding (and, or)
 import Data.Fuzzi.Types.Internal
+import Data.Fuzzi.Types.SymbolicExpr
+import Data.Fuzzi.Types.Optimize
 import Data.Graph.MaxBipartiteMatching
 import Data.List (nub)
 import Prelude hiding (and, or)
@@ -17,7 +20,7 @@ unwrap :: GuardedSymbolicUnion a -> [Guarded a]
 unwrap = unwrapGuardedSymbolicUnion
 
 reduce :: SymbolicRepr a => GuardedSymbolicUnion a -> GuardedSymbolicUnion a
-reduce (unwrap -> u) = wrap . S.toList . S.fromList $ u
+reduce (unwrap -> u) = {- fromList . map (first optimizeBool) . flatten . -} wrap . S.toList . S.fromList $ u
 
 guarded :: BoolExpr -> a -> Guarded a
 guarded = MkGuarded
@@ -44,10 +47,10 @@ guardedSingleton :: BoolExpr -> a -> GuardedSymbolicUnion a
 guardedSingleton cond = wrap . (:[]) . guarded cond
 
 conjunct :: BoolExpr -> Guarded a -> Guarded a
-conjunct cond (MkGuarded cond2 a) = MkGuarded (cond `and` cond2) a
+conjunct cond (MkGuarded cond2 a) = MkGuarded (cond2 `and` cond) a
 
 disjunct :: BoolExpr -> Guarded a -> Guarded a
-disjunct cond (MkGuarded cond2 a) = MkGuarded (cond `or` cond2) a
+disjunct cond (MkGuarded cond2 a) = MkGuarded (cond2 `or` cond) a
 
 conjunctAll :: BoolExpr -> GuardedSymbolicUnion a -> GuardedSymbolicUnion a
 conjunctAll cond (unwrap -> union) = wrap $ fmap (conjunct cond) union
@@ -110,7 +113,7 @@ mergeUnion' cond left (isFreeSingleton -> Just right) =
           foldr union (conjunctAll cond complement)
             $ fmap (\(condU, u) ->
                       conjunctAll
-                        (neg cond `or` condU) -- cond ==> condU
+                        (cond `imply` condU) -- cond ==> condU
                           $ merge cond u right)
                    (flatten core)
 mergeUnion' cond (isFreeSingleton -> Just left) right = mergeUnion (neg cond) right (pure left)
@@ -157,8 +160,6 @@ instance SymbolicRepr IntExpr where
   merge cond left right =
     pure $ IntExpr (ite' (getBoolExpr cond) (getIntExpr left) (getIntExpr right))
 
-instance Numeric     RealExpr
-instance FracNumeric RealExpr
 instance FuzziType   RealExpr
 instance FuzziType   BoolExpr
 instance FuzziType   IntExpr

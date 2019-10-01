@@ -1,5 +1,6 @@
 module Data.Fuzzi.Logging (
-  runStdoutColoredLoggingWarnT
+  runStdoutColoredLoggingAboveLevelT
+  , runStdoutColoredLoggingWarnT
   , runStdoutColoredLoggingT
   , runStderrColoredLoggingWarnT
   , runStderrColoredLoggingT
@@ -14,7 +15,10 @@ import System.Log.FastLogger
 import qualified Data.ByteString.Char8 as S8
 
 runStdoutColoredLoggingWarnT :: MonadIO m => LoggingT m a -> m a
-runStdoutColoredLoggingWarnT m = runStdoutColoredLoggingT $ filterLogger (const (>= LevelWarn)) m
+runStdoutColoredLoggingWarnT = runStdoutColoredLoggingAboveLevelT LevelWarn
+
+runStdoutColoredLoggingAboveLevelT :: MonadIO m => LogLevel -> LoggingT m a -> m a
+runStdoutColoredLoggingAboveLevelT lvl m = runStdoutColoredLoggingT $ filterLogger (const (>= lvl)) m
 
 runStderrColoredLoggingWarnT :: MonadIO m => LoggingT m a -> m a
 runStderrColoredLoggingWarnT m = runStderrColoredLoggingT $ filterLogger (const (>= LevelWarn)) m

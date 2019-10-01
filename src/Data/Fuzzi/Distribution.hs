@@ -218,13 +218,17 @@ matchProvenance (Unary op operand) (Unary op' operand') =
   op == op' && matchProvenance operand operand'
 matchProvenance _ _ = False
 
+instance Matchable a RealExpr =>
+  Matchable (WithDistributionProvenance a) RealExpr where
+  match a b = match (value a) b
+
 instance Matchable a b =>
   Matchable
     (WithDistributionProvenance a)
     (WithDistributionProvenance b) where
   match a b =
-    let provA = provenance a
-        provB = provenance b
+    let _provA = provenance a
+        _provB = provenance b
     in match (value a) (value b) -- && matchProvenance provA provB
 
 instance MonadThrow TracedDist where
@@ -291,3 +295,7 @@ instance SEq
   (WithDistributionProvenance Double)
   (WithDistributionProvenance RealExpr) where
   symEq a b = symEq (value a) (value b)
+
+instance SEq
+  (WithDistributionProvenance Double) RealExpr where
+  symEq a b = symEq (value a) b

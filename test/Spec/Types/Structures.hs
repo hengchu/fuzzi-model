@@ -52,7 +52,7 @@ checkImplicationAndEquality cxt solver cond smallCond smallValue largeCond large
   AnyIO $ do
     liftIO $ Z3.solverReset cxt solver
     let equalitySExpr = smallValue `symEq` largeValue
-    let clause = (neg (cond `and` largeCond)) `or` (smallCond `and` equalitySExpr)
+    let clause = (cond `and` largeCond) `imply` (smallCond `and` equalitySExpr)
     formula <- flip runReaderT M.empty $ symbolicExprToZ3AST cxt . getBoolExpr $ clause
     liftIO $ Z3.solverAssertCnstr cxt solver formula
     $(logInfo) (pack . show $ "cond = " ++ show cond)
@@ -62,7 +62,7 @@ checkImplicationAndEquality cxt solver cond smallCond smallValue largeCond large
     let logMsg = "checking " ++ show cond ++ " /\\ " ++ show largeCond ++ " ==> " ++ show smallCond ++ " /\\ " ++ show equalitySExpr
     $(logInfo) (pack logMsg)
     r <- liftIO $ Z3.solverCheck cxt solver
-    $(logInfo) (pack $ show "result = " ++ show r)
+    $(logInfo) (pack $ show ("result = " :: String) ++ show r)
     case r of
       Z3.Sat -> return True
       _      -> return False
@@ -115,11 +115,11 @@ newtype SimpleBoolExpr = SimpleBoolExpr BoolExpr
   deriving (Boolean) via BoolExpr
 
 simpleAtomSet :: [SymbolicExpr]
-simpleAtomSet = RealVar <$> ["s" ++ show i | i <- [0..9]]
+simpleAtomSet = RealVar <$> ["s" ++ show i | i <- [0..(9 :: Integer)]]
 
 instance Arbitrary SimpleSRealAtom where
   arbitrary = do
-    idx <- elements [0..9]
+    idx <- elements [0..(9 :: Integer)]
     return . SimpleSRealAtom . sReal $ "s" ++ show idx
   shrink _ = []
 
@@ -138,7 +138,7 @@ instance Arbitrary SimpleRealExpr where
               , (1, (*) <$> (fromRational <$> arbitrary) <*> arbitrary)
               , (1, (/) <$> arbitrary <*> (fromRational <$> arbitrary))
               ]
-  shrink (expr2sexpr -> (_, Rat v)) = []
+  shrink (expr2sexpr -> (_, Rat _)) = []
   shrink (expr2sexpr -> (_, RealVar _)) = []
   shrink (expr2sexpr -> (tol, lhs `Add` rhs)) =
     let ls = shrink (rebuildReal tol lhs)
@@ -226,6 +226,7 @@ instance Arbitrary a => Arbitrary (GuardedSymbolicUnion a) where
                        ]
         shrinkedRest = shrink (fromList rest) :: _
     in singleton:shrinkedSingletons ++ (union <$> shrinkedSingletons <*> shrinkedRest)
+  shrink _ = error "dead code"
 
 prop_mergeUnionResultIsSuperSet ::
   SimpleBoolExpr -> GuardedSymbolicUnion SimpleRealExpr -> GuardedSymbolicUnion SimpleRealExpr -> Property
@@ -237,6 +238,20 @@ prop_mergeUnionResultIsSuperSet (SimpleBoolExpr cond) s1 s2 = monadicIO $ do
   r1 <- run $ subset cond s1' u
   assert r1
   r2 <- run $ subset (neg cond) s2' u
+  assert r2
+  where unwrapSimpleRealExpr (SimpleRealExpr s) = s
+
+prop_mergeUnionCommutes ::
+  SimpleBoolExpr -> GuardedSymbolicUnion SimpleRealExpr -> GuardedSymbolicUnion SimpleRealExpr -> Property
+prop_mergeUnionCommutes (SimpleBoolExpr cond) s1 s2 = monadicIO $ do
+  let
+    s1' = fmap unwrapSimpleRealExpr s1
+    s2' = fmap unwrapSimpleRealExpr s2
+    u1 = mergeUnion cond s1' s2'
+    u2 = mergeUnion (neg cond) s2' s1'
+  r1 <- run $ subset (bool True) u1 u2
+  assert r1
+  r2 <- run $ subset (bool True) u2 u1
   assert r2
   where unwrapSimpleRealExpr (SimpleRealExpr s) = s
 

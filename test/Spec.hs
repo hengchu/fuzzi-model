@@ -93,6 +93,16 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $
       , reify . reportNoisyMax . map realToFrac $ right xs
       )
 
+rnmPrivacyTestRosette :: PairWiseL1List Double -> Property
+rnmPrivacyTestRosette xs = label ("rnm input size: " ++ show (length xs)) $
+  monadicIO $
+    expectDPRosette
+      2.0
+      100
+      ( reify . reportNoisyMax . map realToFrac $ left xs
+      , reify . reportNoisyMax . map realToFrac $ right xs
+      )
+
 rnmGapPrivacyTest :: PairWiseL1List Double -> Property
 rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $
   monadicIO $
@@ -239,6 +249,10 @@ unboundedMeanNotPrivateTest = label "unboundedMeanBuggy" $
 prop_rnmIsDifferentiallyPrivate :: Property
 prop_rnmIsDifferentiallyPrivate =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 rnmPrivacyTest
+
+prop_rnmIsDifferentiallyPrivateRosette :: Property
+prop_rnmIsDifferentiallyPrivateRosette =
+  forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 rnmPrivacyTestRosette
 
 prop_rnmGapIsDifferentiallyPrivate :: Property
 prop_rnmGapIsDifferentiallyPrivate =
