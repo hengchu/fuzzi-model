@@ -224,7 +224,7 @@ instance SymbolicRepr BoolExpr where
 instance SymbolicRepr IntExpr where
   reduceable _    _     = True
   merge cond left right =
-    pure $ IntExpr (ite' (getBoolExpr cond) (getIntExpr left) (getIntExpr right))
+    pure $ IntExpr (ite' (getBoolExpr cond) (getIntExpr (simplifyInt left)) (getIntExpr (simplifyInt right)))
 
 instance FuzziType   RealExpr
 instance FuzziType   BoolExpr
@@ -260,7 +260,16 @@ instance SymbolicRepr a => SymbolicRepr (Maybe a) where
   merge = undefined
 
 instance (SymbolicRepr a, SymbolicRepr b) => SymbolicRepr (a, b) where
-  merge = undefined
+  reduceable (a1, a2) (b1, b2) = reduceable a1 b1 && reduceable a2 b2
+  merge cond (a1, a2) (b1, b2) =
+    let uab1 = merge cond a1 b1
+        uab2 = merge cond a2 b2
+    in case ( isFreeSingleton uab1
+            , isFreeSingleton uab2
+            ) of
+         (Just ab1, Just ab2) -> pure (ab1, ab2)
+         _                    ->
+           guardedSingleton cond (a1, a2) `union` guardedSingleton (neg cond) (b1, b2)
 
 instance Monad GuardedSymbolicUnion where
   return = pure
