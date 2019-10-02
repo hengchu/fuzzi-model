@@ -26,6 +26,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Sequence as SS
 import qualified Data.Set as S
 import qualified Z3.Base as Z3
+import qualified Data.HashMap.Strict as HM
 
 data CouplingInfo = CouplingInfo {
   _ciTraceIndex :: IntExpr
@@ -41,6 +42,7 @@ type NameMap = M.Map String Int
 -- in a bucket, and take the conjunction over all runs in a bucket.
 data SymbolicState = SymbolicState {
   _ssNameMap :: NameMap
+  , _ssAliasMemoization :: HM.HashMap SymbolicExpr String
   , _ssSymbolicSampleArray :: ArrayExpr
   , _ssSymbolicShiftArray :: ArrayExpr
   , _ssTraceSampleArray :: ArrayExpr
@@ -58,6 +60,7 @@ dummyState :: SymbolicState
 dummyState =
   SymbolicState
     M.empty
+    HM.empty
     (array "ssample")
     (array "shift")
     (array "csample")
@@ -114,6 +117,7 @@ type Epsilon = Double
 check :: ( MonadIO m
          , MonadLogger m
          , MonadCatch m
+         , Typeable m
          , SEq r a
          , Show r
          , Show a
@@ -129,6 +133,7 @@ check eps buckets prog = do
 runWithBucket :: ( MonadIO m
                  , MonadLogger m
                  , MonadCatch m
+                 , Typeable m
                  , SEq r a
                  , Show r
                  , Show a
@@ -205,14 +210,14 @@ coupleBucket ctx solver eps bucket symbolicResults = do
           let equality = concreteResult `symEq` symResult
           let costCond = (coupling ^. totalCost) %<= (double eps)
           let cond     = equality `and` guardCond `and` costCond `and` (coupling ^. couplingConstraints)
-          $(logDebug) (pack $ "============possible world " ++ show (concreteRunIdx, idx) ++ "============")
-          $(logDebug) (pack $ "concrete: " ++ show concreteResult)
-          $(logDebug) (pack $ "symbolic: " ++ show symResult)
-          $(logDebug) (pack $ "equality: " ++ show equality)
-          $(logDebug) (pack $ "cost: " ++ show costCond)
-          $(logDebug) (pack $ "guard: " ++ show guardCond)
-          $(logDebug) (pack $ "coupling: " ++ show (coupling ^. couplingConstraints))
-          $(logDebug) ("============END===============")
+          -- $(logDebug) (pack $ "============possible world " ++ show (concreteRunIdx, idx) ++ "============")
+          -- $(logDebug) (pack $ "concrete: " ++ show concreteResult)
+          -- $(logDebug) (pack $ "symbolic: " ++ show symResult)
+          -- $(logDebug) (pack $ "equality: " ++ show equality)
+          -- $(logDebug) (pack $ "cost: " ++ show costCond)
+          -- $(logDebug) (pack $ "guard: " ++ show guardCond)
+          -- $(logDebug) (pack $ "coupling: " ++ show (coupling ^. couplingConstraints))
+          -- $(logDebug) ("============END===============")
           return cond
 
         forEachConcrete
@@ -258,9 +263,9 @@ coupleBucket ctx solver eps bucket symbolicResults = do
           cond <- runAnySat
             $ forEach (zip [0..] symbolicResultUnion) (forEachSymbolic runIdx concreteResult symbolicState)
 
-          $(logInfo) (pack $ "=========RUN " ++ show runIdx ++ "===========")
-          $(logInfo) (pack $ show cond)
-          $(logInfo) (pack $ "=========END RUN " ++ show runIdx ++ "===========")
+          -- $(logInfo) (pack $ "=========RUN " ++ show runIdx ++ "===========")
+          -- $(logInfo) (pack $ show cond)
+          -- $(logInfo) (pack $ "=========END RUN " ++ show runIdx ++ "===========")
 
           return (env, optimizeBool cond)
 
@@ -367,45 +372,45 @@ laplaceRosette :: Monad m
                -> RosetteT m RealExpr
 laplaceRosette = laplaceRosette' k_FLOAT_TOLERANCE
 
-evalM :: MonadLogger m
+evalM :: (MonadLogger m, Typeable m)
       => Fuzzi (RosetteT m a) -> RosetteT m (GuardedSymbolicUnion a)
 evalM (Return a) = return (pure $ evalPure a)
 evalM (Sequence a b) = do
   ua <- evalM a
   ub <- traverse (evalM . const b) ua
   return (joinGuardedSymbolicUnion ub)
-evalM (Bind a f) = do
+evalM (Bind a f) = {-# SCC "evalM_Bind" #-} do
   ua <- evalM a
   ub <- traverse (evalM . f . Lit) ua
   return (joinGuardedSymbolicUnion ub)
-evalM (IfM cond a b) = do
+evalM (IfM cond a b) = {-# SCC "evalM_IfM" #-} do
   let cond' = evalPure cond
-  $(logDebug) (pack $ "branching on: " ++ show cond')
+  -- $(logDebug) (pack $ "branching on: " ++ show cond')
 
   pushCouplingInfo
   a' <- evalM a
-  $(logDebug) "True branch results: "
-  forM_ (flatten a') $ \(cond, value) -> do
-    $(logDebug) (pack $ "guard = " ++ show cond ++ ", value = " ++ show value)
+  -- $(logDebug) "True branch results: "
+  -- forM_ (flatten a') $ \(cond, value) -> do
+    -- $(logDebug) (pack $ "guard = " ++ show cond ++ ", value = " ++ show value)
   infoA <- popCouplingInfo
 
   pushCouplingInfo
   b' <- evalM b
-  $(logDebug) "False branch results: "
-  forM_ (flatten b') $ \(cond, value) -> do
-    $(logDebug) (pack $ "guard = " ++ show cond ++ ", value = " ++ show value)
+  -- $(logDebug) "False branch results: "
+  -- forM_ (flatten b') $ \(cond, value) -> do
+    -- $(logDebug) (pack $ "guard = " ++ show cond ++ ", value = " ++ show value)
   infoB <- popCouplingInfo
 
   replaceCouplingInfo (mergeCouplingInfo cond' infoA infoB)
-  return $ mergeUnion cond' a' b'
+  mergeUnionM cond' a' b'
 evalM (Abort reason) = do
-  let msg = pack ("computation may diverge due to reason: " ++ reason)
-  $(logWarn) msg
+  -- let msg = pack ("computation may diverge due to reason: " ++ reason)
+  -- $(logWarn) msg
   throwM (AbortException reason)
-evalM (Laplace' tolerance center width) = do
+evalM (Laplace' tolerance center width) = {-# SCC "evalM_Laplace'" #-} do
   sample <- laplace' tolerance (evalPure center) width
   return (pure sample)
-evalM (Laplace center width) = do
+evalM (Laplace center width) = {-# SCC "evalM_Laplace" #-} do
   sample <- laplace (evalPure center) width
   return (pure sample)
 evalM (Gaussian' tolerance center width) = do
@@ -438,3 +443,18 @@ instance Monad m => MonadThrow (RosetteT m) where
     case eqTypeRep (typeRep @e) (typeRep @AbortException) of
       Just HRefl -> throwError (ComputationAborted exc)
       _          -> throwError (InternalError ("unexpected exception: " ++ show exc))
+
+instance (Monad m, Typeable m) => MonadSymbolicMerge (RosetteT m) where
+  -- no point in aliasing something twice
+  alias bool@(BoolExpr (BoolVar _)) = return bool
+  alias bool = do
+    memo <- gets (view aliasMemoization)
+    -- hash-consing
+    case HM.lookup (getBoolExpr bool) memo of
+      Just name -> return (BoolExpr (BoolVar name))
+      Nothing -> do
+        var <- freshName "bool"
+        let expr = BoolExpr (BoolVar var)
+        assertTrue (beq expr bool)
+        aliasMemoization %= HM.insert (getBoolExpr bool) var
+        return expr

@@ -49,6 +49,9 @@ type AllocatedArrays = M.Map String Z3.FuncDecl
 symbolicExprToZ3AST :: ( MonadReader AllocatedArrays m
                        , MonadIO m
                        ) => Z3.Context -> SymbolicExpr -> m Z3.AST
+symbolicExprToZ3AST ctx (BoolVar name) = do
+  sym <- liftIO (Z3.mkStringSymbol ctx name)
+  liftIO (Z3.mkBoolVar ctx sym)
 symbolicExprToZ3AST ctx (RealVar name) = do
   sym <- liftIO (Z3.mkStringSymbol ctx name)
   liftIO (Z3.mkRealVar ctx sym)

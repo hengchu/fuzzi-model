@@ -49,14 +49,32 @@ guardedSingleton cond = wrap . (:[]) . guarded cond
 conjunct :: BoolExpr -> Guarded a -> Guarded a
 conjunct cond (MkGuarded cond2 a) = MkGuarded (cond2 `and` cond) a
 
+conjunctM :: MonadSymbolicMerge m => BoolExpr -> Guarded a -> m (Guarded a)
+conjunctM cond (MkGuarded cond2 a) = do
+  conjunction <- alias (cond2 `and` cond)
+  return (MkGuarded conjunction a)
+
 disjunct :: BoolExpr -> Guarded a -> Guarded a
 disjunct cond (MkGuarded cond2 a) = MkGuarded (cond2 `or` cond) a
+
+disjunctM :: MonadSymbolicMerge m => BoolExpr -> Guarded a -> m (Guarded a)
+disjunctM cond (MkGuarded cond2 a) = do
+  disjunction <- alias (cond2 `or` cond)
+  return (MkGuarded disjunction a)
 
 conjunctAll :: BoolExpr -> GuardedSymbolicUnion a -> GuardedSymbolicUnion a
 conjunctAll cond (unwrap -> union) = wrap $ fmap (conjunct cond) union
 
+{-# SCC conjunctAllM #-}
+conjunctAllM :: MonadSymbolicMerge m => BoolExpr -> GuardedSymbolicUnion a -> m (GuardedSymbolicUnion a)
+conjunctAllM cond (unwrap -> union) = wrap <$> mapM (conjunctM cond) union
+
 disjunctAll :: BoolExpr -> GuardedSymbolicUnion a -> GuardedSymbolicUnion a
 disjunctAll cond (unwrap -> union) = wrap $ fmap (disjunct cond) union
+
+{-# SCC disjunctAllM #-}
+disjunctAllM :: MonadSymbolicMerge m => BoolExpr -> GuardedSymbolicUnion a -> m (GuardedSymbolicUnion a)
+disjunctAllM cond (unwrap -> union) = wrap <$> mapM (disjunctM cond) union
 
 isFreeSingleton :: GuardedSymbolicUnion a -> Maybe a
 isFreeSingleton (unwrap -> [MkGuarded (tryEvalBool -> Just True) a]) = Just a
@@ -97,6 +115,11 @@ mergeUnion :: SymbolicRepr a
            -> GuardedSymbolicUnion a
 mergeUnion cond a b = reduce $ mergeUnion' cond a b
 
+class Monad m => MonadSymbolicMerge (m :: * -> *) where
+  -- |Create a fresh boolean variable aliasing the original boolean expression,
+  -- and assert that the variable is equal to the original boolean expression.
+  alias :: BoolExpr -> m BoolExpr
+
 mergeUnion' :: SymbolicRepr a
             => BoolExpr
             -> GuardedSymbolicUnion a
@@ -126,6 +149,48 @@ mergeUnion' cond left right =
       subWUnions = map mkW w
       init = conjunctAll cond u `union` conjunctAll (neg cond) v
   in foldr union init subWUnions
+
+mergeUnionM :: ( SymbolicRepr a
+               , MonadSymbolicMerge m
+               )
+            => BoolExpr
+            -> GuardedSymbolicUnion a
+            -> GuardedSymbolicUnion a
+            -> m (GuardedSymbolicUnion a)
+mergeUnionM (tryEvalBool -> Just True)  left _right = return left
+mergeUnionM (tryEvalBool -> Just False) _left right = return right
+mergeUnionM _                           left right | left == right = return left
+mergeUnionM cond (isFreeSingleton -> Just left) (isFreeSingleton -> Just right) =
+  {-# SCC "merge_singleton" #-} do
+  condAlias <- alias cond
+  let cond = ()
+  return $ merge condAlias left right
+mergeUnionM cond left (isFreeSingleton -> Just right) =
+  {-# SCC "merge_union_singleton" #-} do
+  condAlias <- alias cond
+  let cond = ()
+  let core = filterGuardedSymbolicUnion (`reduceable` right) left
+  let complement = left `diff` core
+  init <- conjunctAllM condAlias complement
+  more <- mapM (\(condU, u) ->
+                  conjunctAllM (condAlias `imply` condU) $ merge condAlias u right) (flatten core)
+  return (foldr union init more)
+mergeUnionM cond (isFreeSingleton -> Just left) right = mergeUnionM (neg cond) right (pure left)
+mergeUnionM cond left right =
+  {-# SCC "merge_union_union" #-} do
+  condAlias <- alias cond
+  let cond = ()
+  let (w, u, v) = symmetricDiff left right
+  let mkW (bi, bj, ui, vj) = do
+        let condi  = condAlias `and` bi
+        let condj  = (neg condAlias) `and` bj
+        let cond'  = condi `or` condj
+        let merged = merge condAlias ui vj
+        conjunctAllM cond' merged
+  subWUnions <- mapM mkW w
+  left <- conjunctAllM condAlias u
+  right <- conjunctAllM (neg condAlias) v
+  return (foldr union (left `union` right) subWUnions)
 
 instance SymbolicRepr Int where
   reduceable left right = left == right

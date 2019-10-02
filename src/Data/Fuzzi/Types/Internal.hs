@@ -2,7 +2,6 @@ module Data.Fuzzi.Types.Internal where
 
 import Control.Lens hiding (matching)
 import Control.Monad.Catch
-import Data.Bifunctor
 import Data.Coerce
 import Data.Functor.Compose
 import Data.Fuzzi.IfCxt
@@ -10,7 +9,6 @@ import Data.Fuzzi.Types.SymbolicExpr
 import Data.Fuzzi.Types.Optimize
 import Data.List (find)
 import Data.Maybe
-import Data.Text (Text)
 import Prelude hiding (and, or)
 import Type.Reflection
 import qualified Data.Map.Merge.Strict as MM
@@ -166,14 +164,14 @@ instance Boolean BoolExpr where
   and (tryEvalBool -> Just False) _ = bool False
   and _ (tryEvalBool -> Just False) = bool False
   and a b | a == b    = a
-          | otherwise = optimizeBool $ coerce And a b
+          | otherwise = coerce And a b
   or  (tryEvalBool -> Just False) b = b
   or  b (tryEvalBool -> Just False) = b
   or  (tryEvalBool -> Just True) _ = bool True
   or  _ (tryEvalBool -> Just True) = bool True
   or  a b | a == neg b = bool True
           | neg a == b = bool True
-          | otherwise = optimizeBool $ coerce Or a b
+          | otherwise = coerce Or a b
   neg = coerce Not
 
 instance Ordered RealExpr where
@@ -303,6 +301,10 @@ reduceSubstB :: BoolExpr -> BoolExpr
 reduceSubstB = coerce reduceSubst
 
 doSubst :: SymbolicExpr -> [(String, SymbolicExpr)] -> SymbolicExpr
+doSubst (BoolVar x) substs =
+  case find (\(f, _) -> f == x) substs of
+    Nothing -> BoolVar x
+    Just (_, t) -> t
 doSubst (RealVar x) substs =
   case find (\(f, _) -> f == x) substs of
     Nothing -> RealVar x
@@ -330,6 +332,7 @@ doSubst (Ite cond x y) substs = Ite (doSubst cond substs)
                                     (doSubst x substs)
                                     (doSubst y substs)
 doSubst (RealArrayIndex arr idx) substs = RealArrayIndex (doSubst arr substs) (doSubst idx substs)
+doSubst (Imply a b) substs = Imply (doSubst a substs) (doSubst b substs)
 doSubst (Substitute x substs) substs' = doSubst x (substs ++ substs')
 
 ite' :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr -> SymbolicExpr

@@ -3,8 +3,6 @@ module Data.Fuzzi.Types.Optimize where
 import Data.Fuzzi.Types.SymbolicExpr
 import Prelude hiding (and, or)
 import qualified Data.Set as S
-import Data.Graph.MaxBipartiteMatching
-import qualified Data.Map.Strict as M
 
 optimizeBool :: BoolExpr -> BoolExpr
 optimizeBool = BoolExpr . cataTree treeOptimization . intoTree

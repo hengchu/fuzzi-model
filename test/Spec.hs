@@ -4,7 +4,6 @@ import Data.Fuzzi.EDSL
 import Data.Fuzzi.Examples
 import Data.Fuzzi.Logging
 import Data.Fuzzi.NeighborGen
-import Data.Fuzzi.Symbol as S
 import Data.Fuzzi.Test
 import Data.Fuzzi.Types hiding (or)
 import Data.Maybe

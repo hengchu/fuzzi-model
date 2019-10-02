@@ -219,12 +219,12 @@ instance Arbitrary a => Arbitrary (GuardedSymbolicUnion a) where
   shrink (flatten -> []) = []
   shrink (flatten -> ((cond, v):rest)) =
     let singleton = fromList [(cond, v)]
-        shrinkedSingletons :: _ =
+        shrinkedSingletons =
           fromList <$> [ [(coerce cond', v')]
                        | cond' <- shrink (SimpleBoolExpr cond)
                        , v' <- shrink v
                        ]
-        shrinkedRest = shrink (fromList rest) :: _
+        shrinkedRest = shrink (fromList rest)
     in singleton:shrinkedSingletons ++ (union <$> shrinkedSingletons <*> shrinkedRest)
   shrink _ = error "dead code"
 
@@ -295,6 +295,6 @@ u2 = fromList [ (sReal "s3" %> 0, sReal "s6")
 -}
 
 --cond = sReal "s8" %> 0
-cond = bool True
-u1 = guardedSingleton ((sReal "s9" %> 0) `or` (sReal "s3" %> 0)) (2 / (3 :: RealExpr))
-u2 = guardedSingleton (4 %< (5 :: RealExpr)) (-1 * 2 :: RealExpr)
+--cond = bool True
+--u1 = guardedSingleton ((sReal "s9" %> 0) `or` (sReal "s3" %> 0)) (2 / (3 :: RealExpr))
+--u2 = guardedSingleton (4 %< (5 :: RealExpr)) (-1 * 2 :: RealExpr)

@@ -5,8 +5,11 @@ import Data.Bifunctor
 import qualified Text.PrettyPrint as TPP
 import qualified Data.Map.Strict as M
 import Data.Coerce
+import Data.Hashable
+import GHC.Generics
 
 data SymbolicExpr :: * where
+  BoolVar :: String -> SymbolicExpr
   RealVar :: String -> SymbolicExpr
   RealArrayVar :: String -> SymbolicExpr
 
@@ -35,7 +38,7 @@ data SymbolicExpr :: * where
   Ite :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr -> SymbolicExpr
 
   Substitute :: SymbolicExpr -> [(String, SymbolicExpr)] -> SymbolicExpr
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic)
 
 int :: Integer -> IntExpr
 int = IntExpr . JustInt
@@ -45,6 +48,9 @@ double = fromRational . toRational
 
 bool :: Bool -> BoolExpr
 bool = BoolExpr . JustBool
+
+beq :: BoolExpr -> BoolExpr -> BoolExpr
+beq (BoolExpr b1) (BoolExpr b2) = BoolExpr (Eq_ b1 b2)
 
 imply :: BoolExpr -> BoolExpr -> BoolExpr
 imply = coerce Imply
@@ -62,6 +68,7 @@ data RealExpr = RealExpr { getTolerance :: Rational
 
 newtype BoolExpr = BoolExpr { getBoolExpr :: SymbolicExpr }
   deriving (Eq, Ord)
+  deriving (Hashable) via SymbolicExpr
 
 instance Show RealExpr where
   show a = show (getRealExpr a)
@@ -114,6 +121,7 @@ parensIf True  = TPP.parens
 parensIf False = id
 
 prettySymbolic :: Int -> SymbolicExpr -> TPP.Doc
+prettySymbolic _ (BoolVar x) = TPP.text x
 prettySymbolic _ (RealVar x) = TPP.text x
 prettySymbolic _ (RealArrayVar x) = TPP.text x
 prettySymbolic _ (Rat r) = TPP.text (show r) --TPP.double (fromRational r)
@@ -257,3 +265,5 @@ fixity = M.fromList [("||", 1),
 
 commaSep :: TPP.Doc -> TPP.Doc -> TPP.Doc
 commaSep a b = a TPP.<> TPP.comma TPP.<+> b
+
+instance Hashable SymbolicExpr
