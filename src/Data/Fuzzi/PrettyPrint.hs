@@ -1,10 +1,12 @@
 module Data.Fuzzi.PrettyPrint where
 
-import Prelude hiding ((<>))
+import Control.DeepSeq
 import Control.Lens
 import Control.Monad.State.Strict
 import Data.Fuzzi.EDSL
 import Data.Fuzzi.Types (commaSep)
+import GHC.Generics
+import Prelude hiding ((<>))
 import Text.PrettyPrint
 import qualified Data.Map.Strict as M
 

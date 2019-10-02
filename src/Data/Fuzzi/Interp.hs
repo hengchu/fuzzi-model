@@ -2,19 +2,22 @@
 
 module Data.Fuzzi.Interp where
 
-import Data.Proxy
-import Prelude hiding (and, or)
-import Data.Fuzzi.IfCxt
-import Data.Fuzzi.EDSL
-import Data.Fuzzi.Types hiding (SymbolicExpr(..))
-import Type.Reflection hiding (App)
+import Control.DeepSeq
 import Control.Monad.Catch
+import Data.Fuzzi.EDSL
+import Data.Fuzzi.IfCxt
+import Data.Fuzzi.Types hiding (SymbolicExpr(..))
+import Data.Proxy
+import GHC.Generics
+import Prelude hiding (and, or)
+import Type.Reflection hiding (App)
 
 newtype AbortException = AbortException {
   getAbortReason :: String
-  } deriving (Show, Eq, Ord)
+  } deriving (Show, Eq, Ord, Generic)
 
 instance Exception AbortException
+instance NFData AbortException
 
 eval :: forall a. Fuzzi a -> a
 eval (Lam f) = eval . f . Lit

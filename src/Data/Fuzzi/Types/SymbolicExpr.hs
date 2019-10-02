@@ -7,6 +7,7 @@ import qualified Data.Map.Strict as M
 import Data.Coerce
 import Data.Hashable
 import GHC.Generics
+import Control.DeepSeq
 
 data SymbolicExpr :: * where
   BoolVar :: String -> SymbolicExpr
@@ -40,6 +41,8 @@ data SymbolicExpr :: * where
   Substitute :: SymbolicExpr -> [(String, SymbolicExpr)] -> SymbolicExpr
   deriving (Eq, Ord, Generic)
 
+instance NFData SymbolicExpr
+
 int :: Integer -> IntExpr
 int = IntExpr . JustInt
 
@@ -56,19 +59,24 @@ imply :: BoolExpr -> BoolExpr -> BoolExpr
 imply = coerce Imply
 
 newtype ArrayExpr = ArrayExpr { getArrayExpr :: SymbolicExpr }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
 
 newtype IntExpr = IntExpr { getIntExpr :: SymbolicExpr }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
 
 data RealExpr = RealExpr { getTolerance :: Rational
                          , getRealExpr :: SymbolicExpr
                          }
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic)
 
 newtype BoolExpr = BoolExpr { getBoolExpr :: SymbolicExpr }
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic)
   deriving (Hashable) via SymbolicExpr
+
+instance NFData BoolExpr
+instance NFData RealExpr
+instance NFData IntExpr
+instance NFData ArrayExpr
 
 instance Show RealExpr where
   show a = show (getRealExpr a)

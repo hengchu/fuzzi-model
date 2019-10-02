@@ -1,6 +1,7 @@
 module Data.Fuzzi.Rosette where
 
 import Control.Applicative
+import Control.DeepSeq
 import Control.Lens hiding ((<|), at)
 import Control.Monad
 import Control.Monad.Catch
@@ -18,23 +19,26 @@ import Data.Fuzzi.Types
 import Data.Fuzzi.Z3
 import Data.List.NonEmpty (NonEmpty(..), (<|))
 import Data.Text (pack)
+import GHC.Generics
 import Prelude hiding (and, or, head)
 import Type.Reflection
 import qualified Data.Fuzzi.PrettyPrint as PP
+import qualified Data.HashMap.Strict as HM
 import qualified Data.List.NonEmpty as NL
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as SS
 import qualified Data.Set as S
 import qualified Z3.Base as Z3
-import qualified Data.HashMap.Strict as HM
 
 data CouplingInfo = CouplingInfo {
   _ciTraceIndex :: IntExpr
   , _ciTotalCost :: RealExpr
   , _ciCouplingConstraints :: BoolExpr
-  } deriving (Show, Eq, Ord)
+  } deriving (Show, Eq, Ord, Generic)
 
 makeLensesWith abbreviatedFields ''CouplingInfo
+
+instance NFData CouplingInfo
 
 type NameMap = M.Map String Int
 
@@ -51,8 +55,10 @@ data SymbolicState = SymbolicState {
   , _ssTraceSize :: IntExpr
   , _ssCouplingInfo :: NonEmpty CouplingInfo
   , _ssAssertions :: S.Set BoolExpr
-  , _ssSourceCode :: PP.SomeFuzzi
-  } deriving (Show, Eq, Ord)
+  -- , _ssSourceCode :: PP.SomeFuzzi
+  } deriving (Show, Eq, Ord, Generic)
+
+instance NFData SymbolicState
 
 makeLensesWith abbreviatedFields ''SymbolicState
 
@@ -69,15 +75,16 @@ dummyState =
     0
     (dummyCouplingInfo :| [])
     S.empty
-    (PP.MkSomeFuzzi (Lit 1 :: Fuzzi Int))
+    -- (PP.MkSomeFuzzi (Lit 1 :: Fuzzi Int))
   where array = ArrayExpr . RealArrayVar
         dummyCouplingInfo = CouplingInfo 0 0 (bool True)
 
 data RosetteException = ComputationAborted AbortException
                       | InternalError String
-  deriving (Show, Eq, Ord, Typeable)
+  deriving (Show, Eq, Ord, Generic, Typeable)
 
 instance Exception RosetteException
+instance NFData RosetteException
 
 newtype RosetteT m a =
   RosetteT { runRosetteT_ :: ExceptT RosetteException (StateT SymbolicState m) a }
@@ -377,28 +384,21 @@ evalM :: (MonadLogger m, Typeable m)
 evalM (Return a) = return (pure $ evalPure a)
 evalM (Sequence a b) = do
   ua <- evalM a
-  ub <- traverse (evalM . const b) ua
+  ub <- mapM (evalM . const b) ua
   return (joinGuardedSymbolicUnion ub)
 evalM (Bind a f) = {-# SCC "evalM_Bind" #-} do
   ua <- evalM a
-  ub <- traverse (evalM . f . Lit) ua
+  ub <- mapM (evalM . f . Lit) ua
   return (joinGuardedSymbolicUnion ub)
 evalM (IfM cond a b) = {-# SCC "evalM_IfM" #-} do
   let cond' = evalPure cond
-  -- $(logDebug) (pack $ "branching on: " ++ show cond')
 
   pushCouplingInfo
   a' <- evalM a
-  -- $(logDebug) "True branch results: "
-  -- forM_ (flatten a') $ \(cond, value) -> do
-    -- $(logDebug) (pack $ "guard = " ++ show cond ++ ", value = " ++ show value)
   infoA <- popCouplingInfo
 
   pushCouplingInfo
   b' <- evalM b
-  -- $(logDebug) "False branch results: "
-  -- forM_ (flatten b') $ \(cond, value) -> do
-    -- $(logDebug) (pack $ "guard = " ++ show cond ++ ", value = " ++ show value)
   infoB <- popCouplingInfo
 
   replaceCouplingInfo (mergeCouplingInfo cond' infoA infoB)

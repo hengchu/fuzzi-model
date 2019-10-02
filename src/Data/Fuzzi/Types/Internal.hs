@@ -15,21 +15,27 @@ import qualified Data.Map.Merge.Strict as MM
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import qualified Prelude
+import GHC.Generics
+import Control.DeepSeq
 
 {- HLINT ignore "Use camelCase" -}
 
 data Guarded (a :: *) where
   MkGuarded :: BoolExpr -> a -> Guarded a
-  deriving (Eq, Ord, Functor, Foldable, Traversable)
+  deriving (Eq, Ord, Functor, Foldable, Traversable, Generic, Generic1)
+
+instance NFData a => NFData (Guarded a)
 
 instance Show a => Show (Guarded a) where
   show (MkGuarded cond v) = "MkGuarded (" ++ show cond ++ ") (" ++ show v ++")"
 
 newtype GuardedSymbolicUnion a =
   GuardedSymbolicUnion { unwrapGuardedSymbolicUnion :: [Guarded a] }
-  deriving (Show)
+  deriving (Show, Generic, Generic1)
   deriving (Functor, Applicative, Foldable) via (Compose [] Guarded)
   deriving (Traversable)
+
+instance NFData a => NFData (GuardedSymbolicUnion a)
 
 instance SymbolicRepr a => Eq (GuardedSymbolicUnion a) where
   (GuardedSymbolicUnion a) == (GuardedSymbolicUnion b) =
@@ -163,15 +169,17 @@ instance Boolean BoolExpr where
   and a (tryEvalBool -> Just True)  = a
   and (tryEvalBool -> Just False) _ = bool False
   and _ (tryEvalBool -> Just False) = bool False
-  and a b | a == b    = a
-          | otherwise = coerce And a b
+  and a b = coerce And a b
+  -- and a b | a == b    = a
+  --         | otherwise = coerce And a b
   or  (tryEvalBool -> Just False) b = b
   or  b (tryEvalBool -> Just False) = b
   or  (tryEvalBool -> Just True) _ = bool True
   or  _ (tryEvalBool -> Just True) = bool True
-  or  a b | a == neg b = bool True
-          | neg a == b = bool True
-          | otherwise = coerce Or a b
+  or a b = coerce Or a b
+  -- or  a b | a == neg b = bool True
+  --         | neg a == b = bool True
+  --         | otherwise = coerce Or a b
   neg = coerce Not
 
 instance Ordered RealExpr where
