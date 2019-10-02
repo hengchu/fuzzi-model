@@ -20,7 +20,7 @@ unwrap :: GuardedSymbolicUnion a -> [Guarded a]
 unwrap = unwrapGuardedSymbolicUnion
 
 reduce :: SymbolicRepr a => GuardedSymbolicUnion a -> GuardedSymbolicUnion a
-reduce (unwrap -> u) = {- fromList . map (first optimizeBool) . flatten . -} wrap . S.toList . S.fromList $ u
+reduce (unwrap -> u) = fromList . map (first optimizeBool) . flatten . wrap . S.toList . S.fromList $ u
 
 guarded :: BoolExpr -> a -> Guarded a
 guarded = MkGuarded
@@ -81,10 +81,11 @@ symmetricDiff left right =
                    | (condA, a) <- flatten left
                    , (condB, b) <- flatten right
                    , reduceable a b]
-      core  = map (\((condA, a), (condB, b)) -> (condA, condB, a, b)) $ M.toList (matching edges)
-      elems = nub $ map (view _3) core ++ map (view _4) core
-      leftOver  = filterGuardedSymbolicUnion (`notElem` elems) left
-      rightOver = filterGuardedSymbolicUnion (`notElem` elems) right
+      core  = map (\((condB, b), (condA, a)) -> (condA, condB, a, b)) $ M.toList (matching edges)
+      elems3 = nub $ map (view _3) core
+      elems4 = nub $ map (view _4) core
+      leftOver  = filterGuardedSymbolicUnion (`notElem` elems3) left
+      rightOver = filterGuardedSymbolicUnion (`notElem` elems4) right
   in (core, leftOver, rightOver)
 
 -- |Merge two guarded symbolic unions. This is the mu function in the Rosette

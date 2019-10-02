@@ -66,6 +66,7 @@ class Ord a => SymbolicRepr a where
 class Matchable a b => SEq a b where
   symEq :: a -> b -> BoolExpr
 
+infix 4 %<, %<=, %>, %>=, %==, %/=
 -- |Order operators in the semantic domain.
 class (Boolean (CmpResult a), Typeable a) => Ordered (a :: *) where
   type CmpResult a :: *
@@ -89,6 +90,8 @@ class (Ordered a, Num a, Typeable a) => Numeric (a :: *)
 class (Numeric a, Fractional a)      => FracNumeric (a :: *)
 class (Numeric a, LiteIntegral a)    => IntNumeric (a :: *)
 
+infixr 3 `and`
+infixr 2 `or`
 -- |Boolean operators in the semantic domain.
 class (Typeable a) => Boolean (a :: *) where
   and :: a -> a -> a
@@ -155,7 +158,6 @@ instance Ordered Int where
   (%==) a b = fromBool $ (==) a b
   (%/=) a b = fromBool $ (/=) a b
 
-
 instance Boolean BoolExpr where
   -- we only optimize `and` so that condensing symbolic unions do not cause
   -- boolean expression explosion
@@ -164,14 +166,14 @@ instance Boolean BoolExpr where
   and (tryEvalBool -> Just False) _ = bool False
   and _ (tryEvalBool -> Just False) = bool False
   and a b | a == b    = a
-          | otherwise = coerce And a b
+          | otherwise = optimizeBool $ coerce And a b
   or  (tryEvalBool -> Just False) b = b
   or  b (tryEvalBool -> Just False) = b
   or  (tryEvalBool -> Just True) _ = bool True
   or  _ (tryEvalBool -> Just True) = bool True
   or  a b | a == neg b = bool True
           | neg a == b = bool True
-          | otherwise = coerce Or a b
+          | otherwise = optimizeBool $ coerce Or a b
   neg = coerce Not
 
 instance Ordered RealExpr where

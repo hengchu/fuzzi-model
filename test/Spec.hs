@@ -411,6 +411,9 @@ main = do
   quickCheckWithResult
     stdArgs{maxSuccess=500, maxShrinks=20}
     prop_mergeUnionResultIsSuperSet >>= printAndExitIfFailed
+  quickCheckWithResult
+    stdArgs{maxSuccess=500, maxShrinks=20}
+    prop_mergeUnionCommutes >>= printAndExitIfFailed
 
 
   quickCheckWithResult

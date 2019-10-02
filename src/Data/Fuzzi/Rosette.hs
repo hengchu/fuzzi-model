@@ -380,19 +380,22 @@ evalM (Bind a f) = do
   return (joinGuardedSymbolicUnion ub)
 evalM (IfM cond a b) = do
   let cond' = evalPure cond
-  $(logInfo) (pack $ "branching on: " ++ show cond')
+  $(logDebug) (pack $ "branching on: " ++ show cond')
+
   pushCouplingInfo
   a' <- evalM a
-  $(logInfo) "True branch results: "
+  $(logDebug) "True branch results: "
   forM_ (flatten a') $ \(cond, value) -> do
-    $(logInfo) (pack $ "guard = " ++ show cond ++ ", value = " ++ show value)
+    $(logDebug) (pack $ "guard = " ++ show cond ++ ", value = " ++ show value)
   infoA <- popCouplingInfo
+
   pushCouplingInfo
   b' <- evalM b
-  $(logInfo) "False branch results: "
+  $(logDebug) "False branch results: "
   forM_ (flatten b') $ \(cond, value) -> do
-    $(logInfo) (pack $ "guard = " ++ show cond ++ ", value = " ++ show value)
+    $(logDebug) (pack $ "guard = " ++ show cond ++ ", value = " ++ show value)
   infoB <- popCouplingInfo
+
   replaceCouplingInfo (mergeCouplingInfo cond' infoA infoB)
   return $ mergeUnion cond' a' b'
 evalM (Abort reason) = do
