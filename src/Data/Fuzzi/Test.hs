@@ -304,6 +304,23 @@ expectDPRosette :: ( Typeable concrete
                  -> PropertyM IO ()
 expectDPRosette = expectDPRosette' runStdoutColoredLoggingWarnT
 
+expectDPRosetteVerbose :: ( Typeable concrete
+                          , Typeable symbolic
+                          , HasProvenance concrete
+                          , ConstraintsWithProvenance Ord concrete
+                          , ConstraintsWithProvenance Show concrete
+                          , Show symbolic
+                          , SEq concrete symbolic
+                          )
+                       => Epsilon
+                       -> Int
+                       -> ( Fuzzi (TracedDist concrete)
+                          , Fuzzi (RosetteT (LoggingT IO) symbolic)
+                          )
+                       -> PropertyM IO ()
+expectDPRosetteVerbose = expectDPRosette' (runStdoutColoredLoggingAboveLevelT LevelInfo)
+
+
 expectDPVerbose :: ( Typeable concrete
                    , Typeable symbolic
                    , Matchable concrete symbolic

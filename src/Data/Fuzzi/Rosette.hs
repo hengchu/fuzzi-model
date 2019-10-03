@@ -19,6 +19,7 @@ import Data.Fuzzi.Types
 import Data.Fuzzi.Z3
 import Data.List.NonEmpty (NonEmpty(..), (<|))
 import Data.Text (pack)
+import Data.Time.Clock
 import GHC.Generics
 import Prelude hiding (and, or, head)
 import Type.Reflection
@@ -47,6 +48,7 @@ type NameMap = M.Map String Int
 data SymbolicState = SymbolicState {
   _ssNameMap :: NameMap
   , _ssAliasMemoization :: HM.HashMap SymbolicExpr String
+  , _ssAliasBoolPrefix :: String
   , _ssSymbolicSampleArray :: ArrayExpr
   , _ssSymbolicShiftArray :: ArrayExpr
   , _ssTraceSampleArray :: ArrayExpr
@@ -67,6 +69,7 @@ dummyState =
   SymbolicState
     M.empty
     HM.empty
+    "bool"
     (array "ssample")
     (array "shift")
     (array "csample")
@@ -163,6 +166,7 @@ runWithBucket' :: ( MonadIO m
                -> RosetteT m (GuardedSymbolicUnion a)
                -> m Bool
 runWithBucket' eps bucket action = do
+  !start <- liftIO $ getCurrentTime
   (ctx, solver)  <- z3Init
   let handler (e :: RosetteException) = do
         $(logError) (pack $ "rosette symbolic execution exception: " ++ show e)
@@ -174,7 +178,11 @@ runWithBucket' eps bucket action = do
       let condPretty = pretty (getBoolExpr cond)
       label <- liftIO $ Z3.mkFreshBoolVar ctx condPretty
       liftIO $ Z3.solverAssertAndTrack ctx solver z3Ast label
+      !constraintGenerationEndTime <- liftIO $ getCurrentTime
+      $(logInfo) (pack $ "constraint generation took " ++ show (constraintGenerationEndTime `diffUTCTime` start))
       r <- liftIO $ Z3.solverCheck ctx solver
+      !solverReturnedTime <- liftIO $ getCurrentTime
+      $(logInfo) (pack $ "solver took " ++ show (solverReturnedTime `diffUTCTime` constraintGenerationEndTime))
       case r of
         Z3.Sat -> return True
         _      -> return False
@@ -216,7 +224,8 @@ coupleBucket ctx solver eps bucket symbolicResults = do
           let coupling = NL.head $ symbolicState ^. couplingInfo
           let equality = concreteResult `symEq` symResult
           let costCond = (coupling ^. totalCost) %<= (double eps)
-          let cond     = equality `and` guardCond `and` costCond `and` (coupling ^. couplingConstraints)
+          let asserts  = S.foldr and (bool True) (symbolicState ^. assertions)
+          let cond     = equality `and` guardCond `and` costCond `and` (coupling ^. couplingConstraints) `and` asserts
           -- $(logDebug) (pack $ "============possible world " ++ show (concreteRunIdx, idx) ++ "============")
           -- $(logDebug) (pack $ "concrete: " ++ show concreteResult)
           -- $(logDebug) (pack $ "symbolic: " ++ show symResult)
@@ -238,6 +247,7 @@ coupleBucket ctx solver eps bucket symbolicResults = do
           let runConcreteWidth  = runConcretePrefix ++ "_width"
           let runConcreteSample = runConcretePrefix ++ "_sample"
           let runSymbolicSample = runSymbolicPrefix ++ "_sample"
+          let runAliasBoolPrefix = runPrefix ++ "_bool"
 
           let traceValues = toList (fmap flattenTrace trace)
 
@@ -259,6 +269,7 @@ coupleBucket ctx solver eps bucket symbolicResults = do
                                  & traceSampleArray    .~ (ArrayExpr (RealArrayVar runConcreteSample))
                                  & traceCenterArray    .~ (ArrayExpr (RealArrayVar runConcreteCenter))
                                  & traceWidthArray     .~ (ArrayExpr (RealArrayVar runConcreteWidth))
+                                 & aliasBoolPrefix     .~ runAliasBoolPrefix
                                  & traceSize           .~ (fromIntegral $ length trace)
 
           (possibleSymbolicResults, symbolicState) <- runRosetteT state symbolicResults
@@ -453,7 +464,8 @@ instance (Monad m, Typeable m) => MonadSymbolicMerge (RosetteT m) where
     case HM.lookup (getBoolExpr bool) memo of
       Just name -> return (BoolExpr (BoolVar name))
       Nothing -> do
-        var <- freshName "bool"
+        prefix <- gets (view aliasBoolPrefix)
+        var <- freshName prefix
         let expr = BoolExpr (BoolVar var)
         assertTrue (beq expr bool)
         aliasMemoization %= HM.insert (getBoolExpr bool) var

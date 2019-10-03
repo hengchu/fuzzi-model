@@ -198,6 +198,12 @@ instance SymbolicRepr Int where
     | left == right = pure left
     | otherwise     = guardedSingleton cond left `union` guardedSingleton (neg cond) right
 
+instance SymbolicRepr Integer where
+  reduceable left right = left == right
+  merge cond left right
+    | left == right = pure left
+    | otherwise     = guardedSingleton cond left `union` guardedSingleton (neg cond) right
+
 instance SymbolicRepr Double where
   reduceable left right = left == right
   merge cond left right
@@ -225,19 +231,6 @@ instance SymbolicRepr IntExpr where
   reduceable _    _     = True
   merge cond left right =
     pure $ IntExpr (ite' (getBoolExpr cond) (getIntExpr (simplifyInt left)) (getIntExpr (simplifyInt right)))
-
-instance FuzziType   RealExpr
-instance FuzziType   BoolExpr
-instance FuzziType   IntExpr
-
-instance FuzziType Double
-instance FuzziType Bool
-instance FuzziType Int
-instance FuzziType a => FuzziType (PrivTree1D a)
-instance FuzziType a => FuzziType [a]
-instance FuzziType a => FuzziType (Maybe a)
-instance FuzziType PrivTreeNode1D
-instance (FuzziType a, FuzziType b) => FuzziType (a, b)
 
 instance SymbolicRepr PrivTreeNode1D where
   merge cond left right
@@ -316,3 +309,17 @@ instance Fractional a => Fractional (Guarded a) where
 
 instance Numeric a => Numeric (Guarded a)
 instance FracNumeric a => FracNumeric (Guarded a)
+
+instance FuzziType   RealExpr
+instance FuzziType   BoolExpr
+instance FuzziType   IntExpr
+
+instance FuzziType Double
+instance FuzziType Bool
+instance FuzziType Int
+instance FuzziType Integer
+instance FuzziType a => FuzziType (PrivTree1D a)
+instance FuzziType a => FuzziType [a]
+instance FuzziType a => FuzziType (Maybe a)
+instance FuzziType PrivTreeNode1D
+instance (FuzziType a, FuzziType b) => FuzziType (a, b)

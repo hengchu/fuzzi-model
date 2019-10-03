@@ -89,6 +89,10 @@ instance LiteIntegral Int where
   idiv = div
   imod = mod
 
+instance LiteIntegral Integer where
+  idiv = div
+  imod = mod
+
 -- |This constraint is only satisfied by numeric datatypes supported in Fuzzi.
 class (Ordered a, Num a, Typeable a) => Numeric (a :: *)
 class (Numeric a, Fractional a)      => FracNumeric (a :: *)
@@ -162,6 +166,15 @@ instance Ordered Int where
   (%==) a b = fromBool $ (==) a b
   (%/=) a b = fromBool $ (/=) a b
 
+instance Ordered Integer where
+  type CmpResult Integer = Bool
+  (%<)  a b = fromBool $ (<) a b
+  (%<=) a b = fromBool $ (<=) a b
+  (%>)  a b = fromBool $ (>) a b
+  (%>=) a b = fromBool $ (>=) a b
+  (%==) a b = fromBool $ (==) a b
+  (%/=) a b = fromBool $ (/=) a b
+
 instance Boolean BoolExpr where
   -- we only optimize `and` so that condensing symbolic unions do not cause
   -- boolean expression explosion
@@ -209,6 +222,8 @@ instance Numeric Double
 instance FracNumeric Double
 instance Numeric Int
 instance IntNumeric Int
+instance Numeric Integer
+instance IntNumeric Integer
 
 instance Matchable Int Int where
   match a b = a == b
@@ -440,6 +455,14 @@ instance SEq Int Int where
 
 instance SEq Bool Bool where
   symEq a b = bool (a == b)
+
+instance Matchable Integer IntExpr where
+  match a (tryEvalInt -> Just b) = a == b
+  match a b = True
+
+instance SEq Integer IntExpr where
+  symEq a b =
+    (int a) %== b
 
 instance SEq Double RealExpr where
   symEq a b =

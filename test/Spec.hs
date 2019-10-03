@@ -95,11 +95,11 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $
 rnmPrivacyTestRosette :: PairWiseL1List Double -> Property
 rnmPrivacyTestRosette xs = label ("rnm input size: " ++ show (length xs)) $
   monadicIO $
-    expectDPRosette
+    expectDPRosetteVerbose
       2.0
       100
-      ( reify . reportNoisyMax . map realToFrac $ left xs
-      , reify . reportNoisyMax . map realToFrac $ right xs
+      ( reify . (reportNoisyMaxOpt @Integer) . map realToFrac $ left xs
+      , reify . (reportNoisyMaxOpt @IntExpr) . map realToFrac $ right xs
       )
 
 rnmGapPrivacyTest :: PairWiseL1List Double -> Property
@@ -251,7 +251,7 @@ prop_rnmIsDifferentiallyPrivate =
 
 prop_rnmIsDifferentiallyPrivateRosette :: Property
 prop_rnmIsDifferentiallyPrivateRosette =
-  forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 rnmPrivacyTestRosette
+  forAllShrink (pairWiseL1 {-(10, 20)-} 1.0) shrinkPairWiseL1 rnmPrivacyTestRosette
 
 prop_rnmGapIsDifferentiallyPrivate :: Property
 prop_rnmGapIsDifferentiallyPrivate =

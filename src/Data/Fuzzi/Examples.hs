@@ -45,12 +45,12 @@ reportNoisyMaxAux (xNoised:xs) lastIdx maxIdx currMax = do
       (reportNoisyMaxAux xs thisIdx thisIdx xNoised)
       (reportNoisyMaxAux xs thisIdx maxIdx  currMax)
 
-reportNoisyMaxAuxOpt :: (FuzziLang m a)
+reportNoisyMaxAuxOpt :: (FuzziLang m a, FuzziType int, Numeric int)
                      => [Fuzzi a]
-                     -> Fuzzi IntExpr
-                     -> Fuzzi IntExpr
+                     -> Fuzzi int
+                     -> Fuzzi int
                      -> Fuzzi a
-                     -> Mon m (Fuzzi IntExpr)
+                     -> Mon m (Fuzzi int)
 reportNoisyMaxAuxOpt []           _       maxIdx _       = return maxIdx
 reportNoisyMaxAuxOpt (xNoised:xs) lastIdx maxIdx currMax = do
   let thisIdx = lastIdx + 1
@@ -60,10 +60,10 @@ reportNoisyMaxAuxOpt (xNoised:xs) lastIdx maxIdx currMax = do
         (return (maxIdx, currMax)) -- reportNoisyMaxAux xs thisIdx maxIdx  currMax)
   reportNoisyMaxAuxOpt xs thisIdx (fst idxAndMax) (snd idxAndMax)
 
-reportNoisyMaxOpt :: forall m a.
-                     (FuzziLang m a)
+reportNoisyMaxOpt :: forall int m a.
+                     (FuzziLang m a, FuzziType int, Numeric int)
                   => [Fuzzi a]
-                  -> Mon m (Fuzzi IntExpr)
+                  -> Mon m (Fuzzi int)
 reportNoisyMaxOpt []     = error "reportNoisyMax received empty input"
 reportNoisyMaxOpt (x:xs) = do
   xNoised <- lap x 1.0

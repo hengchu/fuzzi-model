@@ -276,6 +276,12 @@ instance HasProvenance Int where
   getProvenance = id
   dropProvenance = id
 
+instance HasProvenance Integer where
+  type GetProvenance Integer = Integer
+  type DropProvenance Integer = Integer
+  getProvenance = id
+  dropProvenance = id
+
 instance HasProvenance Bool where
   type GetProvenance Bool = Bool
   type DropProvenance Bool = Bool
