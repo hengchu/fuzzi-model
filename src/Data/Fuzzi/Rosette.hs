@@ -49,7 +49,7 @@ data SymbolicState = SymbolicState {
   _ssNameMap :: NameMap
   , _ssAliasMemoization :: HM.HashMap SymbolicExpr String
   , _ssAliasBoolPrefix :: String
-  , _ssSymbolicSampleArray :: ArrayExpr
+  , _ssSymbolicSamplePrefix :: String
   , _ssSymbolicShiftArray :: ArrayExpr
   , _ssTraceSampleArray :: ArrayExpr
   , _ssTraceCenterArray :: ArrayExpr
@@ -70,7 +70,7 @@ dummyState =
     M.empty
     HM.empty
     "bool"
-    (array "ssample")
+    "lap"
     (array "shift")
     (array "csample")
     (array "ccenter")
@@ -225,7 +225,11 @@ coupleBucket ctx solver eps bucket symbolicResults = do
           let equality = concreteResult `symEq` symResult
           let costCond = (coupling ^. totalCost) %<= (double eps)
           let asserts  = S.foldr and (bool True) (symbolicState ^. assertions)
-          let cond     = equality `and` guardCond `and` costCond `and` (coupling ^. couplingConstraints) `and` asserts
+          let cond     = equality
+                         `and` guardCond
+                         `and` costCond
+                         `and` (coupling ^. couplingConstraints)
+                         `and` asserts
           -- $(logDebug) (pack $ "============possible world " ++ show (concreteRunIdx, idx) ++ "============")
           -- $(logDebug) (pack $ "concrete: " ++ show concreteResult)
           -- $(logDebug) (pack $ "symbolic: " ++ show symResult)
@@ -264,7 +268,7 @@ coupleBucket ctx solver eps bucket symbolicResults = do
                                ]
 
           -- a guarded symbolic union of symbolic results
-          let state = dummyState & symbolicSampleArray .~ (ArrayExpr (RealArrayVar runSymbolicSample))
+          let state = dummyState & symbolicSamplePrefix .~ runSymbolicSample
                                  & symbolicShiftArray  .~ (ArrayExpr (RealArrayVar shiftArrayName))
                                  & traceSampleArray    .~ (ArrayExpr (RealArrayVar runConcreteSample))
                                  & traceCenterArray    .~ (ArrayExpr (RealArrayVar runConcreteCenter))
@@ -357,13 +361,14 @@ laplaceRosette' tolerance symCenter symWidth = do
   idx <- getCurrentTraceIndex
   setTraceIndex (simplifyInt $ idx + 1)
 
+  sampleName <- gets (view symbolicSamplePrefix)
+
   shiftArray  <- gets (view symbolicShiftArray)
-  symSampleArray <- gets (view symbolicSampleArray)
   sampleArray <- gets (view traceSampleArray)
   centerArray <- gets (view traceCenterArray)
   widthArray  <- gets (view traceWidthArray)
 
-  let symbolicSample = at' tolerance symSampleArray idx
+  symbolicSample <- freshSReal' tolerance sampleName
   let shift          = at' tolerance shiftArray  idx
   let sample         = at' tolerance sampleArray idx
   let center         = at' tolerance centerArray idx

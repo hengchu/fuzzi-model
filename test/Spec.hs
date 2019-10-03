@@ -95,7 +95,7 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $
 rnmPrivacyTestRosette :: PairWiseL1List Double -> Property
 rnmPrivacyTestRosette xs = label ("rnm input size: " ++ show (length xs)) $
   monadicIO $
-    expectDPRosetteVerbose
+    expectDPRosette
       2.0
       100
       ( reify . (reportNoisyMaxOpt @Integer) . map realToFrac $ left xs
