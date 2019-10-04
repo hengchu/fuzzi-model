@@ -27,37 +27,20 @@ z3InitOpt = do
   $(logInfo) "initialized Z3 optimizer and context"
   return (ctx, optimizer)
 
-z3NewRealArray :: MonadIO m => Z3.Context -> Z3.Solver -> String -> [Double] -> m Z3.FuncDecl
-z3NewRealArray ctx solver name values = do
-  sym      <- liftIO (Z3.mkStringSymbol ctx name)
-  intSort  <- liftIO (Z3.mkIntSort ctx)
-  realSort <- liftIO (Z3.mkRealSort ctx)
-  f        <- liftIO $ Z3.mkFuncDecl ctx sym [intSort] realSort
+type AllocatedArrays = M.Map String ()
 
-  forM_ (zip [0..] values) $ \(idx, value) -> do
-    let env = M.fromList [(name, f)]
-    let eqAssert = (double value) %== (at' 0 (ArrayExpr (RealArrayVar name)) (IntExpr (JustInt idx)))
-    let eqAssertPretty = pretty (getBoolExpr eqAssert)
-    label <- liftIO $ Z3.mkFreshBoolVar ctx eqAssertPretty
-    equalityAssertion <- flip runReaderT env (symbolicExprToZ3AST ctx (getBoolExpr eqAssert))
-    liftIO $ Z3.solverAssertAndTrack ctx solver equalityAssertion label
-
-  return f
-
-type AllocatedArrays = M.Map String Z3.FuncDecl
-
-symbolicExprToZ3AST :: ( MonadReader AllocatedArrays m
-                       , MonadIO m
-                       ) => Z3.Context -> SymbolicExpr -> m Z3.AST
+symbolicExprToZ3AST :: MonadIO m => Z3.Context -> SymbolicExpr -> m Z3.AST
 symbolicExprToZ3AST ctx (BoolVar name) = do
   sym <- liftIO (Z3.mkStringSymbol ctx name)
   liftIO (Z3.mkBoolVar ctx sym)
 symbolicExprToZ3AST ctx (RealVar name) = do
   sym <- liftIO (Z3.mkStringSymbol ctx name)
   liftIO (Z3.mkRealVar ctx sym)
+{-
 symbolicExprToZ3AST _ (RealArrayVar name) =
   error $ "symbolicExprToZ3AST: found free-standing real array variable " ++ name ++ "\n"
           ++ "arrays should always appear in an indexed expression"
+-}
 symbolicExprToZ3AST ctx (JustInt v) =
   liftIO (Z3.mkInteger ctx v)
 symbolicExprToZ3AST ctx (Rat v) =
@@ -120,6 +103,7 @@ symbolicExprToZ3AST ctx (Ite a b c) = do
   b' <- symbolicExprToZ3AST ctx b
   c' <- symbolicExprToZ3AST ctx c
   liftIO (Z3.mkIte ctx a' b' c')
+{-
 symbolicExprToZ3AST ctx (RealArrayIndex (RealArrayVar x) idx) = do
   arrayDecls <- ask
   case M.lookup x arrayDecls of
@@ -129,6 +113,7 @@ symbolicExprToZ3AST ctx (RealArrayIndex (RealArrayVar x) idx) = do
       liftIO $ Z3.mkApp ctx decl [idxAst]
 symbolicExprToZ3AST _ e@(RealArrayIndex _ _) =
   error $ "symbolicExprToZ3AST: unsupported array indexing in expression " ++ show e
+-}
 symbolicExprToZ3AST ctx (Substitute a fts) = do
   let f (from, to) = do
         fromSym <- liftIO $ Z3.mkStringSymbol ctx from

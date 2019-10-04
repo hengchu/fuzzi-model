@@ -112,7 +112,6 @@ rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $
       , reify . reportNoisyMaxGap . map realToFrac $ right xs
       )
 
-
 rnmNotPrivateTest :: Property
 rnmNotPrivateTest = label "rnmBuggy" $ monadicIO $
   expectNotDP
@@ -251,7 +250,7 @@ prop_rnmIsDifferentiallyPrivate =
 
 prop_rnmIsDifferentiallyPrivateRosette :: Property
 prop_rnmIsDifferentiallyPrivateRosette =
-  forAllShrink (pairWiseL1 {-(10, 20)-} 1.0) shrinkPairWiseL1 rnmPrivacyTestRosette
+  forAllShrink (pairWiseL1{-Sized (10, 20)-} 1.0) shrinkPairWiseL1 rnmPrivacyTestRosette
 
 prop_rnmGapIsDifferentiallyPrivate :: Property
 prop_rnmGapIsDifferentiallyPrivate =

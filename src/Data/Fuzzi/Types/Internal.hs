@@ -17,6 +17,7 @@ import qualified Data.Set as S
 import qualified Prelude
 import GHC.Generics
 import Control.DeepSeq
+import qualified Data.Sequence as SS
 
 {- HLINT ignore "Use camelCase" -}
 
@@ -332,10 +333,12 @@ doSubst (RealVar x) substs =
   case find (\(f, _) -> f == x) substs of
     Nothing -> RealVar x
     Just (_, t) -> t
+    {-
 doSubst (RealArrayVar x) substs =
   case find (\(f, _) -> f == x) substs of
     Nothing -> RealArrayVar x
     Just (_, t) -> t
+-}
 doSubst e@(Rat _) _ = e
 doSubst e@(JustBool _) _ = e
 doSubst e@(JustInt _) _ = e
@@ -433,14 +436,48 @@ sReal = RealExpr k_FLOAT_TOLERANCE . RealVar
 sReal' :: Rational -> String -> RealExpr
 sReal' tol = RealExpr tol . RealVar
 
+{-
 sArray :: String -> ArrayExpr
 sArray = ArrayExpr . RealArrayVar
+-}
 
-at' :: Rational -> ArrayExpr -> IntExpr -> RealExpr
-at' tol (ArrayExpr arr) (IntExpr idx) = RealExpr tol (RealArrayIndex arr idx)
+data ArrayDecl :: * -> * where
+  MkArrayDecl :: (IntExpr -> a) -- ^index operation
+              -> SS.Seq a        -- ^concrete array values
+              -> a              -- ^default value
+              -> ArrayDecl a
+  deriving (Generic, Generic1)
 
-at :: ArrayExpr -> IntExpr -> RealExpr
-at = at' k_FLOAT_TOLERANCE
+instance NFData a => NFData (ArrayDecl a)
+
+instance Show a => Show (ArrayDecl a) where
+  show (MkArrayDecl _ arr _) = show arr
+
+instance Eq a => Eq (ArrayDecl a) where
+  (MkArrayDecl _ arr1 _) == (MkArrayDecl _ arr2 _) = arr1 == arr2
+
+instance Ord a => Ord (ArrayDecl a) where
+  compare (MkArrayDecl _ arr1 _) (MkArrayDecl _ arr2 _) = compare arr1 arr2
+
+newArrayDecl :: (a -> SymbolicExpr)
+             -> (SymbolicExpr -> a)
+             -> [a] -> a -> ArrayDecl a
+newArrayDecl strip build values def =
+  MkArrayDecl indexFun (SS.fromList values) def
+  where indexFun idxExpr =
+          foldr (go idxExpr) def (zip [0..] values)
+        go idxExpr (idxInt, val) acc =
+          build
+          $ ite' (getBoolExpr $ idxExpr %== int idxInt)
+                 (strip val)
+                 (strip acc)
+
+at :: ArrayDecl a -> IntExpr -> a
+at (MkArrayDecl _ array def) (tryEvalInt -> Just idx) =
+  case SS.lookup (fromIntegral idx) array of
+    Just val -> val
+    Nothing -> def
+at (MkArrayDecl indexFun _ _) idx = indexFun idx
 
 k_FLOAT_TOLERANCE :: Rational
 k_FLOAT_TOLERANCE = 1e-6

@@ -50,10 +50,10 @@ data SymbolicState = SymbolicState {
   , _ssAliasMemoization :: HM.HashMap SymbolicExpr String
   , _ssAliasBoolPrefix :: String
   , _ssSymbolicSamplePrefix :: String
-  , _ssSymbolicShiftArray :: ArrayExpr
-  , _ssTraceSampleArray :: ArrayExpr
-  , _ssTraceCenterArray :: ArrayExpr
-  , _ssTraceWidthArray :: ArrayExpr
+  , _ssSymbolicShiftArray :: ArrayDecl RealExpr
+  , _ssTraceSampleArray :: ArrayDecl RealExpr
+  , _ssTraceCenterArray :: ArrayDecl RealExpr
+  , _ssTraceWidthArray :: ArrayDecl RealExpr
   , _ssTraceSize :: IntExpr
   , _ssCouplingInfo :: NonEmpty CouplingInfo
   , _ssAssertions :: S.Set BoolExpr
@@ -71,18 +71,20 @@ dummyState =
     HM.empty
     "bool"
     "lap"
-    (array "shift")
-    (array "csample")
-    (array "ccenter")
-    (array "cwidth")
+    array
+    array
+    array
+    array
     0
     (dummyCouplingInfo :| [])
     S.empty
     -- (PP.MkSomeFuzzi (Lit 1 :: Fuzzi Int))
-  where array = ArrayExpr . RealArrayVar
+  where array = newArrayDecl getRealExpr (RealExpr k_FLOAT_TOLERANCE) [] 0
         dummyCouplingInfo = CouplingInfo 0 0 (bool True)
 
 data RosetteException = ComputationAborted AbortException
+                      | BucketSizeMismatch [Int]
+                      | EmptyBucket
                       | InternalError String
   deriving (Show, Eq, Ord, Generic, Typeable)
 
@@ -101,7 +103,7 @@ newtype RosetteT m a =
 type Bucket r = [(r, SS.Seq (Trace Double))]
 
 newtype AnySat m = AnySat { runAnySat :: m BoolExpr }
-newtype AllSat m = AllSat { runAllSat :: m (AllocatedArrays, BoolExpr) }
+newtype AllSat m = AllSat { runAllSat :: m BoolExpr }
 
 instance Monad m => Semigroup (AnySat m) where
   (AnySat m1) <> (AnySat m2) = AnySat $ liftA2 or m1 m2
@@ -110,13 +112,11 @@ instance Monad m => Monoid (AnySat m) where
   mempty = AnySat (return (bool False))
 
 instance Monad m => Semigroup (AllSat m) where
-  (AllSat m1) <> (AllSat m2) = AllSat $ do
-    (env1, r1) <- m1
-    (env2, r2) <- m2
-    return (env1 <> env2, r1 `and` r2)
+  (AllSat m1) <> (AllSat m2) =
+    AllSat $ liftA2 and m1 m2
 
 instance Monad m => Monoid (AllSat m) where
-  mempty = AllSat (return (M.empty, bool True))
+  mempty = AllSat (return (bool True))
 
 runRosetteT :: SymbolicState -> RosetteT m a -> m (Either RosetteException a, SymbolicState)
 runRosetteT init =
@@ -173,8 +173,8 @@ runWithBucket' eps bucket action = do
         return Nothing
   maybeArraysAndCondition <- (Just <$> coupleBucket ctx solver eps bucket action) `catch` handler
   case maybeArraysAndCondition of
-    Just (arrays, cond) -> do
-      z3Ast <- (flip runReaderT arrays) (symbolicExprToZ3AST ctx (getBoolExpr cond))
+    Just cond -> do
+      z3Ast <- symbolicExprToZ3AST ctx (getBoolExpr cond)
       let condPretty = pretty (getBoolExpr cond)
       label <- liftIO $ Z3.mkFreshBoolVar ctx condPretty
       liftIO $ Z3.solverAssertAndTrack ctx solver z3Ast label
@@ -194,6 +194,7 @@ runWithBucket' eps bucket action = do
 -- May throw 'RosetteException'.
 coupleBucket :: ( Monad m
                 , MonadIO m
+                , MonadThrow m
                 , MonadLogger m
                 , SEq r a
                 , Show r
@@ -204,11 +205,20 @@ coupleBucket :: ( Monad m
              -> Epsilon
              -> Bucket r
              -> RosetteT m (GuardedSymbolicUnion a)
-             -> m (AllocatedArrays, BoolExpr)
+             -> m BoolExpr
 coupleBucket ctx solver eps bucket symbolicResults = do
   let shiftArrayName = "shift"
-  shiftArray <- z3NewRealArray ctx solver shiftArrayName []
-  runAllSat $ forEach (zip [0..] bucket) $ forEachConcrete ctx solver (shiftArrayName, shiftArray)
+  let bucketLengths = map (length . snd) bucket
+  len <-
+    case bucketLengths of
+      [] -> throwM EmptyBucket
+      (len:lens) -> if any (/= len) lens
+                    then throwM (BucketSizeMismatch bucketLengths)
+                    else return len
+
+  let shiftSymbols = map (\idx -> sReal $ shiftArrayName ++ show idx) [0..len-1]
+  let shiftArray = newArrayDecl getRealExpr (RealExpr k_FLOAT_TOLERANCE) shiftSymbols 0
+  runAllSat $ forEach (zip [0..] bucket) $ forEachConcrete ctx solver shiftArray
   where forEach :: Monoid m => [a] -> (a -> m) -> m
         forEach = flip foldMap
 
@@ -242,39 +252,42 @@ coupleBucket ctx solver eps bucket symbolicResults = do
 
         forEachConcrete
           ctx solver
-          (shiftArrayName, shiftArray) (runIdx :: Integer, (concreteResult, trace)) = AllSat $ do
+          shiftArray (runIdx :: Integer, (concreteResult, trace)) = AllSat $ do
 
           let runPrefix = "run_" ++ (show runIdx)
-          let runConcretePrefix = runPrefix ++ "_concrete"
           let runSymbolicPrefix = runPrefix ++ "_symbolic"
-          let runConcreteCenter = runConcretePrefix ++ "_center"
-          let runConcreteWidth  = runConcretePrefix ++ "_width"
-          let runConcreteSample = runConcretePrefix ++ "_sample"
           let runSymbolicSample = runSymbolicPrefix ++ "_sample"
           let runAliasBoolPrefix = runPrefix ++ "_bool"
 
           let traceValues = toList (fmap flattenTrace trace)
 
-          centerArray <- z3NewRealArray ctx solver runConcreteCenter (map (view _1) traceValues)
-          widthArray  <- z3NewRealArray ctx solver runConcreteWidth  (map (view _2) traceValues)
-          sampleArray <- z3NewRealArray ctx solver runConcreteSample (map (view _3) traceValues)
-          symSampleArray <- z3NewRealArray ctx solver runSymbolicSample []
-
-          let env = M.fromList [ (shiftArrayName,    shiftArray)
-                               , (runConcreteCenter, centerArray)
-                               , (runConcreteWidth,  widthArray)
-                               , (runConcreteSample, sampleArray)
-                               , (runSymbolicSample, symSampleArray)
-                               ]
+          let centerArray =
+                newArrayDecl
+                  getRealExpr
+                  (RealExpr k_FLOAT_TOLERANCE)
+                  (map (double . view _1) traceValues)
+                  0
+          let widthArray =
+                newArrayDecl
+                  getRealExpr
+                  (RealExpr k_FLOAT_TOLERANCE)
+                  (map (double . view _2) traceValues)
+                  0
+          let sampleArray =
+                newArrayDecl
+                  getRealExpr
+                  (RealExpr k_FLOAT_TOLERANCE)
+                  (map (double . view _3) traceValues)
+                  0
 
           -- a guarded symbolic union of symbolic results
           let state = dummyState & symbolicSamplePrefix .~ runSymbolicSample
-                                 & symbolicShiftArray  .~ (ArrayExpr (RealArrayVar shiftArrayName))
-                                 & traceSampleArray    .~ (ArrayExpr (RealArrayVar runConcreteSample))
-                                 & traceCenterArray    .~ (ArrayExpr (RealArrayVar runConcreteCenter))
-                                 & traceWidthArray     .~ (ArrayExpr (RealArrayVar runConcreteWidth))
-                                 & aliasBoolPrefix     .~ runAliasBoolPrefix
-                                 & traceSize           .~ (fromIntegral $ length trace)
+                                 & symbolicShiftArray   .~ shiftArray
+                                 & traceSampleArray     .~ sampleArray
+                                 & traceCenterArray     .~ centerArray
+                                 & traceWidthArray      .~ widthArray
+                                 & aliasBoolPrefix      .~ runAliasBoolPrefix
+                                 & traceSize            .~ (fromIntegral $ length trace)
 
           (possibleSymbolicResults, symbolicState) <- runRosetteT state symbolicResults
           symbolicResultUnion {- :: [(BoolExpr, a)] -} <-
@@ -289,7 +302,7 @@ coupleBucket ctx solver eps bucket symbolicResults = do
           -- $(logInfo) (pack $ show cond)
           -- $(logInfo) (pack $ "=========END RUN " ++ show runIdx ++ "===========")
 
-          return (env, optimizeBool cond)
+          return $ optimizeBool cond
 
 mergeCouplingInfo :: BoolExpr -> CouplingInfo -> CouplingInfo -> CouplingInfo
 mergeCouplingInfo cond left right =
@@ -369,10 +382,10 @@ laplaceRosette' tolerance symCenter symWidth = do
   widthArray  <- gets (view traceWidthArray)
 
   symbolicSample <- freshSReal' tolerance sampleName
-  let shift          = at' tolerance shiftArray  idx
-  let sample         = at' tolerance sampleArray idx
-  let center         = at' tolerance centerArray idx
-  let width          = at' tolerance widthArray  idx
+  let shift          = at shiftArray  idx
+  let sample         = at sampleArray idx
+  let center         = at centerArray idx
+  let width          = at widthArray  idx
 
   let symbolicCost   = (abs (center + shift - symCenter)) / (double symWidth)
   let couplingAssertion = if tolerance == 0

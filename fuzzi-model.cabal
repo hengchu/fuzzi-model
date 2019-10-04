@@ -52,6 +52,7 @@ library
                 , Data.Fuzzi.Types.Optimize
                 , Data.Fuzzi.Types.SymbolicExpr
                 , Data.Fuzzi.Z3
+                , Data.Fuzzi.Util
   other-modules:
       Paths_fuzzi_model
   hs-source-dirs:

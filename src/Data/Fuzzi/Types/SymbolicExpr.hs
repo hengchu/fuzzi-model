@@ -12,7 +12,7 @@ import Control.DeepSeq
 data SymbolicExpr :: * where
   BoolVar :: String -> SymbolicExpr
   RealVar :: String -> SymbolicExpr
-  RealArrayVar :: String -> SymbolicExpr
+  --RealArrayVar :: String -> SymbolicExpr
 
   JustInt  :: Integer  -> SymbolicExpr
   Rat      :: Rational -> SymbolicExpr
@@ -131,7 +131,7 @@ parensIf False = id
 prettySymbolic :: Int -> SymbolicExpr -> TPP.Doc
 prettySymbolic _ (BoolVar x) = TPP.text x
 prettySymbolic _ (RealVar x) = TPP.text x
-prettySymbolic _ (RealArrayVar x) = TPP.text x
+--prettySymbolic _ (RealArrayVar x) = TPP.text x
 prettySymbolic _ (Rat r) = TPP.text (show r) --TPP.double (fromRational r)
 prettySymbolic _ (JustInt i) = TPP.text (show i)
 prettySymbolic _ (JustBool b) = TPP.text (show b)
