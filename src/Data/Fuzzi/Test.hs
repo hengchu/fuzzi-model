@@ -13,7 +13,7 @@ import Data.Fuzzi.Distribution
 import Data.Fuzzi.EDSL
 import Data.Fuzzi.Interp
 import Data.Fuzzi.Logging
-import Data.Fuzzi.Rosette hiding (Bucket, Epsilon)
+import Data.Fuzzi.Rosette hiding (Bucket, Epsilon, isOk, isFailed)
 import Data.Fuzzi.Symbol
 import Data.Fuzzi.Types
 import Data.Kind
@@ -24,6 +24,7 @@ import Test.QuickCheck
 import Test.QuickCheck.Monadic
 import Type.Reflection
 import qualified Data.Fuzzi.PrettyPrint as PP
+import qualified Data.Fuzzi.Rosette as R
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
 import qualified Data.Set as SS
@@ -283,10 +284,11 @@ expectDPRosette' :: ( IOConstraints m
                     )
                  -> PropertyM IO ()
 expectDPRosette' logHandler eps ntrials (left, right) = do
-  success <- (run . logHandler) $ do
+  results <- (run . logHandler) $ do
     buckets <- profile ntrials left
     check eps (map snd $ M.toList buckets) right
-  Test.QuickCheck.Monadic.assert success
+  run (print results)
+  Test.QuickCheck.Monadic.assert (all R.isOk results)
 
 expectDPRosette :: ( Typeable concrete
                     , Typeable symbolic

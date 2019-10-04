@@ -33,7 +33,6 @@ import qualified Z3.Base as Z3
 
 data CouplingInfo = CouplingInfo {
   _ciTraceIndex :: IntExpr
-  , _ciTotalCost :: RealExpr
   , _ciCouplingConstraints :: BoolExpr
   } deriving (Show, Eq, Ord, Generic)
 
@@ -51,6 +50,7 @@ data SymbolicState = SymbolicState {
   , _ssAliasBoolPrefix :: String
   , _ssSymbolicSamplePrefix :: String
   , _ssSymbolicShiftArray :: ArrayDecl RealExpr
+  , _ssSymbolicCostArray :: ArrayDecl RealExpr
   , _ssTraceSampleArray :: ArrayDecl RealExpr
   , _ssTraceCenterArray :: ArrayDecl RealExpr
   , _ssTraceWidthArray :: ArrayDecl RealExpr
@@ -75,12 +75,13 @@ dummyState =
     array
     array
     array
+    array
     0
     (dummyCouplingInfo :| [])
     S.empty
     -- (PP.MkSomeFuzzi (Lit 1 :: Fuzzi Int))
   where array = newArrayDecl getRealExpr (RealExpr k_FLOAT_TOLERANCE) [] 0
-        dummyCouplingInfo = CouplingInfo 0 0 (bool True)
+        dummyCouplingInfo = CouplingInfo 0 (bool True)
 
 data RosetteException = ComputationAborted AbortException
                       | BucketSizeMismatch [Int]
@@ -97,6 +98,8 @@ newtype RosetteT m a =
     via (ExceptT RosetteException (StateT SymbolicState m))
   deriving ( MonadState SymbolicState
            , MonadError RosetteException
+           , MonadCatch
+           , MonadMask
            )
     via (ExceptT RosetteException (StateT SymbolicState m))
 
@@ -118,11 +121,25 @@ instance Monad m => Semigroup (AllSat m) where
 instance Monad m => Monoid (AllSat m) where
   mempty = AllSat (return (bool True))
 
-runRosetteT :: SymbolicState -> RosetteT m a -> m (Either RosetteException a, SymbolicState)
+runRosetteT :: SymbolicState
+            -> RosetteT m a
+            -> m (Either RosetteException a, SymbolicState)
 runRosetteT init =
   (flip runStateT init) . runExceptT . runRosetteT_
 
 type Epsilon = Double
+
+data SolverResult =
+  Ok Epsilon
+  | Failed
+  deriving (Show, Eq, Ord)
+
+isOk :: SolverResult -> Bool
+isOk (Ok _) = True
+isOk _      = False
+
+isFailed :: SolverResult -> Bool
+isFailed  = not . isOk
 
 check :: ( MonadIO m
          , MonadLogger m
@@ -135,10 +152,9 @@ check :: ( MonadIO m
       => Epsilon
       -> [Bucket r]
       -> Fuzzi (RosetteT m a)
-      -> m Bool
-check eps buckets prog = do
-  rs <- mapM (\bkt -> runWithBucket eps bkt prog) buckets
-  return (all id rs)
+      -> m [SolverResult]
+check eps buckets prog =
+  mapM (\bkt -> runWithBucket eps bkt prog) buckets
 
 runWithBucket :: ( MonadIO m
                  , MonadLogger m
@@ -151,7 +167,7 @@ runWithBucket :: ( MonadIO m
               => Epsilon
               -> Bucket r
               -> Fuzzi (RosetteT m a)
-              -> m Bool
+              -> m SolverResult
 runWithBucket eps bucket prog = runWithBucket' eps bucket (evalM prog)
 
 runWithBucket' :: ( MonadIO m
@@ -164,7 +180,7 @@ runWithBucket' :: ( MonadIO m
                => Epsilon
                -> Bucket r
                -> RosetteT m (GuardedSymbolicUnion a)
-               -> m Bool
+               -> m SolverResult
 runWithBucket' eps bucket action = do
   !start <- liftIO $ getCurrentTime
   (ctx, solver)  <- z3Init
@@ -173,7 +189,7 @@ runWithBucket' eps bucket action = do
         return Nothing
   maybeArraysAndCondition <- (Just <$> coupleBucket ctx solver eps bucket action) `catch` handler
   case maybeArraysAndCondition of
-    Just cond -> do
+    Just (costSum, cond) -> do
       z3Ast <- symbolicExprToZ3AST ctx (getBoolExpr cond)
       let condPretty = pretty (getBoolExpr cond)
       label <- liftIO $ Z3.mkFreshBoolVar ctx condPretty
@@ -184,9 +200,15 @@ runWithBucket' eps bucket action = do
       !solverReturnedTime <- liftIO $ getCurrentTime
       $(logInfo) (pack $ "solver took " ++ show (solverReturnedTime `diffUTCTime` constraintGenerationEndTime))
       case r of
-        Z3.Sat -> return True
-        _      -> return False
-    Nothing -> return False
+        Z3.Sat -> do
+          model <- liftIO $ Z3.solverGetModel ctx solver
+          costAst <- symbolicExprToZ3AST ctx (getRealExpr costSum)
+          maybeCost <- liftIO $ Z3.evalReal ctx model costAst
+          case maybeCost of
+            Just (fromRational -> cost) -> return (Ok cost)
+            _ -> throwM (InternalError "failed to retrieve total cost from SMT model")
+        _ -> return Failed
+    Nothing -> return Failed
 
 -- |For each result and trace value in the bucket, we need to find a symbolic
 -- result and trace that is equal to the concrete result, and couples with the
@@ -205,9 +227,10 @@ coupleBucket :: ( Monad m
              -> Epsilon
              -> Bucket r
              -> RosetteT m (GuardedSymbolicUnion a)
-             -> m BoolExpr
+             -> m (RealExpr, BoolExpr)
 coupleBucket ctx solver eps bucket symbolicResults = do
   let shiftArrayName = "shift"
+  let costArrayName = "cost"
   let bucketLengths = map (length . snd) bucket
   len <-
     case bucketLengths of
@@ -218,7 +241,13 @@ coupleBucket ctx solver eps bucket symbolicResults = do
 
   let shiftSymbols = map (\idx -> sReal $ shiftArrayName ++ show idx) [0..len-1]
   let shiftArray = newArrayDecl getRealExpr (RealExpr k_FLOAT_TOLERANCE) shiftSymbols 0
-  runAllSat $ forEach (zip [0..] bucket) $ forEachConcrete ctx solver shiftArray
+
+  let costSymbols = map (\idx -> sReal $ costArrayName ++ show idx) [0..len-1]
+  let costArray = newArrayDecl getRealExpr (RealExpr k_FLOAT_TOLERANCE) costSymbols 0
+  let costSum = sumArray costArray
+
+  cond <- runAllSat $ forEach (zip [0..] bucket) $ forEachConcrete ctx solver costArray shiftArray
+  return (costSum, cond `and` costSum %<= double eps)
   where forEach :: Monoid m => [a] -> (a -> m) -> m
         forEach = flip foldMap
 
@@ -233,11 +262,9 @@ coupleBucket ctx solver eps bucket symbolicResults = do
 
           let coupling = NL.head $ symbolicState ^. couplingInfo
           let equality = concreteResult `symEq` symResult
-          let costCond = (coupling ^. totalCost) %<= (double eps)
           let asserts  = S.foldr and (bool True) (symbolicState ^. assertions)
           let cond     = equality
                          `and` guardCond
-                         `and` costCond
                          `and` (coupling ^. couplingConstraints)
                          `and` asserts
           -- $(logDebug) (pack $ "============possible world " ++ show (concreteRunIdx, idx) ++ "============")
@@ -252,7 +279,7 @@ coupleBucket ctx solver eps bucket symbolicResults = do
 
         forEachConcrete
           ctx solver
-          shiftArray (runIdx :: Integer, (concreteResult, trace)) = AllSat $ do
+          costArray shiftArray (runIdx :: Integer, (concreteResult, trace)) = AllSat $ do
 
           let runPrefix = "run_" ++ (show runIdx)
           let runSymbolicPrefix = runPrefix ++ "_symbolic"
@@ -283,6 +310,7 @@ coupleBucket ctx solver eps bucket symbolicResults = do
           -- a guarded symbolic union of symbolic results
           let state = dummyState & symbolicSamplePrefix .~ runSymbolicSample
                                  & symbolicShiftArray   .~ shiftArray
+                                 & symbolicCostArray    .~ costArray
                                  & traceSampleArray     .~ sampleArray
                                  & traceCenterArray     .~ centerArray
                                  & traceWidthArray      .~ widthArray
@@ -308,10 +336,8 @@ mergeCouplingInfo :: BoolExpr -> CouplingInfo -> CouplingInfo -> CouplingInfo
 mergeCouplingInfo cond left right =
   CouplingInfo
     (IntExpr $ iteCond (coerce $ left ^. traceIndex) (coerce $ right ^. traceIndex))
-    (RealExpr tol $ iteCond (getRealExpr $ left ^. totalCost) (getRealExpr $ right ^. totalCost))
     (BoolExpr $ iteCond (coerce $ left ^. couplingConstraints) (coerce $ right ^. couplingConstraints))
-  where tol = max (getTolerance (left ^. totalCost)) (getTolerance (right ^. totalCost))
-        iteCond = ite' (coerce cond)
+  where iteCond = ite' (coerce cond)
 
 pushCouplingInfo :: MonadState SymbolicState m => m ()
 pushCouplingInfo = do
@@ -338,11 +364,6 @@ setTraceIndex :: MonadState SymbolicState m => IntExpr -> m ()
 setTraceIndex idx = do
   info <- gets (NL.head . (view couplingInfo))
   replaceCouplingInfo (info & traceIndex .~ idx)
-
-incTotalCost :: MonadState SymbolicState m => RealExpr -> m ()
-incTotalCost cost = do
-  info <- gets (NL.head . (view couplingInfo))
-  replaceCouplingInfo (info & totalCost %~ (+cost))
 
 conjunctCouplingConstraint :: MonadState SymbolicState m => BoolExpr -> m ()
 conjunctCouplingConstraint cond = do
@@ -377,6 +398,7 @@ laplaceRosette' tolerance symCenter symWidth = do
   sampleName <- gets (view symbolicSamplePrefix)
 
   shiftArray  <- gets (view symbolicShiftArray)
+  costArray   <- gets (view symbolicCostArray)
   sampleArray <- gets (view traceSampleArray)
   centerArray <- gets (view traceCenterArray)
   widthArray  <- gets (view traceWidthArray)
@@ -386,6 +408,7 @@ laplaceRosette' tolerance symCenter symWidth = do
   let sample         = at sampleArray idx
   let center         = at centerArray idx
   let width          = at widthArray  idx
+  let cost           = at costArray   idx
 
   let symbolicCost   = (abs (center + shift - symCenter)) / (double symWidth)
   let couplingAssertion = if tolerance == 0
@@ -395,7 +418,7 @@ laplaceRosette' tolerance symCenter symWidth = do
 
   traceLength <- gets (view traceSize)
 
-  incTotalCost symbolicCost
+  conjunctCouplingConstraint (cost %>= symbolicCost)
   conjunctCouplingConstraint (idx %< traceLength)
   conjunctCouplingConstraint widthIdenticalAssertion
   conjunctCouplingConstraint couplingAssertion

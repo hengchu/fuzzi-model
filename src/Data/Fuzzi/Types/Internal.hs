@@ -479,6 +479,9 @@ at (MkArrayDecl _ array def) (tryEvalInt -> Just idx) =
     Nothing -> def
 at (MkArrayDecl indexFun _ _) idx = indexFun idx
 
+sumArray :: Num a => ArrayDecl a -> a
+sumArray (MkArrayDecl _ vals _) = sum vals
+
 k_FLOAT_TOLERANCE :: Rational
 k_FLOAT_TOLERANCE = 1e-6
 
