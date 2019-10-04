@@ -66,7 +66,18 @@ smartSumPrivacyTest xs =
   monadicIO $
     expectDP
       2.0
-      500
+      100
+      ( reify . smartSum . map realToFrac $ left xs
+      , reify . smartSum . map realToFrac $ right xs
+      )
+
+smartSumPrivacyTestRosette :: L1List Double -> Property
+smartSumPrivacyTestRosette xs =
+  label ("smartsum input size: " ++ show (length xs)) $
+  monadicIO $
+    expectDPRosetteVerbose
+      2.0
+      100
       ( reify . smartSum . map realToFrac $ left xs
       , reify . smartSum . map realToFrac $ right xs
       )
@@ -105,11 +116,11 @@ rnmPrivacyTestRosette xs = label ("rnm input size: " ++ show (length xs)) $
 rnmGapPrivacyTest :: PairWiseL1List Double -> Property
 rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $
   monadicIO $
-    expectDP
+    expectDPRosette
       2.0
-      500
-      ( reify . reportNoisyMaxGap . map realToFrac $ left xs
-      , reify . reportNoisyMaxGap . map realToFrac $ right xs
+      100
+      ( reify . reportNoisyMaxGapOpt @Integer . map realToFrac $ left xs
+      , reify . reportNoisyMaxGapOpt @IntExpr . map realToFrac $ right xs
       )
 
 rnmNotPrivateTest :: Property
@@ -262,6 +273,10 @@ prop_rnmBuggyIsNotDifferentiallyPrivate = rnmNotPrivateTest
 prop_smartSumIsDifferentiallyPrivate :: Property
 prop_smartSumIsDifferentiallyPrivate =
   forAll (l1List 1.0) smartSumPrivacyTest
+
+prop_smartSumIsDifferentiallyPrivateRosette :: Property
+prop_smartSumIsDifferentiallyPrivateRosette =
+  forAll (l1List 1.0) smartSumPrivacyTestRosette
 
 prop_prefixSumIsDifferentiallyPrivate :: Property
 prop_prefixSumIsDifferentiallyPrivate =

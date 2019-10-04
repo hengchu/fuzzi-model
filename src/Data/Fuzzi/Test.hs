@@ -266,7 +266,7 @@ expectDP' logHandler eps ntrials (left, right) = do
   Test.QuickCheck.Monadic.assert success
 
 expectDPRosette' :: ( IOConstraints m
-                    , MonadCatch m
+                    , MonadMask m
                     , Typeable m
                     , Typeable concrete
                     , Typeable symbolic

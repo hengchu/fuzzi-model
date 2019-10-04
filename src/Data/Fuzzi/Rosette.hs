@@ -103,6 +103,9 @@ newtype RosetteT m a =
            )
     via (ExceptT RosetteException (StateT SymbolicState m))
 
+instance MonadTrans RosetteT where
+  lift = RosetteT . lift . lift
+
 type Bucket r = [(r, SS.Seq (Trace Double))]
 
 newtype AnySat m = AnySat { runAnySat :: m BoolExpr }
@@ -144,6 +147,7 @@ isFailed  = not . isOk
 check :: ( MonadIO m
          , MonadLogger m
          , MonadCatch m
+         , MonadMask m
          , Typeable m
          , SEq r a
          , Show r
@@ -159,6 +163,7 @@ check eps buckets prog =
 runWithBucket :: ( MonadIO m
                  , MonadLogger m
                  , MonadCatch m
+                 , MonadMask m
                  , Typeable m
                  , SEq r a
                  , Show r
@@ -425,13 +430,13 @@ laplaceRosette' tolerance symCenter symWidth = do
 
   return symbolicSample
 
-laplaceRosette :: Monad m
+laplaceRosette :: (Monad m)
                => RealExpr
                -> Double
                -> RosetteT m RealExpr
 laplaceRosette = laplaceRosette' k_FLOAT_TOLERANCE
 
-evalM :: (MonadLogger m, Typeable m)
+evalM :: (MonadLogger m, Typeable m, MonadMask m)
       => Fuzzi (RosetteT m a) -> RosetteT m (GuardedSymbolicUnion a)
 evalM (Return a) = return (pure $ evalPure a)
 evalM (Sequence a b) = do
@@ -444,20 +449,28 @@ evalM (Bind a f) = {-# SCC "evalM_Bind" #-} do
   return (joinGuardedSymbolicUnion ub)
 evalM (IfM cond a b) = {-# SCC "evalM_IfM" #-} do
   let cond' = evalPure cond
+  let acquire = pushCouplingInfo
+  let release _ _ = popCouplingInfo
 
-  pushCouplingInfo
-  a' <- evalM a
-  infoA <- popCouplingInfo
+  (maybeA, infoA) <-
+    generalBracket acquire release (const $ Just <$> evalM a)
+  (maybeB, infoB) <-
+    generalBracket acquire release (const $ Just <$> evalM b)
 
-  pushCouplingInfo
-  b' <- evalM b
-  infoB <- popCouplingInfo
-
-  replaceCouplingInfo (mergeCouplingInfo cond' infoA infoB)
-  mergeUnionM cond' a' b'
+  case (maybeA, maybeB) of
+    (Just a', Just b') -> do
+      replaceCouplingInfo (mergeCouplingInfo cond' infoA infoB)
+      mergeUnionM cond' a' b'
+    (Just a', _) -> do
+      replaceCouplingInfo infoA
+      return a'
+    (_, Just b') -> do
+      replaceCouplingInfo infoB
+      return b'
+    (_, _) -> do
+      $(logError) "both branch leads to abort"
+      throwM (AbortException "both branches of ifM abort")
 evalM (Abort reason) = do
-  -- let msg = pack ("computation may diverge due to reason: " ++ reason)
-  -- $(logWarn) msg
   throwM (AbortException reason)
 evalM (Laplace' tolerance center width) = {-# SCC "evalM_Laplace'" #-} do
   sample <- laplace' tolerance (evalPure center) width
@@ -471,8 +484,13 @@ evalM (Gaussian' tolerance center width) = do
 evalM (Gaussian center width) = do
   sample <- gaussian (evalPure center) width
   return (pure sample)
+evalM (If cond a b) =
+  if (toBool $ evalPure cond)
+  then evalM a
+  else evalM b
 evalM other =
-  error $ "evalM: received a non-monadic Fuzzi construct " ++ show (PP.MkSomeFuzzi other)
+  throwError . InternalError
+  $ "evalM: received a non-monadic Fuzzi construct " ++ show (PP.MkSomeFuzzi other)
 
 evalPure :: FuzziType a => Fuzzi a -> a
 evalPure = eval
@@ -485,18 +503,18 @@ instance (Monad m, Typeable m) => MonadDist (RosetteT m) where
   gaussian  = error "not implemented"
   gaussian' = error "not implemented"
 
-instance (Monad m, Typeable m) => MonadAssert (RosetteT m) where
+instance (Monad m, MonadThrow m, Typeable m) => MonadAssert (RosetteT m) where
   type BoolType (RosetteT m) = BoolExpr
   assertTrue cond =
     assertions %= S.insert cond
 
-instance Monad m => MonadThrow (RosetteT m) where
+instance (Monad m, MonadThrow m) => MonadThrow (RosetteT m) where
   throwM (exc :: e) =
     case eqTypeRep (typeRep @e) (typeRep @AbortException) of
-      Just HRefl -> throwError (ComputationAborted exc)
+      Just HRefl -> lift $ throwM (ComputationAborted exc)
       _          -> throwError (InternalError ("unexpected exception: " ++ show exc))
 
-instance (Monad m, Typeable m) => MonadSymbolicMerge (RosetteT m) where
+instance (Monad m, MonadThrow m, Typeable m) => MonadSymbolicMerge (RosetteT m) where
   -- no point in aliasing something twice
   alias bool@(BoolExpr (BoolVar _)) = return bool
   alias bool = do

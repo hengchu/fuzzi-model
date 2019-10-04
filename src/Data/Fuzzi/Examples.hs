@@ -115,6 +115,43 @@ reportNoisyMaxGapAux (xNoised:xs) lastIdx maxIdx currMax currRunnerUp = do
            (reportNoisyMaxGapAux xs thisIdx maxIdx currMax currRunnerUp)
       )
 
+reportNoisyMaxGapOpt :: forall int m a.
+                        (FuzziLang m a, FuzziType int, Numeric int)
+                     => [Fuzzi a]
+                     -> Mon m (Fuzzi int, Fuzzi a)
+reportNoisyMaxGapOpt []  = error "reportNoisyMaxGap received empty input"
+reportNoisyMaxGapOpt [_] = error "reportNoisyMaxGap received only one input"
+reportNoisyMaxGapOpt (x:y:xs) = do
+  xNoised <- lap x 1.0
+  yNoised <- lap y 1.0
+  xsNoised <- mapM (`lap` 1.0) xs
+  (maxIdx, (currMax, currRunnerUp)) <-
+    ifM (xNoised %> yNoised)
+        (return (0, (xNoised, yNoised)))
+        (return (1, (yNoised, xNoised)))
+  reportNoisyMaxGapAuxOpt xsNoised 1 maxIdx currMax currRunnerUp
+
+reportNoisyMaxGapAuxOpt :: forall int m a.
+                           (FuzziLang m a, FuzziType int, Numeric int)
+                        => [Fuzzi a]             -- ^input data
+                        -> Fuzzi int             -- ^last iteration index
+                        -> Fuzzi int             -- ^current max index
+                        -> Fuzzi a               -- ^current maximum
+                        -> Fuzzi a               -- ^current runner-up
+                        -> Mon m (Fuzzi int, Fuzzi a)
+reportNoisyMaxGapAuxOpt []           _       maxIdx currMax currRunnerUp =
+  return (maxIdx, currMax - currRunnerUp)
+reportNoisyMaxGapAuxOpt (xNoised:xs) lastIdx maxIdx currMax currRunnerUp = do
+  let thisIdx = lastIdx + 1
+  (maxIdx', (currMax', currRunnerUp')) <-
+    ifM (xNoised %> currMax)
+        (return (thisIdx, (xNoised, currMax)))
+        (ifM (xNoised %> currRunnerUp)
+             (return (maxIdx, (currMax, xNoised)))
+             (return (maxIdx, (currMax, currRunnerUp)))
+        )
+  reportNoisyMaxGapAuxOpt xs thisIdx maxIdx' currMax' currRunnerUp'
+
 reportNoisyMaxBuggy :: forall m a.
                        (FuzziLang m a)
                     => [Fuzzi a]
