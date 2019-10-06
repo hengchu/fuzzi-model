@@ -75,7 +75,7 @@ smartSumPrivacyTestRosette :: L1List Double -> Property
 smartSumPrivacyTestRosette xs =
   label ("smartsum input size: " ++ show (length xs)) $
   monadicIO $
-    expectDPRosetteVerbose
+    expectDPRosette
       2.0
       100
       ( reify . smartSum . map realToFrac $ left xs
@@ -117,7 +117,7 @@ rnmGapPrivacyTest :: PairWiseL1List Double -> Property
 rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $
   monadicIO $
     expectDPRosette
-      2.0
+      4.0
       100
       ( reify . reportNoisyMaxGapOpt @Integer . map realToFrac $ left xs
       , reify . reportNoisyMaxGapOpt @IntExpr . map realToFrac $ right xs
@@ -154,6 +154,17 @@ sparseVectorPrivacyTest xs =
       500
       ( reify . (\xs -> sparseVector xs 2 0) . map realToFrac $ left xs
       , reify . (\xs -> sparseVector xs 2 0) . map realToFrac $ left xs
+      )
+
+sparseVectorPrivacyTestRosette :: PairWiseL1List Double -> Property
+sparseVectorPrivacyTestRosette xs =
+  label ("sparseVector input length: " ++ show (length xs)) $
+  monadicIO $
+    expectDPRosette
+      1.0
+      500
+      ( reify . (\xs -> sparseVectorOpt @Integer xs 2 0) . map realToFrac $ left xs
+      , reify . (\xs -> sparseVectorOpt @IntExpr xs 2 0) . map realToFrac $ left xs
       )
 
 sparseVectorGapPrivacyTest :: PairWiseL1List Double -> Property
@@ -289,6 +300,10 @@ prop_smartSumBuggyIsNotDifferentiallyPrivate =
 prop_sparseVectorIsDifferentiallyPrivate :: Property
 prop_sparseVectorIsDifferentiallyPrivate =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 sparseVectorPrivacyTest
+
+prop_sparseVectorIsDifferentiallyPrivateRosette :: Property
+prop_sparseVectorIsDifferentiallyPrivateRosette =
+  forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 sparseVectorPrivacyTestRosette
 
 prop_sparseVectorBuggyIsNotDifferentiallyPrivate :: Property
 prop_sparseVectorBuggyIsNotDifferentiallyPrivate =

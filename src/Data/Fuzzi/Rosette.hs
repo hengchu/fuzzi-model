@@ -447,6 +447,8 @@ evalM (Bind a f) = {-# SCC "evalM_Bind" #-} do
   ua <- evalM a
   ub <- mapM (evalM . f . Lit) ua
   return (joinGuardedSymbolicUnion ub)
+evalM (IfM ((tryEvalBool . evalPure) -> Just True) a _) = evalM a
+evalM (IfM ((tryEvalBool . evalPure) -> Just False) _ b) = evalM b
 evalM (IfM cond a b) = {-# SCC "evalM_IfM" #-} do
   let cond' = evalPure cond
   let acquire = pushCouplingInfo
@@ -462,9 +464,11 @@ evalM (IfM cond a b) = {-# SCC "evalM_IfM" #-} do
       replaceCouplingInfo (mergeCouplingInfo cond' infoA infoB)
       mergeUnionM cond' a' b'
     (Just a', _) -> do
+      $(logWarn) ("false branch lead to abort, ignoring its results...")
       replaceCouplingInfo infoA
       return a'
     (_, Just b') -> do
+      $(logWarn) ("true branch lead to abort, ignoring its results...")
       replaceCouplingInfo infoB
       return b'
     (_, _) -> do

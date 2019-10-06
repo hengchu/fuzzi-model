@@ -241,6 +241,8 @@ instance SymbolicRepr a => SymbolicRepr (PrivTree1D a) where
   merge = undefined
 
 instance SymbolicRepr a => SymbolicRepr [a] where
+  reduceable lefts rights =
+    (length lefts == length rights) && (all (uncurry reduceable) $ zip lefts rights)
   merge cond lefts rights
     | length lefts == length rights =
       let unions = zipWith (merge cond) lefts rights
