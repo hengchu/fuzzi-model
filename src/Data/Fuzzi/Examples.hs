@@ -276,7 +276,7 @@ sparseVectorAuxOpt :: forall int m a.
                    -> Mon m (Fuzzi [int])
 sparseVectorAuxOpt []     _n _threshold acc = return acc
 sparseVectorAuxOpt (x:xs)  n  threshold acc =
-  ifM (n %<= 0)
+  if_ (n %<= 0)
       (return acc)
       (do (n', acc') <-
             ifM (x %> threshold)

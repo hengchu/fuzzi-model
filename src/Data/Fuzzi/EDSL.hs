@@ -35,6 +35,7 @@ import Data.Coerce
 import Type.Reflection (Typeable, typeRep, eqTypeRep, (:~~:)(..))
 import Data.Fuzzi.Types hiding (SymbolicExpr(..))
 import Control.Monad.Catch
+import Data.Fuzzi.IfCxt
 
 newtype Mon m a = Mon { runMon :: forall b. (FuzziType b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
   deriving (Functor)
@@ -58,7 +59,7 @@ data Fuzzi (a :: *) where
   Sequence    :: (Monad m, Typeable m, FuzziType a) => Fuzzi (m ()) -> Fuzzi (m a) -> Fuzzi (m a)
   Bind        :: (Monad m, Typeable m, FuzziType a, FuzziType b) => Fuzzi (m a) -> (Fuzzi a -> Fuzzi (m b)) -> Fuzzi (m b)
   Lit         :: (FuzziType a) => a -> Fuzzi a
-  If          :: (ConcreteBoolean bool, FuzziType bool) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
+  If          :: (FuzziType bool, IfCxt (ConcreteBoolean bool)) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
   IfM         :: (FuzziType a, Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a) -> Fuzzi (m a)
   Laplace     :: (Distribution m a) =>             Fuzzi a -> Double -> Fuzzi (m a)
   Laplace'    :: (Distribution m a) => Rational -> Fuzzi a -> Double -> Fuzzi (m a)
@@ -154,7 +155,7 @@ false = Lit False
 fromIntegral_ :: (FuzziType a, FuzziType b, Integral a, Num b) => Fuzzi a -> Fuzzi b
 fromIntegral_ = NumCast
 
-if_ :: (Syntactic a, ConcreteBoolean bool, FuzziType bool) => Fuzzi bool -> a -> a -> a
+if_ :: (Syntactic a, FuzziType bool, IfCxt (ConcreteBoolean bool)) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
 
 ifM :: ( Syntactic1 m

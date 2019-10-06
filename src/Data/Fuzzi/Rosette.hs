@@ -13,11 +13,13 @@ import Data.Coerce
 import Data.Foldable hiding (and, or)
 import Data.Fuzzi.Distribution (Trace(..))
 import Data.Fuzzi.EDSL
+import Data.Fuzzi.IfCxt
 import Data.Fuzzi.Interp
 import Data.Fuzzi.Logging
 import Data.Fuzzi.Types
 import Data.Fuzzi.Z3
 import Data.List.NonEmpty (NonEmpty(..), (<|))
+import Data.Proxy
 import Data.Text (pack)
 import Data.Time.Clock
 import GHC.Generics
@@ -195,6 +197,7 @@ runWithBucket' eps bucket action = do
   maybeArraysAndCondition <- (Just <$> coupleBucket ctx solver eps bucket action) `catch` handler
   case maybeArraysAndCondition of
     Just (costSum, cond) -> do
+      -- $(logError) (pack $ show cond)
       z3Ast <- symbolicExprToZ3AST ctx (getBoolExpr cond)
       let condPretty = pretty (getBoolExpr cond)
       label <- liftIO $ Z3.mkFreshBoolVar ctx condPretty
@@ -488,10 +491,11 @@ evalM (Gaussian' tolerance center width) = do
 evalM (Gaussian center width) = do
   sample <- gaussian (evalPure center) width
   return (pure sample)
-evalM (If cond a b) =
-  if (toBool $ evalPure cond)
-  then evalM a
-  else evalM b
+evalM (If (cond :: Fuzzi bool) a b) = do
+  let cond' = evalPure cond
+  ifCxt (Proxy :: Proxy (ConcreteBoolean bool))
+        (if toBool cond' then evalM a else evalM b)
+        (liftM2 union (evalM a) (evalM b))
 evalM other =
   throwError . InternalError
   $ "evalM: received a non-monadic Fuzzi construct " ++ show (PP.MkSomeFuzzi other)

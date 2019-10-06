@@ -26,7 +26,12 @@ eval (Return a) = return (eval a)
 eval (Sequence a b) = eval a >> (eval b)
 eval (Bind a f) = eval a >>= (eval . f . Lit)
 eval (Lit a) = a
-eval (If cond t f) = if toBool (eval cond) then eval t else eval f
+eval (If (cond :: Fuzzi bool) t f) =
+  ifCxt (Proxy :: Proxy (ConcreteBoolean bool))
+        (if toBool (eval cond) then eval t else eval f)
+        (error ("The type "
+                ++ show (typeRep @bool)
+                ++ " does not support concrete execution"))
 eval (IfM (cond :: Fuzzi bool) t f) =
   ifCxt (Proxy :: Proxy (ConcreteBoolean bool))
         (if toBool (eval cond) then eval t else eval f)
