@@ -150,7 +150,7 @@ sparseVectorPrivacyTest xs =
   label ("sparseVector input length: " ++ show (length xs)) $
   monadicIO $
     expectDP
-      1.0
+      0.01
       500
       ( reify . (\xs -> sparseVector xs 2 0) . map realToFrac $ left xs
       , reify . (\xs -> sparseVector xs 2 0) . map realToFrac $ left xs
@@ -161,10 +161,10 @@ sparseVectorPrivacyTestRosette xs =
   label ("sparseVector input length: " ++ show (length xs)) $
   monadicIO $
     expectDPRosette
-      0.01
+      1.0
       500
       ( reify . (\xs -> sparseVectorOpt @Integer xs 2 0) . map realToFrac $ left xs
-      , reify . (\xs -> sparseVectorOpt @IntExpr xs 2 0) . map realToFrac $ left xs
+      , reify . (\(xs :: [Fuzzi RealExpr]) -> sparseVectorOpt @IntExpr xs 2 0) . map realToFrac $ left xs
       )
 
 sparseVectorGapPrivacyTest :: PairWiseL1List Double -> Property

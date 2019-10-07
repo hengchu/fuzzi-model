@@ -276,13 +276,45 @@ sparseVectorAuxOpt :: forall int m a.
                    -> Mon m (Fuzzi [int])
 sparseVectorAuxOpt []     _n _threshold acc = return acc
 sparseVectorAuxOpt (x:xs)  n  threshold acc =
-  if_ (n %<= 0)
+  ifM (n %<= 0)
       (return acc)
       (do (n', acc') <-
             ifM (x %> threshold)
                 (return (n-1, acc `snoc` 1))
                 (return (n,   acc `snoc` 0))
           sparseVectorAuxOpt xs n' threshold acc'
+      )
+
+sparseVectorBuggyOpt :: forall m a.
+                        (FuzziLang m a)
+                     => [Fuzzi a] -- ^ input data
+                     -> Int       -- ^ maximum number of above thresholds
+                     -> Fuzzi a   -- ^ threshold
+                     -> Mon m (Fuzzi [a])
+sparseVectorBuggyOpt xs n threshold = do
+  noisedThreshold <- lap threshold 2.0
+  noisedXs <- mapM (`lap` (4.0 * fromIntegral n)) xs
+  sparseVectorAuxOpt noisedXs (fromIntegral n) noisedThreshold nil
+
+sparseVectorBuggyAuxOpt :: forall int m a.
+                           ( FuzziLang m a
+                           , FuzziType int
+                           , Numeric   int
+                           , CmpResult int ~ CmpResult a)
+                        => [Fuzzi a]
+                        -> Fuzzi int
+                        -> Fuzzi a
+                        -> Fuzzi [a]
+                        -> Mon m (Fuzzi [a])
+sparseVectorBuggyAuxOpt []     _n _threshold acc = return acc
+sparseVectorBuggyAuxOpt (x:xs)  n  threshold acc =
+  if_ (n %<= 0)
+      (return acc)
+      (do (n', acc') <-
+            ifM (x %> threshold)
+                (return (n-1, acc `snoc` x))
+                (return (n,   acc `snoc` 0))
+          sparseVectorBuggyAuxOpt xs n' threshold acc'
       )
 
 sparseVectorGap :: (FuzziLang m a)
