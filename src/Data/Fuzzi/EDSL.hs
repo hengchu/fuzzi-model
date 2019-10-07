@@ -33,12 +33,12 @@ module Data.Fuzzi.EDSL (
 
 import Data.Coerce
 import Type.Reflection (Typeable, typeRep, eqTypeRep, (:~~:)(..))
-import Data.Fuzzi.Types
+import Data.Fuzzi.Types hiding (SymbolicExpr(..))
 import Control.Monad.Catch
+import Data.Fuzzi.IfCxt
 
-newtype Mon m a = Mon { runMon :: forall b. (Typeable b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
-  deriving (Functor)--, Applicative, Monad)
-  -- via (Codensity (Compose Fuzzi m))
+newtype Mon m a = Mon { runMon :: forall b. (FuzziType b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
+  deriving (Functor)
 
 -- |The main typeclass for reification and reflection.
 class Typeable (DeepRepr a) => Syntactic a where
@@ -48,18 +48,18 @@ class Typeable (DeepRepr a) => Syntactic a where
 
 class Syntactic1 (m :: * -> *) where
   type DeepRepr1 m :: * -> *
-  toDeepRepr1   :: (Syntactic a) => m a -> Fuzzi (DeepRepr1 m (DeepRepr a))
+  toDeepRepr1   :: (Syntactic a, FuzziType (DeepRepr a)) => m a -> Fuzzi (DeepRepr1 m (DeepRepr a))
   fromDeepRepr1 :: (Syntactic a, FuzziType (DeepRepr a)) => Fuzzi (DeepRepr1 m (DeepRepr a)) -> m a
 
 data Fuzzi (a :: *) where
-  Lam         :: (FuzziType a, Typeable a, Typeable b) => (Fuzzi a -> Fuzzi b) -> Fuzzi (a -> b)
-  App         :: (Typeable a) => Fuzzi (a -> b) -> Fuzzi a -> Fuzzi b
+  Lam         :: (FuzziType a, FuzziType b) => (Fuzzi a -> Fuzzi b) -> Fuzzi (a -> b)
+  App         :: (FuzziType a, FuzziType b) => Fuzzi (a -> b) -> Fuzzi a -> Fuzzi b
 
-  Return      :: (Monad m, Typeable a) => Fuzzi a -> Fuzzi (m a)
-  Sequence    :: (Monad m, Typeable m, Typeable a) => Fuzzi (m ()) -> Fuzzi (m a) -> Fuzzi (m a)
-  Bind        :: (Monad m, Typeable m, FuzziType a, Typeable b) => Fuzzi (m a) -> (Fuzzi a -> Fuzzi (m b)) -> Fuzzi (m b)
+  Return      :: (Monad m, FuzziType a) => Fuzzi a -> Fuzzi (m a)
+  Sequence    :: (Monad m, Typeable m, FuzziType a) => Fuzzi (m ()) -> Fuzzi (m a) -> Fuzzi (m a)
+  Bind        :: (Monad m, Typeable m, FuzziType a, FuzziType b) => Fuzzi (m a) -> (Fuzzi a -> Fuzzi (m b)) -> Fuzzi (m b)
   Lit         :: (FuzziType a) => a -> Fuzzi a
-  If          :: (ConcreteBoolean bool) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
+  If          :: (FuzziType bool, IfCxt (ConcreteBoolean bool)) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
   IfM         :: (FuzziType a, Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a) -> Fuzzi (m a)
   Laplace     :: (Distribution m a) =>             Fuzzi a -> Double -> Fuzzi (m a)
   Laplace'    :: (Distribution m a) => Rational -> Fuzzi a -> Double -> Fuzzi (m a)
@@ -102,11 +102,11 @@ data Fuzzi (a :: *) where
   Just_      :: (FuzziType a) => Fuzzi a -> Fuzzi (Maybe a)
   Nothing_   :: (FuzziType a) => Fuzzi (Maybe a)
 
-  Pair      :: (Typeable a, Typeable b) => Fuzzi a -> Fuzzi b      -> Fuzzi (a, b)
-  Fst       :: (Typeable a, Typeable b) =>            Fuzzi (a, b) -> Fuzzi a
-  Snd       :: (Typeable a, Typeable b) =>            Fuzzi (a, b) -> Fuzzi b
+  Pair      :: (FuzziType a, FuzziType b) => Fuzzi a -> Fuzzi b      -> Fuzzi (a, b)
+  Fst       :: (FuzziType a, FuzziType b) =>            Fuzzi (a, b) -> Fuzzi a
+  Snd       :: (FuzziType a, FuzziType b) =>            Fuzzi (a, b) -> Fuzzi b
 
-  NumCast   :: (Typeable a, Typeable b, Integral a, Num b) => Fuzzi a -> Fuzzi b
+  NumCast   :: (FuzziType a, FuzziType b, Integral a, Num b) => Fuzzi a -> Fuzzi b
 
   Abort     :: (FuzziType a, Typeable m, MonadThrow m) => String -> Fuzzi (m a)
 
@@ -152,10 +152,10 @@ true = Lit True
 false :: Fuzzi Bool
 false = Lit False
 
-fromIntegral_ :: (Typeable a, Typeable b, Integral a, Num b) => Fuzzi a -> Fuzzi b
+fromIntegral_ :: (FuzziType a, FuzziType b, Integral a, Num b) => Fuzzi a -> Fuzzi b
 fromIntegral_ = NumCast
 
-if_ :: (Syntactic a, ConcreteBoolean bool) => Fuzzi bool -> a -> a -> a
+if_ :: (Syntactic a, FuzziType bool, IfCxt (ConcreteBoolean bool)) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
 
 ifM :: ( Syntactic1 m
@@ -176,13 +176,13 @@ lap' tol c w = fromDeepRepr $ Laplace' tol c w -- Mon ((Bind (Laplace c w)))
 gauss' :: forall m a. Distribution m a => Rational -> Fuzzi a -> Double -> Mon m (Fuzzi a)
 gauss' tol c w = fromDeepRepr $ Gaussian' tol c w --  Mon ((Bind (Gaussian c w)))
 
-pair :: (Syntactic a, Syntactic b) => a -> b -> (a, b)
+pair :: (FuzziType (DeepRepr a), FuzziType (DeepRepr b), Syntactic a, Syntactic b) => a -> b -> (a, b)
 pair a b = fromDeepRepr $ Pair (toDeepRepr a) (toDeepRepr b)
 
-fst_ :: (Typeable a, Typeable b) => Fuzzi (a, b) -> Fuzzi a
+fst_ :: (FuzziType a, FuzziType b) => Fuzzi (a, b) -> Fuzzi a
 fst_ = Fst
 
-snd_ :: (Typeable a, Typeable b) => Fuzzi (a, b) -> Fuzzi b
+snd_ :: (FuzziType a, FuzziType b) => Fuzzi (a, b) -> Fuzzi b
 snd_ = Snd
 
 lit :: (FuzziType a) => a -> Fuzzi a
@@ -397,17 +397,16 @@ instance Monad (Mon m) where
 
 instance ( Syntactic a
          , Syntactic b
-         , Typeable (DeepRepr a)
-         , Typeable (DeepRepr b)) => Syntactic (a, b) where
+         , FuzziType (DeepRepr a)
+         , FuzziType (DeepRepr b)) => Syntactic (a, b) where
   type DeepRepr (a, b) = (DeepRepr a, DeepRepr b)
   toDeepRepr   (a, b)  = Pair (toDeepRepr a) (toDeepRepr b)
   fromDeepRepr pair    = (fromDeepRepr (Fst pair), fromDeepRepr (Snd pair))
 
 instance ( Syntactic a
          , Syntactic b
-         , Typeable (DeepRepr a)
-         , Typeable (DeepRepr b)
-         , FuzziType (DeepRepr a)) => Syntactic (a -> b) where
+         , FuzziType (DeepRepr a)
+         , FuzziType (DeepRepr b)) => Syntactic (a -> b) where
   type DeepRepr (a -> b) = (DeepRepr a -> DeepRepr b)
   toDeepRepr f = Lam (toDeepRepr . f . fromDeepRepr)
   fromDeepRepr f = fromDeepRepr . App f . toDeepRepr
@@ -420,7 +419,6 @@ instance Typeable a => Syntactic (Fuzzi a) where
 instance ( Monad m
          , Syntactic a
          , FuzziType (DeepRepr a)
-         , Typeable (DeepRepr a)
          , Typeable m) => Syntactic (Mon m a) where
   type DeepRepr (Mon m a) = m (DeepRepr a)
   toDeepRepr (Mon m) = m (Return . toDeepRepr)
@@ -471,19 +469,3 @@ instance Boolean a => Boolean (Fuzzi a) where
   and = And
   or  = Or
   neg = Not
-
-{-
-instance ( ConcreteBoolean (TestResult list)
-         , FuzziType (Elem list)
-         , ListLike list
-         ) => ListLike (Fuzzi list) where
-  type Elem (Fuzzi list)         = Fuzzi (Elem list)
-  type TestResult (Fuzzi list)   = Fuzzi (TestResult list)
-  type LengthResult (Fuzzi list) = Fuzzi (LengthResult list)
-  nil   = ListNil
-  cons  = ListCons
-  snoc  = ListSnoc
-  isNil = ListIsNil
-  filter_ f xs = ListFilter (toDeepRepr f) xs
-  length_ = ListLength
--}

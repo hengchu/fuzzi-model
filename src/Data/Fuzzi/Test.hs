@@ -2,8 +2,9 @@ module Data.Fuzzi.Test where
 
 {- HLINT ignore "Use mapM" -}
 
-import Control.Exception
+-- import Control.Exception
 import Control.Lens
+import Control.Monad.Catch
 import Control.Monad.Cont
 import Control.Monad.Except
 import Control.Monad.IO.Unlift
@@ -12,22 +13,21 @@ import Data.Fuzzi.Distribution
 import Data.Fuzzi.EDSL
 import Data.Fuzzi.Interp
 import Data.Fuzzi.Logging
+import Data.Fuzzi.Rosette hiding (Bucket, Epsilon, isOk, isFailed)
 import Data.Fuzzi.Symbol
 import Data.Fuzzi.Types
 import Data.Kind
 import Data.Maybe (isJust)
 import Data.Text (pack)
-import Debug.Trace
+import Data.Time.Clock
 import Test.QuickCheck
 import Test.QuickCheck.Monadic
 import Type.Reflection
-import UnliftIO.Async
 import qualified Data.Fuzzi.PrettyPrint as PP
+import qualified Data.Fuzzi.Rosette as R
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
 import qualified Data.Set as SS
-import Data.Time.Clock
-import Data.Fixed
 
 data TestBundle concrete symbolic = TestBundle {
   _tbConstraints :: SymbolicConstraints
@@ -111,7 +111,7 @@ symExec buckets code = do
   let codes = streamline code
   (errorsAndPaths :: [([SymExecError], (GetProvenance concreteResult, Bucket concreteResult, [(symbolicResult, SymbolicConstraints)]))])
     <- mapM
-    (\(prov, (bucket :: Bucket concreteResult)) -> do
+    (\(prov, bucket :: Bucket concreteResult) -> do
          rs <- mapM (go bucket) codes
          let (errors, paths) = partitionEithers rs
          return (errors, (prov, bucket, paths))
@@ -125,7 +125,7 @@ symExec buckets code = do
   let originalProvenances = SS.fromList $ M.keys buckets
   let droppedProvenances = originalProvenances SS.\\ successfulProvenances
 
-  forM (SS.toList droppedProvenances) $ \p -> do
+  forM_ (SS.toList droppedProvenances) $ \p -> do
     $(logWarn) "dropped this provenance:"
     $(logWarn) (pack (show p))
 
@@ -264,6 +264,64 @@ expectDP' logHandler eps ntrials (left, right) = do
             liftIO $ print $ map (view solverResult) results
             return (all isOk results)
   Test.QuickCheck.Monadic.assert success
+
+expectDPRosette' :: ( IOConstraints m
+                    , MonadMask m
+                    , Typeable m
+                    , Typeable concrete
+                    , Typeable symbolic
+                    , HasProvenance concrete
+                    , ConstraintsWithProvenance Ord concrete
+                    , ConstraintsWithProvenance Show concrete
+                    , Show symbolic
+                    , SEq concrete symbolic
+                    )
+                 => (forall a. m a -> IO a)
+                 -> Epsilon
+                 -> Int
+                 -> ( Fuzzi (TracedDist concrete)
+                    , Fuzzi (RosetteT m symbolic)
+                    )
+                 -> PropertyM IO ()
+expectDPRosette' logHandler eps ntrials (left, right) = do
+  results <- (run . logHandler) $ do
+    buckets <- profile ntrials left
+    check eps (map snd $ M.toList buckets) right
+  run (print results)
+  Test.QuickCheck.Monadic.assert (all R.isOk results)
+
+expectDPRosette :: ( Typeable concrete
+                    , Typeable symbolic
+                    , HasProvenance concrete
+                    , ConstraintsWithProvenance Ord concrete
+                    , ConstraintsWithProvenance Show concrete
+                    , Show symbolic
+                    , SEq concrete symbolic
+                    )
+                 => Epsilon
+                 -> Int
+                 -> ( Fuzzi (TracedDist concrete)
+                    , Fuzzi (RosetteT (LoggingT IO) symbolic)
+                    )
+                 -> PropertyM IO ()
+expectDPRosette = expectDPRosette' runStdoutColoredLoggingWarnT
+
+expectDPRosetteVerbose :: ( Typeable concrete
+                          , Typeable symbolic
+                          , HasProvenance concrete
+                          , ConstraintsWithProvenance Ord concrete
+                          , ConstraintsWithProvenance Show concrete
+                          , Show symbolic
+                          , SEq concrete symbolic
+                          )
+                       => Epsilon
+                       -> Int
+                       -> ( Fuzzi (TracedDist concrete)
+                          , Fuzzi (RosetteT (LoggingT IO) symbolic)
+                          )
+                       -> PropertyM IO ()
+expectDPRosetteVerbose = expectDPRosette' (runStdoutColoredLoggingAboveLevelT LevelInfo)
+
 
 expectDPVerbose :: ( Typeable concrete
                    , Typeable symbolic

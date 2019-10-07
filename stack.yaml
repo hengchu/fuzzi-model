@@ -40,6 +40,8 @@ packages:
 extra-deps:
 - git: https://github.com/hengchu/haskell-z3
   commit: 8719d05b1caef73676d389f5ee38624ccdd89969
+- git: https://github.com/s5k6/maxBipartiteMatching.git
+  commit: 5c9781f0d9689aba215fb592a9fdfd5f5c1eeb1c
 #- '../haskell-z3'
 
 

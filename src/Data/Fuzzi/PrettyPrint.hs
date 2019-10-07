@@ -1,10 +1,12 @@
 module Data.Fuzzi.PrettyPrint where
 
-import Data.Text (Text)
-import Prelude hiding ((<>))
+import Control.DeepSeq
 import Control.Lens
 import Control.Monad.State.Strict
 import Data.Fuzzi.EDSL
+import Data.Fuzzi.Types (commaSep)
+import GHC.Generics
+import Prelude hiding ((<>))
 import Text.PrettyPrint
 import qualified Data.Map.Strict as M
 
@@ -39,9 +41,6 @@ prettySomeFuzzi (MkSomeFuzzi a) = render $ runPrettyPrint (pretty a)
 
 runPrettyPrint :: PrettyPrintM a -> a
 runPrettyPrint = flip evalState (PrettyPrintState M.empty) . runPrettyPrintM
-
-commaSep :: Doc -> Doc -> Doc
-commaSep a b = a <> comma <+> b
 
 globalFreshVar :: String -> PrettyPrintM String
 globalFreshVar hint = do
@@ -244,23 +243,3 @@ pretty (Just_ x) = do
   x' <- pretty x
   return $ hsep [text "Just", x']
 pretty Nothing_ = return (text "Nothing")
-
-precedence :: M.Map Text Int
-precedence = M.fromList [("||", 0), ("&&", 1),
-                         ("==", 2),
-                         ("<", 3), ("<=", 3), (">", 3), (">=", 3),
-                         ("+", 4), ("-", 4),
-                         ("*", 5), ("/", 5),
-                         ("app", 1000000) -- function application
-                        ]
-
-fixity :: M.Map Text Int
-fixity = M.fromList [("||", 0),
-                     ("&&", 1),
-                     ("==", 0),
-                     ("<", 0), ("<=", 0),
-                     (">", 0), (">=", 0),
-                     ("+", 1), ("-", 1),
-                     ("*", 1), ("/", 1),
-                     ("app", 1) -- function application
-                    ]

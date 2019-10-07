@@ -1,3 +1,7 @@
+-- I do not like enabling this in general, but the sparseVectorGapOpt example
+-- requires it... So we enable it locally in this file.
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module Data.Fuzzi.Examples where
 
 import Data.Fuzzi.Interface
@@ -45,6 +49,31 @@ reportNoisyMaxAux (xNoised:xs) lastIdx maxIdx currMax = do
       (reportNoisyMaxAux xs thisIdx thisIdx xNoised)
       (reportNoisyMaxAux xs thisIdx maxIdx  currMax)
 
+reportNoisyMaxAuxOpt :: (FuzziLang m a, FuzziType int, Numeric int)
+                     => [Fuzzi a]
+                     -> Fuzzi int
+                     -> Fuzzi int
+                     -> Fuzzi a
+                     -> Mon m (Fuzzi int)
+reportNoisyMaxAuxOpt []           _       maxIdx _       = return maxIdx
+reportNoisyMaxAuxOpt (xNoised:xs) lastIdx maxIdx currMax = do
+  let thisIdx = lastIdx + 1
+  idxAndMax <-
+    ifM (xNoised %> currMax)
+        (return (thisIdx, xNoised))-- reportNoisyMaxAux xs thisIdx thisIdx xNoised)
+        (return (maxIdx, currMax)) -- reportNoisyMaxAux xs thisIdx maxIdx  currMax)
+  reportNoisyMaxAuxOpt xs thisIdx (fst idxAndMax) (snd idxAndMax)
+
+reportNoisyMaxOpt :: forall int m a.
+                     (FuzziLang m a, FuzziType int, Numeric int)
+                  => [Fuzzi a]
+                  -> Mon m (Fuzzi int)
+reportNoisyMaxOpt []     = error "reportNoisyMax received empty input"
+reportNoisyMaxOpt (x:xs) = do
+  xNoised <- lap x 1.0
+  xsNoised <- mapM (`lap` 1.0) xs
+  reportNoisyMaxAuxOpt xsNoised 0 0 xNoised
+
 reportNoisyMax :: forall m a.
                   (FuzziLang m a)
                => [Fuzzi a]
@@ -89,6 +118,37 @@ reportNoisyMaxGapAux (xNoised:xs) lastIdx maxIdx currMax currRunnerUp = do
            (reportNoisyMaxGapAux xs thisIdx maxIdx currMax xNoised)
            (reportNoisyMaxGapAux xs thisIdx maxIdx currMax currRunnerUp)
       )
+
+reportNoisyMaxGapOpt :: forall int m a.
+                        (FuzziLang m a, FuzziType int, Numeric int)
+                     => [Fuzzi a]
+                     -> Mon m (Fuzzi int, Fuzzi a)
+reportNoisyMaxGapOpt []  = error "reportNoisyMaxGap received empty input"
+reportNoisyMaxGapOpt (x:xs) = do
+  xNoised <- lap x 1.0
+  xsNoised <- mapM (`lap` 1.0) xs
+  reportNoisyMaxGapAuxOpt xsNoised 0 0 xNoised xNoised
+
+reportNoisyMaxGapAuxOpt :: forall int m a.
+                           (FuzziLang m a, FuzziType int, Numeric int)
+                        => [Fuzzi a]             -- ^input data
+                        -> Fuzzi int             -- ^last iteration index
+                        -> Fuzzi int             -- ^current max index
+                        -> Fuzzi a               -- ^current maximum
+                        -> Fuzzi a               -- ^current runner-up
+                        -> Mon m (Fuzzi int, Fuzzi a)
+reportNoisyMaxGapAuxOpt []           _       maxIdx currMax currRunnerUp =
+  return (maxIdx, currMax - currRunnerUp)
+reportNoisyMaxGapAuxOpt (xNoised:xs) lastIdx maxIdx currMax currRunnerUp = do
+  let thisIdx = lastIdx + 1
+  (maxIdx', (currMax', currRunnerUp')) <-
+    ifM (xNoised %> currMax)
+        (return (thisIdx, (xNoised, currMax)))
+        (if_ (xNoised %> currRunnerUp)
+             (return (maxIdx, (currMax, xNoised)))
+             (return (maxIdx, (currMax, currRunnerUp)))
+        )
+  reportNoisyMaxGapAuxOpt xs thisIdx maxIdx' currMax' currRunnerUp'
 
 reportNoisyMaxBuggy :: forall m a.
                        (FuzziLang m a)
@@ -188,6 +248,73 @@ sparseVectorAux (x:xs) n threshold acc
           (sparseVectorAux xs (n-1) threshold (acc `snoc` lit True))
           (sparseVectorAux xs n     threshold (acc `snoc` lit False))
 
+sparseVectorOpt :: forall int m a.
+                   ( FuzziLang m a
+                   , FuzziType int
+                   , Numeric   int
+                   , CmpResult int ~ CmpResult a)
+                => [Fuzzi a] -- ^ input data
+                -> Int       -- ^ maximum number of above thresholds
+                -> Fuzzi a   -- ^ threshold
+                -> Mon m (Fuzzi [int])
+sparseVectorOpt xs n threshold = do
+  noisedThreshold <- lap threshold 2.0
+  noisedXs <- mapM (`lap` (4.0 * fromIntegral n)) xs
+  sparseVectorAuxOpt noisedXs (fromIntegral n) noisedThreshold nil
+
+sparseVectorAuxOpt :: forall int m a.
+                      ( FuzziLang m a
+                      , FuzziType int
+                      , Numeric   int
+                      , CmpResult int ~ CmpResult a)
+                   => [Fuzzi a]
+                   -> Fuzzi int
+                   -> Fuzzi a
+                   -> Fuzzi [int]
+                   -> Mon m (Fuzzi [int])
+sparseVectorAuxOpt []     _n _threshold acc = return acc
+sparseVectorAuxOpt (x:xs)  n  threshold acc =
+  if_ (n %<= 0)
+      (return acc)
+      (do (n', acc') <-
+            ifM (x %> threshold)
+                (return (n-1, acc `snoc` 1))
+                (return (n,   acc `snoc` 0))
+          sparseVectorAuxOpt xs n' threshold acc'
+      )
+
+sparseVectorBuggyOpt :: forall m a.
+                        (FuzziLang m a)
+                     => [Fuzzi a] -- ^ input data
+                     -> Int       -- ^ maximum number of above thresholds
+                     -> Fuzzi a   -- ^ threshold
+                     -> Mon m (Fuzzi [a])
+sparseVectorBuggyOpt xs n threshold = do
+  noisedThreshold <- lap threshold 2.0
+  noisedXs <- mapM (`lap` (4.0 * fromIntegral n)) xs
+  sparseVectorAuxOpt noisedXs (fromIntegral n) noisedThreshold nil
+
+sparseVectorBuggyAuxOpt :: forall int m a.
+                           ( FuzziLang m a
+                           , FuzziType int
+                           , Numeric   int
+                           , CmpResult int ~ CmpResult a)
+                        => [Fuzzi a]
+                        -> Fuzzi int
+                        -> Fuzzi a
+                        -> Fuzzi [a]
+                        -> Mon m (Fuzzi [a])
+sparseVectorBuggyAuxOpt []     _n _threshold acc = return acc
+sparseVectorBuggyAuxOpt (x:xs)  n  threshold acc =
+  if_ (n %<= 0)
+      (return acc)
+      (do (n', acc') <-
+            ifM (x %> threshold)
+                (return (n-1, acc `snoc` x))
+                (return (n,   acc `snoc` 0))
+          sparseVectorBuggyAuxOpt xs n' threshold acc'
+      )
+
 sparseVectorGap :: (FuzziLang m a)
                 => [Fuzzi a]
                 -> Int
@@ -211,6 +338,43 @@ sparseVectorGapAux (x:xs)  n  threshold acc
     ifM (x %> threshold)
         (sparseVectorGapAux xs (n-1) threshold (acc `snoc` just (x - threshold)))
         (sparseVectorGapAux xs n     threshold (acc `snoc` nothing))
+
+sparseVectorGapOpt :: forall int m a.
+                      ( FuzziLang m a
+                      , CmpResult int ~ CmpResult a
+                      , Numeric int
+                      , FuzziType int
+                      )
+                   => [Fuzzi a]
+                   -> Int
+                   -> Fuzzi a
+                   -> Mon m (Fuzzi [Maybe a])
+sparseVectorGapOpt xs n threshold = do
+  noisedThreshold <- lap threshold 2.0
+  noisedXs <- mapM (`lap` (4.0 * fromIntegral n)) xs
+  sparseVectorGapAuxOpt noisedXs (fromIntegral n :: Fuzzi int) noisedThreshold nil
+
+sparseVectorGapAuxOpt :: forall int m a.
+                         ( FuzziLang m a
+                         , CmpResult int ~ CmpResult a
+                         , Numeric int
+                         , FuzziType int
+                         )
+                      => [Fuzzi a]
+                      -> Fuzzi int
+                      -> Fuzzi a
+                      -> Fuzzi [Maybe a]
+                      -> Mon m (Fuzzi [Maybe a])
+sparseVectorGapAuxOpt []     _n _threshold acc = return acc
+sparseVectorGapAuxOpt (x:xs)  n  threshold acc =
+    if_ (n %<= 0)
+        (return acc)
+        (do (n', acc') <-
+              ifM (x %> threshold)
+                  (return (n-1, acc `snoc` just (x - threshold)))
+                  (return (n,   acc `snoc` nothing))
+            sparseVectorGapAuxOpt xs n' threshold acc'
+        )
 
 sparseVectorBuggy :: forall m a.
                      (FuzziLang m a)
@@ -375,8 +539,7 @@ simpleCount :: forall m a.
             -> Mon m (Fuzzi a)
 simpleCount xs threshold = do
   let c = length (filter (>= threshold) xs)
-  cNoised <- lap (fromIntegral c) 1.0
-  return cNoised
+  lap (fromIntegral c) 1.0
 
 simpleMean :: forall m a.
               (FuzziLang m a, Ord a)
@@ -392,10 +555,10 @@ simpleMean xs clipBound
       return (noisedS, noisedC)
   where clippedSum []     acc = return acc
         clippedSum (x:xs) acc =
-          ifM (x %>= (lit clipBound))
-              (clippedSum xs (acc + (lit clipBound)))
-              (ifM (x %< (lit (-clipBound)))
-                   (clippedSum xs (acc - (lit clipBound)))
+          ifM (x %>= lit clipBound)
+              (clippedSum xs (acc + lit clipBound))
+              (ifM (x %< lit (-clipBound))
+                   (clippedSum xs (acc - lit clipBound))
                    (clippedSum xs (acc + x))
               )
 

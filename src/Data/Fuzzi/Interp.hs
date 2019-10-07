@@ -2,19 +2,22 @@
 
 module Data.Fuzzi.Interp where
 
-import Data.Proxy
-import Prelude hiding (and, or)
-import Data.Fuzzi.IfCxt
-import Data.Fuzzi.EDSL
-import Data.Fuzzi.Types
-import Type.Reflection hiding (App)
+import Control.DeepSeq
 import Control.Monad.Catch
+import Data.Fuzzi.EDSL
+import Data.Fuzzi.IfCxt
+import Data.Fuzzi.Types hiding (SymbolicExpr(..))
+import Data.Proxy
+import GHC.Generics
+import Prelude hiding (and, or)
+import Type.Reflection hiding (App)
 
 newtype AbortException = AbortException {
   getAbortReason :: String
-  } deriving (Show, Eq, Ord)
+  } deriving (Show, Eq, Ord, Generic)
 
 instance Exception AbortException
+instance NFData AbortException
 
 eval :: forall a. Fuzzi a -> a
 eval (Lam f) = eval . f . Lit
@@ -23,7 +26,12 @@ eval (Return a) = return (eval a)
 eval (Sequence a b) = eval a >> (eval b)
 eval (Bind a f) = eval a >>= (eval . f . Lit)
 eval (Lit a) = a
-eval (If cond t f) = if toBool (eval cond) then eval t else eval f
+eval (If (cond :: Fuzzi bool) t f) =
+  ifCxt (Proxy :: Proxy (ConcreteBoolean bool))
+        (if toBool (eval cond) then eval t else eval f)
+        (error ("The type "
+                ++ show (typeRep @bool)
+                ++ " does not support concrete execution"))
 eval (IfM (cond :: Fuzzi bool) t f) =
   ifCxt (Proxy :: Proxy (ConcreteBoolean bool))
         (if toBool (eval cond) then eval t else eval f)

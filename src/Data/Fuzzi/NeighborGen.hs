@@ -2,6 +2,7 @@ module Data.Fuzzi.NeighborGen (
   Neighbor(..)
   , PairWiseL1List
   , pairWiseL1
+  , pairWiseL1Sized
   , shrinkPairWiseL1
   , L1List
   , l1List
@@ -55,8 +56,17 @@ pairWiseL1 :: forall a.
               )
            => a
            -> Gen (PairWiseL1List a)
-pairWiseL1 diff = do
-  len <- choose (3, 7)
+pairWiseL1 = pairWiseL1Sized (3,7)
+
+pairWiseL1Sized :: forall a.
+                   ( Fractional a
+                   , Random a
+                   )
+                => (Int, Int)
+                -> a
+                -> Gen (PairWiseL1List a)
+pairWiseL1Sized sizeBounds diff = do
+  len <- choose sizeBounds
   xs <- replicateM len (choose (-1.0, 1.0))
   ds <- replicateM len (choose (-diff, diff))
   return (PairWiseL1List (zip xs ds) diff)
