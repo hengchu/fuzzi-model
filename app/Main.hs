@@ -15,7 +15,7 @@ main = do
   forM_ [1..2000] $ \i -> do
     !start <- getCurrentTime
     let prog = reify $ (reportNoisyMaxOpt @IntExpr) (take i $ repeat 1)
-    let r = runIdentity . runNoLoggingT . (runRosetteT dummyState) $ (evalM prog)
+    r <- runNoLoggingT . (runRosetteT dummyState) $ (evalM prog)
     let rr = fromRight undefined (fst r)
     deepseq r $ return ()
     !end <- getCurrentTime
