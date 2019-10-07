@@ -150,10 +150,10 @@ sparseVectorPrivacyTest xs =
   label ("sparseVector input length: " ++ show (length xs)) $
   monadicIO $
     expectDP
-      0.01
+      1.0
       500
-      ( reify . (\xs -> sparseVector xs 2 0) . map realToFrac $ left xs
-      , reify . (\xs -> sparseVector xs 2 0) . map realToFrac $ left xs
+      ( reify . (\xs -> sparseVector xs 2 0.5) . map realToFrac $ left xs
+      , reify . (\xs -> sparseVector xs 2 0.5) . map realToFrac $ right xs
       )
 
 sparseVectorPrivacyTestRosette :: PairWiseL1List Double -> Property
@@ -163,8 +163,8 @@ sparseVectorPrivacyTestRosette xs =
     expectDPRosette
       1.0
       500
-      ( reify . (\xs -> sparseVectorOpt @Integer xs 2 0) . map realToFrac $ left xs
-      , reify . (\(xs :: [Fuzzi RealExpr]) -> sparseVectorOpt @IntExpr xs 2 0) . map realToFrac $ left xs
+      ( reify . (\xs -> sparseVectorOpt @Integer xs 2 0.5) . map realToFrac $ left xs
+      , reify . (\xs -> sparseVectorOpt @IntExpr xs 2 0.5) . map realToFrac $ right xs
       )
 
 sparseVectorGapPrivacyTest :: PairWiseL1List Double -> Property
@@ -174,8 +174,19 @@ sparseVectorGapPrivacyTest xs =
     expectDP
       1.0
       500
-      ( reify . (\xs -> sparseVectorGap xs 2 0) . map realToFrac $ left xs
-      , reify . (\xs -> sparseVectorGap xs 2 0) . map realToFrac $ left xs
+      ( reify . (\xs -> sparseVectorGap xs 2 0.5) . map realToFrac $ left xs
+      , reify . (\xs -> sparseVectorGap xs 2 0.5) . map realToFrac $ right xs
+      )
+
+sparseVectorGapPrivacyTestRosette :: PairWiseL1List Double -> Property
+sparseVectorGapPrivacyTestRosette xs =
+  label ("sparseVectorGap input length: " ++ show (length xs)) $
+  monadicIO $
+    expectDPRosette
+      1.0
+      500
+      ( reify . (\xs -> sparseVectorGapOpt @Integer xs 2 0.5) . map realToFrac $ left xs
+      , reify . (\xs -> sparseVectorGapOpt @IntExpr xs 2 0.5) . map realToFrac $ right xs
       )
 
 sparseVectorNotPrivateTest :: Property
@@ -185,8 +196,8 @@ sparseVectorNotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
     500
     50
     (pairWiseL1 1.0 >>= \(xs :: PairWiseL1List Double) -> return (left xs, right xs))
-    ( reify . (\xs -> sparseVectorBuggy xs 2 0) . map realToFrac
-    , reify . (\xs -> sparseVectorBuggy xs 2 0) . map realToFrac
+    ( reify . (\xs -> sparseVectorBuggy xs 2 0.5) . map realToFrac
+    , reify . (\xs -> sparseVectorBuggy xs 2 0.5) . map realToFrac
     )
 
 privTreePrivacyTest :: BagList Double -> Property
@@ -324,6 +335,10 @@ prop_privTreeBuggy2IsNotDifferentiallyPrivate =
 prop_sparseVectorGapIsDifferentiallyPrivate :: Property
 prop_sparseVectorGapIsDifferentiallyPrivate =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 sparseVectorGapPrivacyTest
+
+prop_sparseVectorGapIsDifferentiallyPrivateRosette :: Property
+prop_sparseVectorGapIsDifferentiallyPrivateRosette =
+  forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 sparseVectorGapPrivacyTestRosette
 
 prop_simpleCountIsDifferentiallyPrivate :: Property
 prop_simpleCountIsDifferentiallyPrivate =

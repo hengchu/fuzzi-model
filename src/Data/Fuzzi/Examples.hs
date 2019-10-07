@@ -1,3 +1,7 @@
+-- I do not like enabling this in general, but the sparseVectorGapOpt example
+-- requires it... So we enable it locally in this file.
+{-# LANGUAGE AllowAmbiguousTypes #-}
+
 module Data.Fuzzi.Examples where
 
 import Data.Fuzzi.Interface
@@ -120,16 +124,10 @@ reportNoisyMaxGapOpt :: forall int m a.
                      => [Fuzzi a]
                      -> Mon m (Fuzzi int, Fuzzi a)
 reportNoisyMaxGapOpt []  = error "reportNoisyMaxGap received empty input"
-reportNoisyMaxGapOpt [_] = error "reportNoisyMaxGap received only one input"
-reportNoisyMaxGapOpt (x:y:xs) = do
+reportNoisyMaxGapOpt (x:xs) = do
   xNoised <- lap x 1.0
-  yNoised <- lap y 1.0
   xsNoised <- mapM (`lap` 1.0) xs
-  (maxIdx, (currMax, currRunnerUp)) <-
-    ifM (xNoised %> yNoised)
-        (return (0, (xNoised, yNoised)))
-        (return (1, (yNoised, xNoised)))
-  reportNoisyMaxGapAuxOpt xsNoised 1 maxIdx currMax currRunnerUp
+  reportNoisyMaxGapAuxOpt xsNoised 0 0 xNoised xNoised
 
 reportNoisyMaxGapAuxOpt :: forall int m a.
                            (FuzziLang m a, FuzziType int, Numeric int)
@@ -146,7 +144,7 @@ reportNoisyMaxGapAuxOpt (xNoised:xs) lastIdx maxIdx currMax currRunnerUp = do
   (maxIdx', (currMax', currRunnerUp')) <-
     ifM (xNoised %> currMax)
         (return (thisIdx, (xNoised, currMax)))
-        (ifM (xNoised %> currRunnerUp)
+        (if_ (xNoised %> currRunnerUp)
              (return (maxIdx, (currMax, xNoised)))
              (return (maxIdx, (currMax, currRunnerUp)))
         )
@@ -276,7 +274,7 @@ sparseVectorAuxOpt :: forall int m a.
                    -> Mon m (Fuzzi [int])
 sparseVectorAuxOpt []     _n _threshold acc = return acc
 sparseVectorAuxOpt (x:xs)  n  threshold acc =
-  ifM (n %<= 0)
+  if_ (n %<= 0)
       (return acc)
       (do (n', acc') <-
             ifM (x %> threshold)
@@ -340,6 +338,43 @@ sparseVectorGapAux (x:xs)  n  threshold acc
     ifM (x %> threshold)
         (sparseVectorGapAux xs (n-1) threshold (acc `snoc` just (x - threshold)))
         (sparseVectorGapAux xs n     threshold (acc `snoc` nothing))
+
+sparseVectorGapOpt :: forall int m a.
+                      ( FuzziLang m a
+                      , CmpResult int ~ CmpResult a
+                      , Numeric int
+                      , FuzziType int
+                      )
+                   => [Fuzzi a]
+                   -> Int
+                   -> Fuzzi a
+                   -> Mon m (Fuzzi [Maybe a])
+sparseVectorGapOpt xs n threshold = do
+  noisedThreshold <- lap threshold 2.0
+  noisedXs <- mapM (`lap` (4.0 * fromIntegral n)) xs
+  sparseVectorGapAuxOpt noisedXs (fromIntegral n :: Fuzzi int) noisedThreshold nil
+
+sparseVectorGapAuxOpt :: forall int m a.
+                         ( FuzziLang m a
+                         , CmpResult int ~ CmpResult a
+                         , Numeric int
+                         , FuzziType int
+                         )
+                      => [Fuzzi a]
+                      -> Fuzzi int
+                      -> Fuzzi a
+                      -> Fuzzi [Maybe a]
+                      -> Mon m (Fuzzi [Maybe a])
+sparseVectorGapAuxOpt []     _n _threshold acc = return acc
+sparseVectorGapAuxOpt (x:xs)  n  threshold acc =
+    if_ (n %<= 0)
+        (return acc)
+        (do (n', acc') <-
+              ifM (x %> threshold)
+                  (return (n-1, acc `snoc` just (x - threshold)))
+                  (return (n,   acc `snoc` nothing))
+            sparseVectorGapAuxOpt xs n' threshold acc'
+        )
 
 sparseVectorBuggy :: forall m a.
                      (FuzziLang m a)

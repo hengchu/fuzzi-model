@@ -27,6 +27,7 @@ import qualified Data.Map.Merge.Strict as MM
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
 import qualified Z3.Base as Z3
+import System.Exit
 
 type ConcreteSampleSymbol = String
 type ConcreteCenterSymbol = String
@@ -228,6 +229,18 @@ solve_ :: (MonadIO m, MonadLogger m)
        -> Epsilon
        -> m SolverResult
 solve_ conditions symCost eps = do
+  {-
+  liftIO $ putStrLn "-----------DEBUG-------------"
+  forM (zip [0..] conditions) $ \(idx, cond) -> do
+    liftIO $ putStrLn $ "======" ++ show idx ++ "======"
+    forM_ (view _1 cond) $ liftIO . print . show
+    forM_ (view _2 cond) $ liftIO . print . show
+    (liftIO . print . show) (view _3 cond)
+    liftIO $ putStrLn $ "===END" ++ show idx ++ "======"
+  liftIO $ putStrLn "-----------DEBUG END---------"
+  liftIO $ exitFailure
+-}
+
   (cxt, solver) <- z3Init
   let addToSolver (label, ast) = do
         trackedBoolVar <- liftIO $ Z3.mkFreshBoolVar cxt label

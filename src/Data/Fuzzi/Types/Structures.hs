@@ -252,7 +252,13 @@ instance SymbolicRepr a => SymbolicRepr [a] where
     | otherwise = guardedSingleton cond lefts `union` guardedSingleton (neg cond) rights
 
 instance SymbolicRepr a => SymbolicRepr (Maybe a) where
-  merge = undefined
+  reduceable Nothing  Nothing  = True
+  reduceable (Just a) (Just b) = reduceable a b
+  reduceable _        _        = False
+
+  merge _    Nothing  Nothing  = pure Nothing
+  merge cond (Just a) (Just b) = Just <$> merge cond a b
+  merge cond a        b        = guardedSingleton cond a `union` guardedSingleton (neg cond) b
 
 instance (SymbolicRepr a, SymbolicRepr b) => SymbolicRepr (a, b) where
   reduceable (a1, a2) (b1, b2) = reduceable a1 b1 && reduceable a2 b2
