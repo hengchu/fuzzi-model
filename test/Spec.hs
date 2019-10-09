@@ -104,7 +104,7 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $
       )
 
 rnmPrivacyTestRosette :: PairWiseL1List Double -> Property
-rnmPrivacyTestRosette xs = label ("rnm input size: " ++ show (length xs)) $
+rnmPrivacyTestRosette xs = label ("rnmOpt input size: " ++ show (length xs)) $
   monadicIO $
     expectDPRosette
       2.0
@@ -158,7 +158,7 @@ sparseVectorPrivacyTest xs =
 
 sparseVectorPrivacyTestRosette :: PairWiseL1List Double -> Property
 sparseVectorPrivacyTestRosette xs =
-  label ("sparseVector input length: " ++ show (length xs)) $
+  label ("sparseVectorOpt input length: " ++ show (length xs)) $
   monadicIO $
     expectDPRosette
       1.0
@@ -462,6 +462,9 @@ main = do
   quickCheckWithResult
     expectSuccessArgs
     prop_rnmIsDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectSuccessArgs
+    prop_rnmIsDifferentiallyPrivateRosette >>= printAndExitIfFailed
     {-
   quickCheckWithResult
     expectSuccessArgs
@@ -482,6 +485,9 @@ main = do
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorIsDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectSuccessArgs
+    prop_sparseVectorIsDifferentiallyPrivateRosette >>= printAndExitIfFailed
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorGapIsDifferentiallyPrivate >>= printAndExitIfFailed
