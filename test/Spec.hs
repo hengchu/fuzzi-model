@@ -200,6 +200,39 @@ sparseVectorNotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
     , reify . (\xs -> sparseVectorBuggy xs 2 0.5) . map realToFrac
     )
 
+sparseVector4NotPrivateTest :: Property
+sparseVector4NotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
+  expectNotDP
+    1.0
+    500
+    50
+    (pairWiseL1 1.0 >>= \(xs :: PairWiseL1List Double) -> return (left xs, right xs))
+    ( reify . (\xs -> sparseVectorBuggy4 xs 2 0.5) . map realToFrac
+    , reify . (\xs -> sparseVectorBuggy4 xs 2 0.5) . map realToFrac
+    )
+
+sparseVector5NotPrivateTest :: Property
+sparseVector5NotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
+  expectNotDP
+    1.0
+    500
+    50
+    (pairWiseL1 1.0 >>= \(xs :: PairWiseL1List Double) -> return (left xs, right xs))
+    ( reify . (\xs -> sparseVectorBuggy5 xs 0.5) . map realToFrac
+    , reify . (\xs -> sparseVectorBuggy5 xs 0.5) . map realToFrac
+    )
+
+sparseVector6NotPrivateTest :: Property
+sparseVector6NotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
+  expectNotDP
+    1.0
+    500
+    50
+    (pairWiseL1 1.0 >>= \(xs :: PairWiseL1List Double) -> return (left xs, right xs))
+    ( reify . (\xs -> sparseVectorBuggy6 xs 0.5) . map realToFrac
+    , reify . (\xs -> sparseVectorBuggy6 xs 0.5) . map realToFrac
+    )
+
 privTreePrivacyTest :: BagList Double -> Property
 privTreePrivacyTest xs = label ("privTree input length: " ++ show (bagListLength xs)) $
   monadicIO $
@@ -319,6 +352,18 @@ prop_sparseVectorIsDifferentiallyPrivateRosette =
 prop_sparseVectorBuggyIsNotDifferentiallyPrivate :: Property
 prop_sparseVectorBuggyIsNotDifferentiallyPrivate =
   sparseVectorNotPrivateTest
+
+prop_sparseVectorBuggy4IsNotDifferentiallyPrivate :: Property
+prop_sparseVectorBuggy4IsNotDifferentiallyPrivate =
+  sparseVector4NotPrivateTest
+
+prop_sparseVectorBuggy5IsNotDifferentiallyPrivate :: Property
+prop_sparseVectorBuggy5IsNotDifferentiallyPrivate =
+  sparseVector5NotPrivateTest
+
+prop_sparseVectorBuggy6IsNotDifferentiallyPrivate :: Property
+prop_sparseVectorBuggy6IsNotDifferentiallyPrivate =
+  sparseVector5NotPrivateTest
 
 prop_privTreeIsDifferentiallyPrivate :: Property
 prop_privTreeIsDifferentiallyPrivate =
@@ -458,7 +503,6 @@ main = do
     stdArgs{maxSuccess=500, maxShrinks=20}
     prop_mergeUnionCommutes >>= printAndExitIfFailed
 
-
   quickCheckWithResult
     expectSuccessArgs
     prop_rnmIsDifferentiallyPrivate >>= printAndExitIfFailed
@@ -494,6 +538,15 @@ main = do
   quickCheckWithResult
     expectFailureArgs
     prop_sparseVectorBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectFailureArgs
+    prop_sparseVectorBuggy4IsNotDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectFailureArgs
+    prop_sparseVectorBuggy5IsNotDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectFailureArgs
+    prop_sparseVectorBuggy6IsNotDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     expectSuccessArgs
     prop_privTreeIsDifferentiallyPrivate >>= printAndExitIfFailed

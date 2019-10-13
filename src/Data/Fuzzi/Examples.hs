@@ -573,3 +573,52 @@ unboundedMean xs = do
   noisedC <- lap count 1.0
   return (noisedS, noisedC)
   where count = fromIntegral_ (lit (length xs))
+
+sparseVectorBuggy4 :: (FuzziLang m a)
+                   => [Fuzzi a]
+                   -> Int
+                   -> Fuzzi a
+                   -> Mon m (Fuzzi [Bool])
+sparseVectorBuggy4 xs n threshold = do
+  noisedThreshold <- lap threshold 4.0
+  noisedXs <- mapM (`lap` (4 / 3)) xs
+  sparseVectorAux noisedXs n noisedThreshold nil
+
+sparseVectorBuggy5 :: (FuzziLang m a)
+                   => [Fuzzi a]
+                   -> Fuzzi a
+                   -> Mon m (Fuzzi [Bool])
+sparseVectorBuggy5 xs threshold = do
+  noisedThreshold <- lap threshold 2.0
+  sparseVectorBuggy5Aux xs noisedThreshold nil
+
+sparseVectorBuggy5Aux :: (FuzziLang m a)
+                      => [Fuzzi a]
+                      -> Fuzzi a
+                      -> Fuzzi [Bool]
+                      -> Mon m (Fuzzi [Bool])
+sparseVectorBuggy5Aux []     _threshold acc = return acc
+sparseVectorBuggy5Aux (x:xs)  threshold acc = do
+  ifM (x %> threshold)
+      (sparseVectorBuggy5Aux xs threshold (acc `snoc` lit True))
+      (sparseVectorBuggy5Aux xs threshold (acc `snoc` lit False))
+
+sparseVectorBuggy6 :: (FuzziLang m a)
+                   => [Fuzzi a]
+                   -> Fuzzi a
+                   -> Mon m (Fuzzi [Bool])
+sparseVectorBuggy6 xs threshold = do
+  noisedThreshold <- lap threshold 2.0
+  noisedXs <- mapM (`lap` 2.0) xs
+  sparseVectorBuggy6Aux noisedXs noisedThreshold nil
+
+sparseVectorBuggy6Aux :: (FuzziLang m a)
+                      => [Fuzzi a]
+                      -> Fuzzi a
+                      -> Fuzzi [Bool]
+                      -> Mon m (Fuzzi [Bool])
+sparseVectorBuggy6Aux []     _threshold acc = return acc
+sparseVectorBuggy6Aux (x:xs)  threshold acc = do
+  ifM (x %> threshold)
+      (sparseVectorBuggy5Aux xs threshold (acc `snoc` lit True))
+      (sparseVectorBuggy5Aux xs threshold (acc `snoc` lit False))
