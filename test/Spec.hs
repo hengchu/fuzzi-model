@@ -201,7 +201,7 @@ sparseVectorNotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
     )
 
 sparseVector4NotPrivateTest :: Property
-sparseVector4NotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
+sparseVector4NotPrivateTest = label "sparseVectorBuggy4" $ monadicIO $
   expectNotDP
     1.0
     500
@@ -212,7 +212,7 @@ sparseVector4NotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
     )
 
 sparseVector5NotPrivateTest :: Property
-sparseVector5NotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
+sparseVector5NotPrivateTest = label "sparseVectorBuggy5" $ monadicIO $
   expectNotDP
     1.0
     500
@@ -223,7 +223,7 @@ sparseVector5NotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
     )
 
 sparseVector6NotPrivateTest :: Property
-sparseVector6NotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
+sparseVector6NotPrivateTest = label "sparseVectorBuggy6" $ monadicIO $
   expectNotDP
     1.0
     500
