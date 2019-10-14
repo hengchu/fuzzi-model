@@ -363,7 +363,7 @@ prop_sparseVectorBuggy5IsNotDifferentiallyPrivate =
 
 prop_sparseVectorBuggy6IsNotDifferentiallyPrivate :: Property
 prop_sparseVectorBuggy6IsNotDifferentiallyPrivate =
-  sparseVector5NotPrivateTest
+  sparseVector6NotPrivateTest
 
 prop_privTreeIsDifferentiallyPrivate :: Property
 prop_privTreeIsDifferentiallyPrivate =
