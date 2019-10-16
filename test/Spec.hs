@@ -202,7 +202,7 @@ sparseVectorGapPrivacyTestRosette xs =
 
 sparseVectorNotPrivateTest :: Property
 sparseVectorNotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
-  expectNotDP
+  expectNotDPRosette
     1.0
     500
     50

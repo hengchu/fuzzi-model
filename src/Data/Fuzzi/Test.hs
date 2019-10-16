@@ -290,6 +290,44 @@ expectDPRosette' logHandler eps ntrials (left, right) = do
   run (print results)
   Test.QuickCheck.Monadic.assert (all R.isOk results)
 
+expectNotDPRosette' :: ( IOConstraints m
+                       , MonadMask m
+                       , Typeable m
+                       , Typeable concrete
+                       , Typeable symbolic
+                       , HasProvenance concrete
+                       , ConstraintsWithProvenance Ord concrete
+                       , ConstraintsWithProvenance Show concrete
+                       , Show concreteInput
+                       , Show symbolicInput
+                       , Show symbolic
+                       , SEq concrete symbolic
+                       )
+                    => (forall a. m a -> IO a)
+                    -> Epsilon
+                    -> Int
+                    -> Int
+                    -> Gen (concreteInput, symbolicInput)
+                    -> ( concreteInput -> Fuzzi (TracedDist concrete)
+                       , symbolicInput -> Fuzzi (RosetteT m symbolic)
+                       )
+                    -> PropertyM IO ()
+expectNotDPRosette' logHandler eps ntrials nretries gen (left, right) = do
+  !startTime <- run getCurrentTime
+  forM_ [0..nretries] $ \iter -> do
+    (concreteInput, symbolicInput) <- pick gen
+    buckets <- run . logHandler $ profile ntrials (left concreteInput)
+    results <- run . logHandler $ check eps (map snd $ M.toList buckets) (right symbolicInput)
+    run (print results)
+    when (any R.isFailed results) $ do
+      !endTime <- run getCurrentTime
+      let dur = endTime `diffUTCTime` startTime
+      let durStr = show dur
+      let iterStr = show (iter + 1)
+      run . putStrLn $ "found a bug in " ++ durStr ++ ", " ++ iterStr ++ " iterations"
+      stop True
+  Test.QuickCheck.Monadic.assert False
+
 expectDPRosette :: ( Typeable concrete
                     , Typeable symbolic
                     , HasProvenance concrete
@@ -453,3 +491,43 @@ expectNotDP :: ( Typeable concrete
                )
             -> PropertyM IO ()
 expectNotDP = expectNotDP' runStdoutColoredLoggingWarnT
+
+expectNotDPRosette :: ( Typeable concrete
+                      , Typeable symbolic
+                      , HasProvenance concrete
+                      , ConstraintsWithProvenance Ord concrete
+                      , ConstraintsWithProvenance Show concrete
+                      , Show concreteInput
+                      , Show symbolicInput
+                      , Show symbolic
+                      , SEq concrete symbolic
+                      )
+                   => Epsilon
+                   -> Int
+                   -> Int
+                   -> Gen (concreteInput, symbolicInput)
+                   -> ( concreteInput -> Fuzzi (TracedDist concrete)
+                      , symbolicInput -> Fuzzi (RosetteT (LoggingT IO) symbolic)
+                      )
+                   -> PropertyM IO ()
+expectNotDPRosette = expectNotDPRosette' runStdoutColoredLoggingWarnT
+
+expectNotDPRosetteVerbose :: ( Typeable concrete
+                             , Typeable symbolic
+                             , HasProvenance concrete
+                             , ConstraintsWithProvenance Ord concrete
+                             , ConstraintsWithProvenance Show concrete
+                             , Show concreteInput
+                             , Show symbolicInput
+                             , Show symbolic
+                             , SEq concrete symbolic
+                             )
+                          => Epsilon
+                          -> Int
+                          -> Int
+                          -> Gen (concreteInput, symbolicInput)
+                          -> ( concreteInput -> Fuzzi (TracedDist concrete)
+                             , symbolicInput -> Fuzzi (RosetteT (LoggingT IO) symbolic)
+                             )
+                          -> PropertyM IO ()
+expectNotDPRosetteVerbose = expectNotDPRosette' (runStdoutColoredLoggingAboveLevelT LevelInfo)

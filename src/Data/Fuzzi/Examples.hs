@@ -381,25 +381,25 @@ sparseVectorBuggy :: forall m a.
                   => [Fuzzi a] -- ^ input data
                   -> Int       -- ^ maximum number of above thresholds
                   -> Fuzzi a   -- ^ threshold
-                  -> Mon m (Fuzzi [a])
+                  -> Mon m (Fuzzi [Maybe a])
 sparseVectorBuggy xs n threshold = do
   noisedThreshold <- lap threshold 2.0
   noisedXs <- mapM (`lap` (4.0 * fromIntegral n)) xs
-  sparseVectorBuggyAux noisedXs n noisedThreshold (nil @a)
+  sparseVectorBuggyAux noisedXs n noisedThreshold (nil @(Maybe a))
 
 sparseVectorBuggyAux :: (FuzziLang m a)
                      => [Fuzzi a]
                      -> Int
                      -> Fuzzi a
-                     -> Fuzzi [a]
-                     -> Mon m (Fuzzi [a])
+                     -> Fuzzi [Maybe a]
+                     -> Mon m (Fuzzi [Maybe a])
 sparseVectorBuggyAux []     _n _threshold acc = return acc
 sparseVectorBuggyAux (x:xs) n  threshold  acc
   | n <= 0    = return acc
   | otherwise =
       ifM (x %> threshold)
-          (sparseVectorBuggyAux xs (n-1) threshold (acc `snoc` x))
-          (sparseVectorBuggyAux xs n     threshold (acc `snoc` 0))
+          (sparseVectorBuggyAux xs (n-1) threshold (acc `snoc` just x))
+          (sparseVectorBuggyAux xs n     threshold (acc `snoc` nothing))
 
 k_PT_LAMBDA :: (Fractional a) => a
 k_PT_LAMBDA = 1.0
