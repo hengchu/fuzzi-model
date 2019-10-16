@@ -622,3 +622,27 @@ sparseVectorBuggy6Aux (x:xs)  threshold acc = do
   ifM (x %> threshold)
       (sparseVectorBuggy5Aux xs threshold (acc `snoc` lit True))
       (sparseVectorBuggy5Aux xs threshold (acc `snoc` lit False))
+
+sparseVectorRenoiseThreshold :: (FuzziLang m a)
+                             => [Fuzzi a] -- ^ input data
+                             -> Int       -- ^ maximum number of above thresholds
+                             -> Fuzzi a   -- ^ threshold
+                             -> Mon m (Fuzzi [Bool])
+sparseVectorRenoiseThreshold xs n threshold = do
+  noisedXs <- mapM (`lap` (4.0 * fromIntegral n)) xs
+  sparseVectorRenoiseThresholdAux noisedXs n threshold nil
+
+sparseVectorRenoiseThresholdAux :: (FuzziLang m a)
+                                => [Fuzzi a]
+                                -> Int
+                                -> Fuzzi a
+                                -> Fuzzi [Bool]
+                                -> Mon m (Fuzzi [Bool])
+sparseVectorRenoiseThresholdAux []     _n _threshold acc = return acc
+sparseVectorRenoiseThresholdAux (x:xs)  n  threshold acc
+  | n <= 0    = return acc
+  | otherwise = do
+      noisedThreshold <- lap threshold 2.0
+      ifM (x %> noisedThreshold)
+          (sparseVectorRenoiseThresholdAux xs (n-1) threshold (acc `snoc` lit True))
+          (sparseVectorRenoiseThresholdAux xs n     threshold (acc `snoc` lit False))

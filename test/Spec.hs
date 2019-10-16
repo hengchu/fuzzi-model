@@ -156,6 +156,17 @@ sparseVectorPrivacyTest xs =
       , reify . (\xs -> sparseVector xs 2 0.5) . map realToFrac $ right xs
       )
 
+sparseVectorRenoiseThresholdPrivacyTest :: PairWiseL1List Double -> Property
+sparseVectorRenoiseThresholdPrivacyTest xs =
+  label ("sparseVectorRenoiseThreshold input length: " ++ show (length xs)) $
+  monadicIO $
+    expectDP
+      1.0
+      500
+      ( reify . (\xs -> sparseVectorRenoiseThreshold xs 2 0.5) . map realToFrac $ left xs
+      , reify . (\xs -> sparseVectorRenoiseThreshold xs 2 0.5) . map realToFrac $ right xs
+      )
+
 sparseVectorPrivacyTestRosette :: PairWiseL1List Double -> Property
 sparseVectorPrivacyTestRosette xs =
   label ("sparseVectorOpt input length: " ++ show (length xs)) $
@@ -345,6 +356,10 @@ prop_sparseVectorIsDifferentiallyPrivate :: Property
 prop_sparseVectorIsDifferentiallyPrivate =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 sparseVectorPrivacyTest
 
+prop_sparseVectorRenoiseThresholdIsDifferentiallyPrivate :: Property
+prop_sparseVectorRenoiseThresholdIsDifferentiallyPrivate =
+  forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 sparseVectorRenoiseThresholdPrivacyTest
+
 prop_sparseVectorIsDifferentiallyPrivateRosette :: Property
 prop_sparseVectorIsDifferentiallyPrivateRosette =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 sparseVectorPrivacyTestRosette
@@ -529,6 +544,9 @@ main = do
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorIsDifferentiallyPrivate >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectSuccessArgs
+    prop_sparseVectorRenoiseThresholdIsDifferentiallyPrivate >>= printAndExitIfFailed
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorIsDifferentiallyPrivateRosette >>= printAndExitIfFailed
