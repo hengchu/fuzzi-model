@@ -182,7 +182,7 @@ sparseVectorPrivacyTestRosette :: PairWiseL1List Double -> Property
 sparseVectorPrivacyTestRosette xs =
   label ("sparseVectorOpt input length: " ++ show (length xs)) $
   monadicIO $
-    expectDPRosette
+    expectDPRosetteVerbose
       1.0
       500
       ( reify . (\xs -> sparseVectorOpt @Integer xs 2 0.5) . map realToFrac $ left xs
@@ -220,6 +220,17 @@ sparseVectorNotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
     (pairWiseL1 1.0 >>= \(xs :: PairWiseL1List Double) -> return (left xs, right xs))
     ( reify . (\xs -> sparseVectorBuggy xs 2 0.5) . map realToFrac
     , reify . (\xs -> sparseVectorBuggy xs 2 0.5) . map realToFrac
+    )
+
+sparseVectorNotPrivateTestRosette :: Property
+sparseVectorNotPrivateTestRosette = label "sparseVectorBuggyOpt" $ monadicIO $
+  expectNotDPRosetteVerbose
+    1.0
+    500
+    50
+    (pairWiseL1 1.0 >>= \(xs :: PairWiseL1List Double) -> return (left xs, right xs))
+    ( reify . (\xs -> sparseVectorBuggyOpt @Integer xs 2 0.5) . map realToFrac
+    , reify . (\xs -> sparseVectorBuggyOpt @IntExpr xs 2 0.5) . map realToFrac
     )
 
 sparseVector4NotPrivateTest :: Property
@@ -382,6 +393,10 @@ prop_sparseVectorIsDifferentiallyPrivateRosette =
 prop_sparseVectorBuggyIsNotDifferentiallyPrivate :: Property
 prop_sparseVectorBuggyIsNotDifferentiallyPrivate =
   sparseVectorNotPrivateTest
+
+prop_sparseVectorBuggyIsNotDifferentiallyPrivateRosette :: Property
+prop_sparseVectorBuggyIsNotDifferentiallyPrivateRosette =
+  sparseVectorNotPrivateTestRosette
 
 prop_sparseVectorBuggy4IsNotDifferentiallyPrivate :: Property
 prop_sparseVectorBuggy4IsNotDifferentiallyPrivate =
