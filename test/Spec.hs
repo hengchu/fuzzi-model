@@ -145,6 +145,17 @@ smartSumNotPrivateTest = label "smartSumBuggy" $ monadicIO $
     , reify . smartSumBuggy . map realToFrac
     )
 
+numericSparseVectorPrivacyTest :: PairWiseL1List Double -> Property
+numericSparseVectorPrivacyTest xs =
+  label ("numericSparseVector input length: " ++ show (length xs)) $
+  monadicIO $
+    expectDP
+      1.0
+      500
+      ( reify . (\xs -> numericSparseVector xs 2 0) . map realToFrac $ left xs
+      , reify . (\xs -> numericSparseVector xs 2 0) . map realToFrac $ right xs
+      )
+
 sparseVectorPrivacyTest :: PairWiseL1List Double -> Property
 sparseVectorPrivacyTest xs =
   label ("sparseVector input length: " ++ show (length xs)) $
@@ -355,6 +366,10 @@ prop_smartSumBuggyIsNotDifferentiallyPrivate =
 prop_sparseVectorIsDifferentiallyPrivate :: Property
 prop_sparseVectorIsDifferentiallyPrivate =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 sparseVectorPrivacyTest
+
+prop_numericSparseVectorIsDifferentiallyPrivate :: Property
+prop_numericSparseVectorIsDifferentiallyPrivate =
+  forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 numericSparseVectorPrivacyTest
 
 prop_sparseVectorRenoiseThresholdIsDifferentiallyPrivate :: Property
 prop_sparseVectorRenoiseThresholdIsDifferentiallyPrivate =

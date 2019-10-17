@@ -102,6 +102,7 @@ newtype RosetteT m a =
            , MonadError RosetteException
            , MonadCatch
            , MonadMask
+           , MonadIO
            )
     via (ExceptT RosetteException (StateT SymbolicState m))
 
@@ -439,7 +440,7 @@ laplaceRosette :: (Monad m)
                -> RosetteT m RealExpr
 laplaceRosette = laplaceRosette' k_FLOAT_TOLERANCE
 
-evalM :: (MonadLogger m, Typeable m, MonadMask m)
+evalM :: (MonadLogger m, Typeable m, MonadMask m, MonadIO m)
       => Fuzzi (RosetteT m a) -> RosetteT m (GuardedSymbolicUnion a)
 evalM (Return a) = return (pure $ evalPure a)
 evalM (Sequence a b) = do
@@ -493,9 +494,32 @@ evalM (Gaussian center width) = do
   return (pure sample)
 evalM (If (cond :: Fuzzi bool) a b) = do
   let cond' = evalPure cond
-  ifCxt (Proxy :: Proxy (ConcreteBoolean bool))
-        (if toBool cond' then evalM a else evalM b)
-        (liftM2 union (evalM a) (evalM b))
+  case eqTypeRep (typeRep @bool) (typeRep @BoolExpr) of
+    Just HRefl -> do
+      let symNegCond = getBoolExpr (neg cond')
+      (z3Cxt, z3Solver) <- z3Init
+      ast <- symbolicExprToZ3AST z3Cxt symNegCond
+      liftIO $ Z3.solverAssertCnstr z3Cxt z3Solver ast
+      r <- liftIO $ Z3.solverCheck z3Cxt z3Solver
+      case r of
+        Z3.Unsat -> -- this means it's impossible to get the negation, so the
+                    -- condition is always true
+          evalM a
+        _ -> do
+          liftIO $ Z3.solverReset z3Cxt z3Solver
+          let symCond = getBoolExpr cond'
+          ast <- symbolicExprToZ3AST z3Cxt symCond
+          liftIO $ Z3.solverAssertCnstr z3Cxt z3Solver ast
+          r <- liftIO $ Z3.solverCheck z3Cxt z3Solver
+          case r of
+            Z3.Unsat -> -- this means it's impossible to get the condition, so
+                        -- it's always false
+              evalM b
+            _ -> liftM2 union (evalM a) (evalM b)
+    Nothing ->
+      ifCxt (Proxy :: Proxy (ConcreteBoolean bool))
+            (if toBool cond' then evalM a else evalM b)
+            (liftM2 union (evalM a) (evalM b))
 evalM other =
   throwError . InternalError
   $ "evalM: received a non-monadic Fuzzi construct " ++ show (PP.MkSomeFuzzi other)

@@ -646,3 +646,34 @@ sparseVectorRenoiseThresholdAux (x:xs)  n  threshold acc
       ifM (x %> noisedThreshold)
           (sparseVectorRenoiseThresholdAux xs (n-1) threshold (acc `snoc` lit True))
           (sparseVectorRenoiseThresholdAux xs n     threshold (acc `snoc` lit False))
+
+numericSparseVector :: forall m a.
+                       (FuzziLang m a)
+                    => [Fuzzi a]
+                    -> Int
+                    -> Fuzzi a
+                    -> Mon m (Fuzzi [Maybe a])
+numericSparseVector xs n threshold = do
+  noisedXs3 <- mapM (`lap` (3.0 * fromIntegral n)) xs
+  noisedXs6 <- mapM (`lap` (6.0 * fromIntegral n)) xs
+  noisedThreshold <- lap threshold 3.0
+  numericSparseVectorAux
+    (zip noisedXs6 noisedXs3)
+    n
+    noisedThreshold
+    nil
+
+numericSparseVectorAux :: forall m a.
+                          (FuzziLang m a)
+                       => [(Fuzzi a, Fuzzi a)]
+                       -> Int
+                       -> Fuzzi a
+                       -> Fuzzi [Maybe a]
+                       -> Mon m (Fuzzi [Maybe a])
+numericSparseVectorAux []           _n _threshold acc = return acc
+numericSparseVectorAux ((x6,x3):xs)  n  threshold acc
+  | n <= 0 = return acc
+  | otherwise =
+    ifM (x6 %> threshold)
+        (numericSparseVectorAux xs (n-1) threshold (acc `snoc` just x3))
+        (numericSparseVectorAux xs n     threshold (acc `snoc` nothing))
