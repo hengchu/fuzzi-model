@@ -182,7 +182,7 @@ sparseVectorPrivacyTestRosette :: PairWiseL1List Double -> Property
 sparseVectorPrivacyTestRosette xs =
   label ("sparseVectorOpt input length: " ++ show (length xs)) $
   monadicIO $
-    expectDPRosetteVerbose
+    expectDPRosette
       1.0
       500
       ( reify . (\xs -> sparseVectorOpt @Integer xs 2 0.5) . map realToFrac $ left xs
@@ -577,9 +577,11 @@ main = do
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorRenoiseThresholdIsDifferentiallyPrivate >>= printAndExitIfFailed
+{-
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorIsDifferentiallyPrivateRosette >>= printAndExitIfFailed
+-}
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorGapIsDifferentiallyPrivate >>= printAndExitIfFailed
