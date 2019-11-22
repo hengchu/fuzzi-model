@@ -93,6 +93,31 @@ prefixSumPrivacyTest xs =
       , reify . prefixSum . map realToFrac $ right xs
       )
 
+prefixSumBuggyNotPrivateTest :: Property
+prefixSumBuggyNotPrivateTest = label "prefixSumBuggy" $
+  monadicIO $
+    expectNotDPRosette
+      1.0
+      500
+      50
+      (l1List 1.0 >>= \(input :: L1List Double) -> return (left input, right input))
+      ( reify . prefixSumBuggy . map realToFrac
+      , reify . prefixSumBuggy . map realToFrac
+      )
+
+simpleSumBuggyNotPrivateTest :: Property
+simpleSumBuggyNotPrivateTest = label "simpleSumBuggy" $
+  monadicIO $
+    expectNotDPRosette
+      1.0
+      500
+      50
+      (l1List 1.0 >>= \(input :: L1List Double) -> return (left input, right input))
+      ( reify . simpleSumBuggy . map realToFrac
+      , reify . simpleSumBuggy . map realToFrac
+      )
+
+
 rnmPrivacyTest :: PairWiseL1List Double -> Property
 rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $
   monadicIO $
@@ -121,6 +146,18 @@ rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $
       100
       ( reify . reportNoisyMaxGapOpt @Integer . map realToFrac $ left xs
       , reify . reportNoisyMaxGapOpt @IntExpr . map realToFrac $ right xs
+      )
+
+rnmGapBuggyNotPrivateTest :: Property
+rnmGapBuggyNotPrivateTest = label "rnmGapBuggy" $
+  monadicIO $
+    expectNotDPRosette
+      4.0
+      100
+      50
+      (pairWiseL1 1.0 >>= \(input :: PairWiseL1List Double) -> return (left input, right input))
+      ( reify . reportNoisyMaxGapBuggy . map realToFrac
+      , reify . reportNoisyMaxGapBuggy . map realToFrac
       )
 
 rnmNotPrivateTest :: Property
@@ -264,6 +301,17 @@ sparseVector6NotPrivateTest = label "sparseVectorBuggy6" $ monadicIO $
     (pairWiseL1 1.0 >>= \(xs :: PairWiseL1List Double) -> return (left xs, right xs))
     ( reify . (\xs -> sparseVectorBuggy6 xs 0.5) . map realToFrac
     , reify . (\xs -> sparseVectorBuggy6 xs 0.5) . map realToFrac
+    )
+
+sparseVectorGapBuggyNotPrivateTest :: Property
+sparseVectorGapBuggyNotPrivateTest = label "sparseVectorGapBuggy" $ monadicIO $
+  expectNotDPRosette
+    1.0
+    500
+    50
+    (pairWiseL1 1.0 >>= \(xs :: PairWiseL1List Double) -> return (left xs, right xs))
+    ( reify . (\xs -> sparseVectorGapBuggy xs 0.5) . map realToFrac
+    , reify . (\xs -> sparseVectorGapBuggy xs 0.5) . map realToFrac
     )
 
 privTreePrivacyTest :: BagList Double -> Property
@@ -538,6 +586,7 @@ main = do
         else stdArgs{maxSuccess = 20, maxShrinks = 20}
   let expectFailureArgs = stdArgs{maxSuccess = 5, maxShrinks = 20}
 
+{-
   quickCheckWithResult
     stdArgs{maxSuccess=2000}
     simpleProperties >>= printAndExitIfFailed
@@ -612,6 +661,19 @@ main = do
   quickCheckWithResult
     expectFailureArgs
     prop_unboundedMeanIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+-}
+  quickCheckWithResult
+    expectFailureArgs
+    simpleSumBuggyNotPrivateTest >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectFailureArgs
+    prefixSumBuggyNotPrivateTest >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectFailureArgs
+    sparseVectorGapBuggyNotPrivateTest >>= printAndExitIfFailed
+  quickCheckWithResult
+    expectFailureArgs
+    rnmGapBuggyNotPrivateTest >>= printAndExitIfFailed
 
 
   putStrLn $

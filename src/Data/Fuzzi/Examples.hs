@@ -93,13 +93,21 @@ reportNoisyMaxGap (x:y:xs) = do
   xNoised <- lap x 1.0
   yNoised <- lap y 1.0
   xsNoised <- mapM (`lap` 1.0) xs
-  --reportNoisyMaxGapAux xsNoised 0 0 xNoised xNoised
   ifM (xNoised %> yNoised)
       (reportNoisyMaxGapAux xsNoised 1 0 xNoised yNoised)
       (reportNoisyMaxGapAux xsNoised 1 1 yNoised xNoised)
-  --ifM (x %> y)
-  --  (reportNoisyMaxGapAux xs 1 0 x y)
-  --  (reportNoisyMaxGapAux xs 1 1 y x)
+
+reportNoisyMaxGapBuggy :: (FuzziLang m a)
+                       => [Fuzzi a]
+                       -> Mon m (Fuzzi Int, Fuzzi a)
+reportNoisyMaxGapBuggy [] = error "reportNoisyMaxGap received empty input"
+reportNoisyMaxGapBuggy [_] = error "reportNoisyMaxGap received only one input"
+reportNoisyMaxGapBuggy (x:y:xs) = do
+  xsNoised <- mapM (`lap` 1.0) xs
+  ifM (x %> y)
+      (reportNoisyMaxGapAux xsNoised 1 0 x y)
+      (reportNoisyMaxGapAux xsNoised 1 1 y x)
+
 
 reportNoisyMaxGapAux :: (FuzziLang m a)
                      => [Fuzzi a]             -- ^input data
@@ -195,6 +203,22 @@ smartSumAuxBuggy (x:xs) next n i sum results = do
           smartSumAuxBuggy xs next' n  (i+1) sum' (results `snoc` next'))
   where lapNoTolerance = lap' 0
 
+simpleSum :: forall m a.
+             (FuzziLang m a)
+          => [Fuzzi a]
+          -> Mon m (Fuzzi a)
+simpleSum xs = do
+  lap (sum xs) 1.0
+
+simpleSumBuggy :: forall m a.
+                  (FuzziLang m a)
+               => [Fuzzi a]
+               -> Mon m (Fuzzi a)
+simpleSumBuggy []     = error "simpleSumBuggy: got empty input"
+simpleSumBuggy (x:xs) = do
+  s <- simpleSum xs
+  return $ x * s
+
 prefixSum :: forall m a.
              (FuzziLang m a)
           => [Fuzzi a]
@@ -203,11 +227,20 @@ prefixSum xs = do
   xsNoised <- mapM (`lap` 1.0) xs
   return (prefixSumAux (reverse xsNoised) nil)
 
+prefixSumBuggy :: forall m a.
+                  (FuzziLang m a)
+               => [Fuzzi a]
+               -> Mon m (Fuzzi [a])
+prefixSumBuggy []     = error "prefixSumBuggy: received empty input"
+prefixSumBuggy (x:xs) = do
+  ps' <- prefixSum xs
+  return (cons x ps')
+
 prefixSumAux :: (FuzziType a, Numeric a)
              => [Fuzzi a]
              -> Fuzzi [a]
              -> Fuzzi [a]
-prefixSumAux []           acc = acc
+prefixSumAux []           acc  = acc
 prefixSumAux input@(_x:xs) acc = prefixSumAux xs (sum input `cons` acc)
 
 smartSum :: forall m a.
@@ -317,6 +350,26 @@ sparseVectorBuggyAuxOpt (x:xs)  n  threshold acc =
                 (return (n,   acc `snoc` nothing))
           sparseVectorBuggyAuxOpt xs n' threshold acc'
       )
+
+sparseVectorGapBuggy :: (FuzziLang m a)
+                     => [Fuzzi a]
+                     -> Fuzzi a
+                     -> Mon m (Fuzzi [Maybe a])
+sparseVectorGapBuggy xs threshold = do
+  noisedThreshold <- lap threshold 2.0
+  noisedXs <- mapM (`lap` 2.0) xs
+  sparseVectorGapAuxBuggy noisedXs noisedThreshold nil
+
+sparseVectorGapAuxBuggy :: (FuzziLang m a)
+                        => [Fuzzi a]
+                        -> Fuzzi a
+                        -> Fuzzi [Maybe a]
+                        -> Mon m (Fuzzi [Maybe a])
+sparseVectorGapAuxBuggy []     _threshold acc = return acc
+sparseVectorGapAuxBuggy (x:xs)  threshold acc =
+    ifM (x %> threshold)
+        (sparseVectorGapAuxBuggy xs threshold (acc `snoc` just (x - threshold)))
+        (sparseVectorGapAuxBuggy xs threshold (acc `snoc` nothing))
 
 sparseVectorGap :: (FuzziLang m a)
                 => [Fuzzi a]
@@ -543,6 +596,15 @@ simpleCount :: forall m a.
 simpleCount xs threshold = do
   let c = length (filter (>= threshold) xs)
   lap (fromIntegral c) 1.0
+
+simpleCountBuggy :: forall m a.
+                    (FuzziLang m a)
+                 => [Int]
+                 -> Int
+                 -> Mon m (Fuzzi a)
+simpleCountBuggy xs threshold = do
+  let c = length (filter (>= threshold) xs)
+  lap (fromIntegral c) 0.1
 
 simpleMean :: forall m a.
               (FuzziLang m a, Ord a)
