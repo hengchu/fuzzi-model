@@ -163,12 +163,12 @@ mergeUnionM _                           left right | left == right = return left
 mergeUnionM cond (isFreeSingleton -> Just left) (isFreeSingleton -> Just right) =
   {-# SCC "merge_singleton" #-} do
   condAlias <- alias cond
-  let cond = ()
+  --let cond = ()
   return $ merge condAlias left right
 mergeUnionM cond left (isFreeSingleton -> Just right) =
   {-# SCC "merge_union_singleton" #-} do
   condAlias <- alias cond
-  let cond = ()
+  --let cond = ()
   let core = filterGuardedSymbolicUnion (`reduceable` right) left
   let complement = left `diff` core
   init <- conjunctAllM condAlias complement
@@ -179,7 +179,7 @@ mergeUnionM cond (isFreeSingleton -> Just left) right = mergeUnionM (neg cond) r
 mergeUnionM cond left right =
   {-# SCC "merge_union_union" #-} do
   condAlias <- alias cond
-  let cond = ()
+  --let cond = ()
   let (w, u, v) = symmetricDiff left right
   let mkW (bi, bj, ui, vj) = do
         let condi  = condAlias `and` bi
@@ -236,9 +236,11 @@ instance SymbolicRepr PrivTreeNode1D where
   merge cond left right
     | left == right = pure left
     | otherwise     = guardedSingleton cond left `union` guardedSingleton (neg cond) right
+  reduceable _ _ = False
 
 instance SymbolicRepr a => SymbolicRepr (PrivTree1D a) where
   merge = undefined
+  reduceable _ _ = False
 
 instance SymbolicRepr a => SymbolicRepr [a] where
   reduceable lefts rights =

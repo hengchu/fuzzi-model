@@ -6,7 +6,7 @@ import Data.Coerce
 import Data.Functor.Compose
 import Data.Fuzzi.IfCxt
 import Data.Fuzzi.Types.SymbolicExpr
-import Data.Fuzzi.Types.Optimize
+--import Data.Fuzzi.Types.Optimize
 import Data.List (find)
 import Data.Maybe
 import Prelude hiding (and, or)
@@ -357,7 +357,7 @@ doSubst (Not x)        substs = Not (doSubst x substs)
 doSubst (Ite cond x y) substs = Ite (doSubst cond substs)
                                     (doSubst x substs)
                                     (doSubst y substs)
-doSubst (RealArrayIndex arr idx) substs = RealArrayIndex (doSubst arr substs) (doSubst idx substs)
+-- doSubst (RealArrayIndex arr idx) substs = RealArrayIndex (doSubst arr substs) (doSubst idx substs)
 doSubst (Imply a b) substs = Imply (doSubst a substs) (doSubst b substs)
 doSubst (Substitute x substs) substs' = doSubst x (substs ++ substs')
 
@@ -498,7 +498,7 @@ instance SEq Bool Bool where
 
 instance Matchable Integer IntExpr where
   match a (tryEvalInt -> Just b) = a == b
-  match a b = True
+  match _a _b = True
 
 instance SEq Integer IntExpr where
   symEq a b =

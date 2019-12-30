@@ -297,6 +297,7 @@ instance HasProvenance Double where
 
 instance SymbolicRepr a => SymbolicRepr (WithDistributionProvenance a) where
   merge = undefined
+  reduceable = undefined
 
 instance SEq
   (WithDistributionProvenance Double)

@@ -34,7 +34,7 @@ data SymbolicExpr :: * where
   Imply :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
   Not   :: SymbolicExpr -> SymbolicExpr
 
-  RealArrayIndex :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
+  -- RealArrayIndex :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr
 
   Ite :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr -> SymbolicExpr
 
@@ -232,11 +232,11 @@ prettySymbolic _ (Ite cond x y) =
   where prettyX    = prettySymbolic 0 x
         prettyY    = prettySymbolic 0 y
         prettyCond = prettySymbolic 0 cond
-prettySymbolic currPrec (RealArrayIndex arr idx) =
-  let prec = precedence M.! "index"
-  in parensIf (currPrec > prec)
-       $ prettySymbolic (precedence M.! "index") arr
-         TPP.<> TPP.brackets (prettySymbolic 0 idx)
+-- prettySymbolic currPrec (RealArrayIndex arr idx) =
+--   let prec = precedence M.! "index"
+--   in parensIf (currPrec > prec)
+--        $ prettySymbolic (precedence M.! "index") arr
+--          TPP.<> TPP.brackets (prettySymbolic 0 idx)
 prettySymbolic _ (Substitute x substs) =
   TPP.text "subst" TPP.<> TPP.parens (prettyX `commaSep`
                                       prettySubsts3)

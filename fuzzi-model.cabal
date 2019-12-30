@@ -31,6 +31,9 @@ library
                -fprint-potential-instances
                -Wno-orphans
                -fwarn-redundant-constraints
+               -Wno-redundant-constraints
+               -Wno-unused-top-binds
+               -Werror
                -O2
   exposed-modules:
                   Data.Fuzzi

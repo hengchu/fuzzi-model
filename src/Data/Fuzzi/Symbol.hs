@@ -27,7 +27,7 @@ import qualified Data.Map.Merge.Strict as MM
 import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
 import qualified Z3.Base as Z3
-import System.Exit
+-- import System.Exit
 
 type ConcreteSampleSymbol = String
 type ConcreteCenterSymbol = String

@@ -7,7 +7,7 @@ import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Except
 import Control.Monad.State.Class
-import Control.Monad.Trans.Reader
+-- import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State hiding (gets, put, modify)
 import Data.Coerce
 import Data.Foldable hiding (and, or)
@@ -265,10 +265,10 @@ coupleBucket ctx solver eps bucket symbolicResults = do
         flattenTrace (TrGaussian _ _ _) = error "not implemented"
 
         forEachSymbolic
-          concreteRunIdx
+          _concreteRunIdx
           concreteResult
           symbolicState
-          (idx :: Integer, (guardCond, symResult)) = AnySat $ do
+          (_idx :: Integer, (guardCond, symResult)) = AnySat $ do
 
           let coupling = NL.head $ symbolicState ^. couplingInfo
           let equality = concreteResult `symEq` symResult
@@ -288,7 +288,7 @@ coupleBucket ctx solver eps bucket symbolicResults = do
           return cond
 
         forEachConcrete
-          ctx solver
+          _ctx _solver
           costArray shiftArray (runIdx :: Integer, (concreteResult, trace)) = AllSat $ do
 
           let runPrefix = "run_" ++ (show runIdx)

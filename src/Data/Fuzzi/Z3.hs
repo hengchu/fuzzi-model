@@ -1,9 +1,9 @@
 module Data.Fuzzi.Z3 where
 
-import Control.Monad
+--import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.Reader.Class
-import Control.Monad.Trans.Reader hiding (ask)
+--import Control.Monad.Reader.Class
+--import Control.Monad.Trans.Reader hiding (ask)
 import Data.Fuzzi.Logging
 import Data.Fuzzi.Types
 import qualified Data.Map.Strict as M
