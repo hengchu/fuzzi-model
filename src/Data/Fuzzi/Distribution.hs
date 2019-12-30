@@ -27,7 +27,7 @@ newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVarT IO a }
   deriving MonadIO via (RVarT IO)
 
 data Trace :: * -> * where
-  TrLaplace  :: a -> Double -> a -> Trace a
+  TrLaplace  :: a -> a -> a -> Trace a
   TrGaussian :: a -> Double -> a -> Trace a
   deriving (Show, Eq, Ord, Functor)
 
@@ -57,15 +57,16 @@ gaussianConcrete mean stddev =
   ConcreteDist $ normalT mean stddev
 
 laplaceTraced :: WithDistributionProvenance Double
-              -> Double
+              -> WithDistributionProvenance Double
               -> TracedDist (WithDistributionProvenance Double)
 laplaceTraced center width = do
   let centerValue = value center
+  let widthValue = value width
   lapSample <- (TracedDist . MT.lift)
-    (laplaceConcrete centerValue width)
+    (laplaceConcrete centerValue widthValue)
   traceIdx <- gets Data.Sequence.length
-  let prov  = Laplace traceIdx (provenance center) width
-  let trace = TrLaplace centerValue width lapSample
+  let prov  = Laplace traceIdx (provenance center) (provenance width)
+  let trace = TrLaplace centerValue widthValue lapSample
   modify (|> trace)
   return (WithDistributionProvenance lapSample prov)
 
@@ -109,7 +110,7 @@ data DistributionProvenance (a :: *) where
   Deterministic :: a -> DistributionProvenance a
   Laplace       :: Int
                 -> DistributionProvenance a
-                -> Double
+                -> DistributionProvenance a
                 -> DistributionProvenance a
   Gaussian      :: Int
                 -> DistributionProvenance a
@@ -209,7 +210,7 @@ matchProvenance :: Matchable a b
                  -> Bool
 matchProvenance (Deterministic _)          (Deterministic _)             = True
 matchProvenance (Laplace idx center width) (Laplace idx' center' width') =
-  idx == idx' && matchProvenance center center' && width == width'
+  idx == idx' && matchProvenance center center' && matchProvenance width width'
 matchProvenance (Gaussian idx center width) (Gaussian idx' center' width') =
   idx == idx' && matchProvenance center center' && width == width'
 matchProvenance (Arith lhs op rhs) (Arith lhs' op' rhs') =

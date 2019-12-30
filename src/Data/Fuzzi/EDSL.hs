@@ -61,8 +61,8 @@ data Fuzzi (a :: *) where
   Lit         :: (FuzziType a) => a -> Fuzzi a
   If          :: (FuzziType bool, IfCxt (ConcreteBoolean bool)) => Fuzzi bool -> Fuzzi a -> Fuzzi a -> Fuzzi a
   IfM         :: (FuzziType a, Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a) -> Fuzzi (m a)
-  Laplace     :: (Distribution m a) =>             Fuzzi a -> Double -> Fuzzi (m a)
-  Laplace'    :: (Distribution m a) => Rational -> Fuzzi a -> Double -> Fuzzi (m a)
+  Laplace     :: (Distribution m a) =>             Fuzzi a -> Fuzzi a -> Fuzzi (m a)
+  Laplace'    :: (Distribution m a) => Rational -> Fuzzi a -> Fuzzi a -> Fuzzi (m a)
   Gaussian    :: (Distribution m a) =>             Fuzzi a -> Double -> Fuzzi (m a)
   Gaussian'   :: (Distribution m a) => Rational -> Fuzzi a -> Double -> Fuzzi (m a)
   Variable    :: (Typeable a) => Int -> Fuzzi a
@@ -164,13 +164,13 @@ ifM :: ( Syntactic1 m
        , FuzziType (DeepRepr a)) => Fuzzi bool -> m a -> m a -> m a
 ifM c t f = fromDeepRepr1 $ IfM c (toDeepRepr1 t) (toDeepRepr1 f)
 
-lap :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
+lap :: forall m a. Distribution m a => Fuzzi a -> Fuzzi a -> Mon m (Fuzzi a)
 lap c w = fromDeepRepr $ Laplace c w -- Mon ((Bind (Laplace c w)))
 
 gauss :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
 gauss c w = fromDeepRepr $ Gaussian c w --  Mon ((Bind (Gaussian c w)))
 
-lap' :: forall m a. Distribution m a => Rational -> Fuzzi a -> Double -> Mon m (Fuzzi a)
+lap' :: forall m a. Distribution m a => Rational -> Fuzzi a -> Fuzzi a -> Mon m (Fuzzi a)
 lap' tol c w = fromDeepRepr $ Laplace' tol c w -- Mon ((Bind (Laplace c w)))
 
 gauss' :: forall m a. Distribution m a => Rational -> Fuzzi a -> Double -> Mon m (Fuzzi a)

@@ -86,6 +86,7 @@ dummyState =
         dummyCouplingInfo = CouplingInfo 0 (bool True)
 
 data RosetteException = ComputationAborted AbortException
+                      | WidthMustBeConstant
                       | BucketSizeMismatch [Int]
                       | EmptyBucket
                       | InternalError String
@@ -398,45 +399,48 @@ freshSReal' tol hint = do
 laplaceRosette' :: Monad m
                 => Rational
                 -> RealExpr
-                -> Double
+                -> RealExpr
                 -> RosetteT m RealExpr
 laplaceRosette' tolerance symCenter symWidth = do
-  idx <- getCurrentTraceIndex
-  setTraceIndex (simplifyInt $ idx + 1)
+  case tryEvalReal symWidth of
+    Nothing -> throwError WidthMustBeConstant
+    Just (realToFrac -> doubleWidth) -> do
+      idx <- getCurrentTraceIndex
+      setTraceIndex (simplifyInt $ idx + 1)
 
-  sampleName <- gets (view symbolicSamplePrefix)
+      sampleName <- gets (view symbolicSamplePrefix)
 
-  shiftArray  <- gets (view symbolicShiftArray)
-  costArray   <- gets (view symbolicCostArray)
-  sampleArray <- gets (view traceSampleArray)
-  centerArray <- gets (view traceCenterArray)
-  widthArray  <- gets (view traceWidthArray)
+      shiftArray  <- gets (view symbolicShiftArray)
+      costArray   <- gets (view symbolicCostArray)
+      sampleArray <- gets (view traceSampleArray)
+      centerArray <- gets (view traceCenterArray)
+      widthArray  <- gets (view traceWidthArray)
 
-  symbolicSample <- freshSReal' tolerance sampleName
-  let shift          = at shiftArray  idx
-  let sample         = at sampleArray idx
-  let center         = at centerArray idx
-  let width          = at widthArray  idx
-  let cost           = at costArray   idx
+      symbolicSample <- freshSReal' tolerance sampleName
+      let shift          = at shiftArray  idx
+      let sample         = at sampleArray idx
+      let center         = at centerArray idx
+      let width          = at widthArray  idx
+      let cost           = at costArray   idx
 
-  let symbolicCost   = (abs (center + shift - symCenter)) / (double symWidth)
-  let couplingAssertion = if tolerance == 0
-                          then symbolicSample %== (sample + shift)
-                          else abs (symbolicSample - sample - shift) %<= fromRational tolerance
-  let widthIdenticalAssertion = (width %== double symWidth)
+      let symbolicCost   = (abs (center + shift - symCenter)) / (double doubleWidth)
+      let couplingAssertion = if tolerance == 0
+                              then symbolicSample %== (sample + shift)
+                              else abs (symbolicSample - sample - shift) %<= fromRational tolerance
+      let widthIdenticalAssertion = (width %== double doubleWidth)
 
-  traceLength <- gets (view traceSize)
+      traceLength <- gets (view traceSize)
 
-  conjunctCouplingConstraint (cost %>= symbolicCost)
-  conjunctCouplingConstraint (idx %< traceLength)
-  conjunctCouplingConstraint widthIdenticalAssertion
-  conjunctCouplingConstraint couplingAssertion
+      conjunctCouplingConstraint (cost %>= symbolicCost)
+      conjunctCouplingConstraint (idx %< traceLength)
+      conjunctCouplingConstraint widthIdenticalAssertion
+      conjunctCouplingConstraint couplingAssertion
 
-  return symbolicSample
+      return symbolicSample
 
 laplaceRosette :: (Monad m)
                => RealExpr
-               -> Double
+               -> RealExpr
                -> RosetteT m RealExpr
 laplaceRosette = laplaceRosette' k_FLOAT_TOLERANCE
 
@@ -481,10 +485,10 @@ evalM (IfM cond a b) = {-# SCC "evalM_IfM" #-} do
 evalM (Abort reason) = do
   throwM (AbortException reason)
 evalM (Laplace' tolerance center width) = {-# SCC "evalM_Laplace'" #-} do
-  sample <- laplace' tolerance (evalPure center) width
+  sample <- laplace' tolerance (evalPure center) (evalPure width)
   return (pure sample)
 evalM (Laplace center width) = {-# SCC "evalM_Laplace" #-} do
-  sample <- laplace (evalPure center) width
+  sample <- laplace (evalPure center) (evalPure width)
   return (pure sample)
 evalM (Gaussian' tolerance center width) = do
   sample <- gaussian' tolerance (evalPure center) width

@@ -114,6 +114,7 @@ data SymExecError =
   | AssertImpossible BoolExpr Bool
   | ComputationAborted AbortException
   | AbsurdConstraints [String] -- ^ the unsat core
+  | WidthMustBeConstant
   | InternalError String
   deriving (Show, Eq, Ord, Typeable)
 
@@ -423,52 +424,59 @@ popTraces = do
 
 laplaceSymbolic :: (Monad m)
                  => D.WithDistributionProvenance RealExpr
-                 -> Double
+                 -> D.WithDistributionProvenance RealExpr
                  -> SymbolicT r m (D.WithDistributionProvenance RealExpr)
 laplaceSymbolic = laplaceSymbolic' k_FLOAT_TOLERANCE
 
 laplaceSymbolic' :: (Monad m)
                  => Rational
                  -> D.WithDistributionProvenance RealExpr
-                 -> Double
+                 -> D.WithDistributionProvenance RealExpr
                  -> SymbolicT r m (D.WithDistributionProvenance RealExpr)
-laplaceSymbolic' tol centerWithProvenance w = do
-  let c = D.value centerWithProvenance
-  lapSym <- freshSReal "lap"
-  matchedTraces <- popTraces
-  -- Check the width of matching calls
-  forM_ matchedTraces $
-    \case
-      D.TrLaplace _ width _ ->
-        when (width /= w) $
-          throwError (DifferentLaplaceWidth width w)
-      D.TrGaussian{} ->
-        throwError MismatchingNoiseMechanism
+laplaceSymbolic' tol centerWithProvenance widthWithProvenance = do
+  case tryEvalReal (D.value widthWithProvenance) of
+    Nothing -> throwError WidthMustBeConstant
+    Just (realToFrac -> w) -> do
+      let c = D.value centerWithProvenance
+      lapSym <- freshSReal "lap"
+      matchedTraces <- popTraces
+      -- Check the width of matching calls
+      forM_ matchedTraces $
+        \case
+          D.TrLaplace _ width _ ->
+            when (width /= w) $
+              throwError (DifferentLaplaceWidth width w)
+          D.TrGaussian{} ->
+            throwError MismatchingNoiseMechanism
 
-  concreteSampleSym <- freshSReal "concreteLap"
-  concreteCenterSym <- freshSReal "concreteCenter"
+      concreteSampleSym <- freshSReal "concreteLap"
+      concreteCenterSym <- freshSReal "concreteCenter"
 
-  epsSym   <- freshSReal "eps"
-  shiftSym <- freshSReal "shift"
+      epsSym   <- freshSReal "eps"
+      shiftSym <- freshSReal "shift"
 
-  traceIdx <- gets (\st -> length (st ^. costSymbols))
+      traceIdx <- gets (\st -> length (st ^. costSymbols))
 
-  let shiftCond =
-        if tol == 0
-        then (sReal' 0 concreteSampleSym + sReal' 0 shiftSym) %== sReal' 0 lapSym
-        else abs (sReal' tol concreteSampleSym + sReal' tol shiftSym - sReal' tol lapSym)
-             %<= fromRational tol
-  modify (\st -> st & couplingConstraints %~ (S.|> shiftCond))
-  let costCond =
-        sReal epsSym %>= (abs (sReal concreteCenterSym + sReal shiftSym - c)
-                          / (fromRational . toRational $ w))
-  modify (\st -> st & couplingConstraints %~ (S.|> costCond))
+      let shiftCond =
+            if tol == 0
+            then (sReal' 0 concreteSampleSym + sReal' 0 shiftSym) %== sReal' 0 lapSym
+            else abs (sReal' tol concreteSampleSym + sReal' tol shiftSym - sReal' tol lapSym)
+                 %<= fromRational tol
+      modify (\st -> st & couplingConstraints %~ (S.|> shiftCond))
+      let costCond =
+            sReal epsSym %>= (abs (sReal concreteCenterSym + sReal shiftSym - c)
+                              / (fromRational . toRational $ w))
+      modify (\st -> st & couplingConstraints %~ (S.|> costCond))
 
-  modify (\st -> st & costSymbols %~ (S.|> sReal epsSym))
-  modify (\st -> st & openSymbols %~ (S.|> (concreteSampleSym, concreteCenterSym, lapSym)))
+      modify (\st -> st & costSymbols %~ (S.|> sReal epsSym))
+      modify (\st -> st & openSymbols %~ (S.|> (concreteSampleSym, concreteCenterSym, lapSym)))
 
-  let provenance = D.Laplace traceIdx (D.provenance centerWithProvenance) w
-  return (D.WithDistributionProvenance (sReal' tol lapSym) provenance)
+      let provenance =
+            D.Laplace
+              traceIdx
+              (D.provenance centerWithProvenance)
+              (D.provenance widthWithProvenance)
+      return (D.WithDistributionProvenance (sReal' tol lapSym) provenance)
 
 gaussianSymbolic :: (Monad m)
                  => D.WithDistributionProvenance RealExpr
