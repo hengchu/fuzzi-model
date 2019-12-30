@@ -112,12 +112,21 @@ class Boolean a => ConcreteBoolean (a :: *) where
   fromBool :: Bool -> a
 
 -- |Sample instructions in the semantic domain.
-class (Monad m, Typeable m, FracNumeric (NumDomain m)) => MonadDist m where
+class ( Monad m
+      , Typeable m
+      , FracNumeric (NumDomain m)
+      , IntNumeric (IntDomain m)
+      ) => MonadDist m where
   type NumDomain m :: *
+  type IntDomain m :: *
   laplace   ::             NumDomain m -> NumDomain m -> m (NumDomain m)
   laplace'  :: Rational -> NumDomain m -> NumDomain m -> m (NumDomain m)
   gaussian  ::             NumDomain m -> Double -> m (NumDomain m)
   gaussian' :: Rational -> NumDomain m -> Double -> m (NumDomain m)
+
+  -- |The two-sided geometric mechanism: the first parameter is the center, the
+  -- second parameter is the alpha parameter.
+  geometric ::             IntDomain m -> NumDomain m -> m (IntDomain m)
 
 class ( Monad m
       , Typeable m
