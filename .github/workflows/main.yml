@@ -17,7 +17,7 @@ jobs:
     - name: Run brew update
       run: brew update
     - name: Install z3 HEAD
-      run: brew install z3 --HEAD
+      run: brew install z3
     - name: Install stack
       run: curl -sSL https://get.haskellstack.org/ | sh
     - name: Run stack test
