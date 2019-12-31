@@ -148,9 +148,13 @@ data DistributionProvenance (a :: *) where
                 -> DistributionProvenance a
                 -> DistributionProvenance a
                 -> DistributionProvenance a
-  Geometric     :: Int
+  Geometric     :: ( Show (FractionalOf a)
+                   , Eq (FractionalOf a)
+                   , Ord (FractionalOf a)
+                   )
+                => Int
                 -> DistributionProvenance a
-                -> DistributionProvenance Double
+                -> DistributionProvenance (FractionalOf a)
                 -> DistributionProvenance a
   Gaussian      :: Int
                 -> DistributionProvenance a
@@ -163,14 +167,13 @@ data DistributionProvenance (a :: *) where
   Unary         :: UOp
                 -> DistributionProvenance a
                 -> DistributionProvenance a
-  deriving (Show, Eq, Ord)
+  --deriving (Show, Eq, Ord)
 
-{-
+
 deriving instance (Show a) => Show (DistributionProvenance a)
 deriving instance (Eq a) => Eq (DistributionProvenance a)
 deriving instance (Ord a) => Ord (DistributionProvenance a)
 deriving instance Typeable DistributionProvenance
--}
 
 instance Num a => Num (DistributionProvenance a) where
   a + b         = Arith a Add  b

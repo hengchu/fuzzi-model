@@ -12,6 +12,7 @@ import Control.DeepSeq
 data SymbolicExpr :: * where
   BoolVar :: String -> SymbolicExpr
   RealVar :: String -> SymbolicExpr
+  IntVar  :: String -> SymbolicExpr
   --RealArrayVar :: String -> SymbolicExpr
 
   JustInt  :: Integer  -> SymbolicExpr
@@ -38,6 +39,7 @@ data SymbolicExpr :: * where
 
   Ite :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr -> SymbolicExpr
 
+  Int2Real :: SymbolicExpr -> SymbolicExpr
   Substitute :: SymbolicExpr -> [(String, SymbolicExpr)] -> SymbolicExpr
   deriving (Eq, Ord, Generic)
 
@@ -48,6 +50,12 @@ int = IntExpr . JustInt
 
 double :: Double -> RealExpr
 double = fromRational . toRational
+
+int2real :: IntExpr -> RealExpr
+int2real (IntExpr e) = RealExpr 0 (Int2Real e)
+
+int2real' :: Rational -> IntExpr -> RealExpr
+int2real' tol (IntExpr e) = RealExpr tol (Int2Real e)
 
 bool :: Bool -> BoolExpr
 bool = BoolExpr . JustBool
@@ -131,6 +139,7 @@ parensIf False = id
 prettySymbolic :: Int -> SymbolicExpr -> TPP.Doc
 prettySymbolic _ (BoolVar x) = TPP.text x
 prettySymbolic _ (RealVar x) = TPP.text x
+prettySymbolic _ (IntVar x)  = TPP.text x
 --prettySymbolic _ (RealArrayVar x) = TPP.text x
 prettySymbolic _ (Rat r) = TPP.text (show r) --TPP.double (fromRational r)
 prettySymbolic _ (JustInt i) = TPP.text (show i)
@@ -237,6 +246,8 @@ prettySymbolic _ (Ite cond x y) =
 --   in parensIf (currPrec > prec)
 --        $ prettySymbolic (precedence M.! "index") arr
 --          TPP.<> TPP.brackets (prettySymbolic 0 idx)
+prettySymbolic _ (Int2Real e) =
+  TPP.text "int2real" TPP.<> TPP.parens (prettySymbolic 0 e)
 prettySymbolic _ (Substitute x substs) =
   TPP.text "subst" TPP.<> TPP.parens (prettyX `commaSep`
                                       prettySubsts3)

@@ -3,9 +3,14 @@ module Data.Fuzzi.Types (
   , module Data.Fuzzi.Types.Structures
   , module Data.Fuzzi.Types.Optimize
   , module Data.Fuzzi.Types.SymbolicExpr
+  , FractionalOf
   ) where
 
 import Data.Fuzzi.Types.Internal
 import Data.Fuzzi.Types.Structures
 import Data.Fuzzi.Types.Optimize
 import Data.Fuzzi.Types.SymbolicExpr
+
+type family FractionalOf (t :: *) = (r :: *) | r -> t where
+  FractionalOf Integer = Double
+  FractionalOf IntExpr = RealExpr

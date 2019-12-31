@@ -342,6 +342,10 @@ doSubst (RealVar x) substs =
   case find (\(f, _) -> f == x) substs of
     Nothing -> RealVar x
     Just (_, t) -> t
+doSubst (IntVar x) substs =
+  case find (\(f, _) -> f == x) substs of
+    Nothing -> IntVar x
+    Just (_, t) -> t
     {-
 doSubst (RealArrayVar x) substs =
   case find (\(f, _) -> f == x) substs of
@@ -368,6 +372,7 @@ doSubst (Ite cond x y) substs = Ite (doSubst cond substs)
                                     (doSubst y substs)
 -- doSubst (RealArrayIndex arr idx) substs = RealArrayIndex (doSubst arr substs) (doSubst idx substs)
 doSubst (Imply a b) substs = Imply (doSubst a substs) (doSubst b substs)
+doSubst (Int2Real e) substs = Int2Real (doSubst e substs)
 doSubst (Substitute x substs) substs' = doSubst x (substs ++ substs')
 
 ite' :: SymbolicExpr -> SymbolicExpr -> SymbolicExpr -> SymbolicExpr
@@ -444,6 +449,9 @@ sReal = RealExpr k_FLOAT_TOLERANCE . RealVar
 
 sReal' :: Rational -> String -> RealExpr
 sReal' tol = RealExpr tol . RealVar
+
+sInt :: String -> IntExpr
+sInt = IntExpr . IntVar
 
 {-
 sArray :: String -> ArrayExpr

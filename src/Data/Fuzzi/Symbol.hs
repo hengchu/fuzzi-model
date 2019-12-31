@@ -110,11 +110,13 @@ data SymExecError =
   UnbalancedLaplaceCalls
   | MismatchingNoiseMechanism
   | DifferentLaplaceWidth Double Double
+  | DifferentGeometricAlpha Double Double
   | ResultDefinitelyNotEqual
   | AssertImpossible BoolExpr Bool
   | ComputationAborted AbortException
   | AbsurdConstraints [String] -- ^ the unsat core
   | WidthMustBeConstant
+  | AlphaMustBeConstant
   | InternalError String
   deriving (Show, Eq, Ord, Typeable)
 
@@ -194,9 +196,13 @@ fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
             ++ show syms
     go _  _  _   []                  []                             = return []
     go sr cr idx ((cs, cc, ss):syms) (D.D (D.TrLaplace cc' _ cs'):traces) = do
-      ss' <- freshSReal $ "run_" ++ show idx ++ "_lap"
+      ss' <- freshSName $ "run_" ++ show idx ++ "_lap"
       subst <- go sr cr idx syms traces
-      return $ (cs,double cs'):(cc,double cc'):(ss,sReal ss'):subst
+      return $ (cs,getRealExpr $ double cs'):(cc,getRealExpr $ double cc'):(ss,getRealExpr $ sReal ss'):subst
+    go sr cr idx ((cs, cc, ss):syms) (D.I (D.TrGeometric cc' _ cs'):traces) = do
+      ss' <- freshSName $ "run_" ++ show idx ++ "_geo"
+      subst <- go sr cr idx syms traces
+      return $ (cs,getIntExpr $ int cs'):(cc,getIntExpr $ int cc'):(ss,getIntExpr $ sInt ss'):subst
     go _sr _cr _idx ((_cs, _cc, _ss):_syms) (D.D (D.TrGaussian _cc' _ _cs'):_traces) =
       error "not implemented yet..."
     go sr cr _    syms                traces                         =
@@ -382,8 +388,8 @@ gatherConstraints bucket code computation = do
           . flip runStateT (initialSymbolicState bucket code)
           . runSymbolicT_
 
-freshSReal :: (Monad m) => String -> SymbolicT r m String
-freshSReal name = do
+freshSName :: (Monad m) => String -> SymbolicT r m String
+freshSName name = do
   maybeCounter <- gets (M.lookup name . (^. nameMap))
   case maybeCounter of
     Just c -> do
@@ -438,7 +444,7 @@ laplaceSymbolic' tol centerWithProvenance widthWithProvenance = do
     Nothing -> throwError WidthMustBeConstant
     Just (realToFrac -> w) -> do
       let c = D.value centerWithProvenance
-      lapSym <- freshSReal "lap"
+      lapSym <- freshSName "lap"
       matchedTraces <- popTraces
       -- Check the width of matching calls
       forM_ matchedTraces $
@@ -448,11 +454,11 @@ laplaceSymbolic' tol centerWithProvenance widthWithProvenance = do
               throwError (DifferentLaplaceWidth width w)
           _ -> throwError MismatchingNoiseMechanism
 
-      concreteSampleSym <- freshSReal "concreteLap"
-      concreteCenterSym <- freshSReal "concreteCenter"
+      concreteSampleSym <- freshSName "concreteLap"
+      concreteCenterSym <- freshSName "concreteCenter"
 
-      epsSym   <- freshSReal "eps"
-      shiftSym <- freshSReal "shift"
+      epsSym   <- freshSName "eps"
+      shiftSym <- freshSName "shift"
 
       traceIdx <- gets (\st -> length (st ^. costSymbols))
 
@@ -481,7 +487,44 @@ geometricSymbolic :: (Monad m)
                   => D.WithDistributionProvenance IntExpr
                   -> D.WithDistributionProvenance RealExpr
                   -> SymbolicT r m (D.WithDistributionProvenance IntExpr)
-geometricSymbolic = undefined
+geometricSymbolic centerWithProvenance alphaWithProvenance =
+  case tryEvalReal (D.value alphaWithProvenance) of
+    Nothing -> throwError AlphaMustBeConstant
+    Just (realToFrac -> alpha) -> do
+      let c = D.value centerWithProvenance
+      geoSym <- freshSName "geo"
+      matchedTraces <- popTraces
+      -- Check the width of matching calls
+      forM_ matchedTraces $
+        \case
+          (D.I (D.TrGeometric _ alpha' _)) ->
+            when (alpha /= alpha') $
+              throwError (DifferentGeometricAlpha alpha alpha')
+          _ -> throwError MismatchingNoiseMechanism
+
+      concreteSampleSym <- freshSName "concreteGeo"
+      concreteCenterSym <- freshSName "concreteCenter"
+
+      epsSym   <- freshSName "eps"
+      shiftSym <- freshSName "shift"
+
+      traceIdx <- gets (\st -> length (st ^. costSymbols))
+
+      let shiftCond = (sInt concreteSampleSym + sInt shiftSym) %== sInt geoSym
+      modify (\st -> st & couplingConstraints %~ (S.|> shiftCond))
+      let costCond =
+            sReal epsSym %>= (abs (int2real $ sInt concreteCenterSym + sInt shiftSym - c) * (double $ log (1 / alpha)))
+      modify (\st -> st & couplingConstraints %~ (S.|> costCond))
+
+      modify (\st -> st & costSymbols %~ (S.|> sReal epsSym))
+      modify (\st -> st & openSymbols %~ (S.|> (concreteSampleSym, concreteCenterSym, geoSym)))
+
+      let provenance =
+            D.Geometric
+              traceIdx
+              (D.provenance centerWithProvenance)
+              (undefined)
+      return (D.WithDistributionProvenance (sInt geoSym) provenance)
 
 gaussianSymbolic :: (Monad m)
                  => D.WithDistributionProvenance RealExpr
@@ -496,15 +539,9 @@ gaussianSymbolic' :: (Monad m)
                   -> SymbolicT r m (D.WithDistributionProvenance RealExpr)
 gaussianSymbolic' _ _ _ = error "not yet implemented"
 
-substituteB :: BoolExpr -> [(String, RealExpr)] -> BoolExpr
+substituteB :: BoolExpr -> [(String, SymbolicExpr)] -> BoolExpr
 substituteB (BoolExpr a) fts =
-  let ftsAst = map (second getRealExpr) fts
-  in BoolExpr $ Substitute a ftsAst
-
-substituteR :: RealExpr -> [(String, RealExpr)] -> RealExpr
-substituteR (RealExpr tol a) fts =
-  let ftsAst = map (second getRealExpr) fts
-  in RealExpr tol $ Substitute a ftsAst
+  BoolExpr $ Substitute a fts
 
 newtype GSC a =
   GSC {
