@@ -586,7 +586,6 @@ main = do
         else stdArgs{maxSuccess = 20, maxShrinks = 20}
   let expectFailureArgs = stdArgs{maxSuccess = 5, maxShrinks = 20}
 
-{-
   quickCheckWithResult
     stdArgs{maxSuccess=2000}
     simpleProperties >>= printAndExitIfFailed
@@ -661,7 +660,6 @@ main = do
   quickCheckWithResult
     expectFailureArgs
     prop_unboundedMeanIsNotDifferentiallyPrivate >>= printAndExitIfFailed
--}
   quickCheckWithResult
     expectFailureArgs
     simpleSumBuggyNotPrivateTest >>= printAndExitIfFailed

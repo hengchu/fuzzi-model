@@ -11,7 +11,7 @@ import Control.Monad.State.Class
 import Control.Monad.Trans.State hiding (gets, put, modify)
 import Data.Coerce
 import Data.Foldable hiding (and, or)
-import Data.Fuzzi.Distribution (Trace(..))
+import Data.Fuzzi.Distribution (Trace(..), AnyTrace(..))
 import Data.Fuzzi.EDSL
 import Data.Fuzzi.IfCxt
 import Data.Fuzzi.Interp
@@ -110,7 +110,7 @@ newtype RosetteT m a =
 instance MonadTrans RosetteT where
   lift = RosetteT . lift . lift
 
-type Bucket r = [(r, SS.Seq (Trace Double))]
+type Bucket r = [(r, SS.Seq AnyTrace)]
 
 newtype AnySat m = AnySat { runAnySat :: m BoolExpr }
 newtype AllSat m = AllSat { runAllSat :: m BoolExpr }
@@ -261,8 +261,8 @@ coupleBucket ctx solver eps bucket symbolicResults = do
   where forEach :: Monoid m => [a] -> (a -> m) -> m
         forEach = flip foldMap
 
-        flattenTrace (TrLaplace c w s) = (c, w, s)
-        flattenTrace (TrGaussian _ _ _) = error "not implemented"
+        flattenTrace (D (TrLaplace c w s)) = (c, w, s)
+        flattenTrace _ = error "not implemented"
 
         forEachSymbolic
           _concreteRunIdx
@@ -444,6 +444,12 @@ laplaceRosette :: (Monad m)
                -> RosetteT m RealExpr
 laplaceRosette = laplaceRosette' k_FLOAT_TOLERANCE
 
+geometricRosette :: Monad m
+                 => IntExpr
+                 -> RealExpr
+                 -> RosetteT m IntExpr
+geometricRosette = undefined
+
 evalM :: (MonadLogger m, Typeable m, MonadMask m, MonadIO m)
       => Fuzzi (RosetteT m a) -> RosetteT m (GuardedSymbolicUnion a)
 evalM (Return a) = return (pure $ evalPure a)
@@ -533,8 +539,11 @@ evalPure = eval
 
 instance (Monad m, Typeable m) => MonadDist (RosetteT m) where
   type NumDomain (RosetteT m) = RealExpr
+  type IntDomain (RosetteT m) = IntExpr
   laplace   = laplaceRosette
   laplace'  = laplaceRosette'
+
+  geometric = geometricRosette
 
   gaussian  = error "not implemented"
   gaussian' = error "not implemented"

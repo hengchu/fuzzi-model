@@ -32,7 +32,7 @@ import qualified Data.Set as SS
 data TestBundle concrete symbolic = TestBundle {
   _tbConstraints :: SymbolicConstraints
   , _tbSymbolicResult :: symbolic
-  , _tbBucket :: [(concrete, S.Seq (Trace Double))]
+  , _tbBucket :: [(concrete, S.Seq AnyTrace)]
   } deriving (Show, Eq, Ord)
 
 makeLensesWith abbreviatedFields ''TestBundle
@@ -81,9 +81,9 @@ profileIOVerbose ntimes prog = runStdoutColoredLoggingT $ profile ntimes prog
 buildMapAux :: ( Ord (GetProvenance a)
                , HasProvenance a
                )
-            => [(a, S.Seq (Trace Double))]
-            -> M.Map (GetProvenance a) [(a, S.Seq (Trace Double))]
-            -> M.Map (GetProvenance a) [(a, S.Seq (Trace Double))]
+            => [(a, S.Seq AnyTrace)]
+            -> M.Map (GetProvenance a) [(a, S.Seq AnyTrace)]
+            -> M.Map (GetProvenance a) [(a, S.Seq AnyTrace)]
 buildMapAux []                m = m
 buildMapAux ((k, profile):xs) m =
   buildMapAux xs (M.insertWith (++) (getProvenance k) [(k, profile)] m)

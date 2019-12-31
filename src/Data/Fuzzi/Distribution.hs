@@ -27,21 +27,30 @@ newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVarT IO a }
   deriving MonadIO via (RVarT IO)
 
 data Trace :: * -> * where
-  TrLaplace  :: a -> a -> a -> Trace a
-  TrGaussian :: a -> Double -> a -> Trace a
-  deriving (Show, Eq, Ord, Functor)
+  TrLaplace   :: a ->      a -> a -> Trace a
+  TrGeometric :: a -> Double -> a -> Trace a
+  TrGaussian  :: a -> Double -> a -> Trace a
+
+deriving instance Eq a   => Eq   (Trace a)
+deriving instance Ord a  => Ord  (Trace a)
+deriving instance Show a => Show (Trace a)
+
+data AnyTrace :: * where
+  D :: Trace Double  -> AnyTrace
+  I :: Trace Integer -> AnyTrace
+  deriving (Show, Eq, Ord)
 
 -- |Type parameter 'k' is the type of the result. 'Buckets' maps results
 -- identical up to provenance into the actual value of the result, paired with
 -- the profiled trace of that execution.
-type Buckets k = M.Map (GetProvenance k) [(k, Seq (Trace Double))]
+type Buckets k = M.Map (GetProvenance k) [(k, Seq AnyTrace)]
 
 newtype TracedDist a =
-  TracedDist { runTracedDist_ :: StateT (Seq (Trace Double)) ConcreteDist a }
+  TracedDist { runTracedDist_ :: StateT (Seq AnyTrace) ConcreteDist a }
   deriving (Functor, Applicative, Monad)
-    via (StateT (Seq (Trace Double)) ConcreteDist)
-  deriving (MonadIO, MonadState (Seq (Trace Double)))
-    via (StateT (Seq (Trace Double)) ConcreteDist)
+    via (StateT (Seq AnyTrace) ConcreteDist)
+  deriving (MonadIO, MonadState (Seq AnyTrace))
+    via (StateT (Seq AnyTrace) ConcreteDist)
 
 laplaceConcrete :: Double -> Double -> ConcreteDist Double
 laplaceConcrete center width = ConcreteDist $ do
@@ -51,6 +60,16 @@ laplaceConcrete center width = ConcreteDist $ do
                then width * log (1 - 2 * abs r)
                else -width * log (1 - 2 * abs r)
   return $ center + sample
+
+geometricConcrete :: Integer -> Double -> ConcreteDist Integer
+geometricConcrete center alpha
+  | (alpha < 0 || alpha > 1) = error "geometric: alpha must be in [0, 1]"
+  | otherwise = ConcreteDist $ do
+  r1 <- uniformT (0 :: Double) 1
+  let geo1 = floor $ (log r1) / (log alpha)
+  r2 <- uniformT (0 :: Double) 1
+  let geo2 = floor $ (log r2) / (log alpha)
+  return $ center + (geo1 - geo2)
 
 gaussianConcrete :: Double -> Double -> ConcreteDist Double
 gaussianConcrete mean stddev =
@@ -67,8 +86,22 @@ laplaceTraced center width = do
   traceIdx <- gets Data.Sequence.length
   let prov  = Laplace traceIdx (provenance center) (provenance width)
   let trace = TrLaplace centerValue widthValue lapSample
-  modify (|> trace)
+  modify (|> (D trace))
   return (WithDistributionProvenance lapSample prov)
+
+geometricTraced :: WithDistributionProvenance Integer
+                -> WithDistributionProvenance Double
+                -> TracedDist (WithDistributionProvenance Integer)
+geometricTraced center alpha = do
+  let centerValue = value center
+  let alphaValue = value alpha
+  geoSample <- (TracedDist . MT.lift)
+    (geometricConcrete centerValue alphaValue)
+  traceIdx <- gets Data.Sequence.length
+  let prov = Geometric traceIdx (provenance center) (provenance alpha)
+  let trace = TrGeometric centerValue alphaValue geoSample
+  modify (|> (I trace))
+  return (WithDistributionProvenance geoSample prov)
 
 gaussianTraced :: WithDistributionProvenance Double
               -> Double
@@ -80,13 +113,13 @@ gaussianTraced center width = do
   traceIdx <- gets Data.Sequence.length
   let prov  = Gaussian traceIdx (provenance center) width
   let trace = TrGaussian centerValue width gaussSample
-  modify (|> trace)
+  modify (|> (D trace))
   return (WithDistributionProvenance gaussSample prov)
 
 sampleConcrete :: ConcreteDist a -> IO a
 sampleConcrete = R.sample . runConcreteDist
 
-sampleTraced :: TracedDist a -> IO (a, Seq (Trace Double))
+sampleTraced :: TracedDist a -> IO (a, Seq AnyTrace)
 sampleTraced = R.sample . runConcreteDist . flip runStateT mempty . runTracedDist_
 
 newtype NoRandomness a = NoRandomness { runNoRandomness :: a }
@@ -96,6 +129,9 @@ newtype NoRandomness a = NoRandomness { runNoRandomness :: a }
 
 laplaceNoRandomness :: Double -> Double -> NoRandomness Double
 laplaceNoRandomness center _ = NoRandomness center
+
+geometricNoRandomness :: Integer -> Double -> NoRandomness Integer
+geometricNoRandomness center _ = NoRandomness center
 
 gaussianNoRandomness :: Double -> Double -> NoRandomness Double
 gaussianNoRandomness center _ = NoRandomness center
@@ -111,6 +147,10 @@ data DistributionProvenance (a :: *) where
   Laplace       :: Int
                 -> DistributionProvenance a
                 -> DistributionProvenance a
+                -> DistributionProvenance a
+  Geometric     :: Int
+                -> DistributionProvenance a
+                -> DistributionProvenance Double
                 -> DistributionProvenance a
   Gaussian      :: Int
                 -> DistributionProvenance a
@@ -150,7 +190,6 @@ data WithDistributionProvenance a =
                              }
   deriving ({-Show, -}Eq, Ord, Typeable)
 
-
 instance Show a => Show (WithDistributionProvenance a) where
   show a = show (value a)
 
@@ -181,22 +220,34 @@ instance FuzziType a => FuzziType (WithDistributionProvenance a)
 
 instance MonadDist ConcreteDist where
   type NumDomain ConcreteDist = Double
+  type IntDomain ConcreteDist = Integer
   laplace   = laplaceConcrete
   laplace'  = const laplaceConcrete
+
+  geometric = geometricConcrete
+
   gaussian  = gaussianConcrete
   gaussian' = const gaussianConcrete
 
 instance MonadDist NoRandomness where
   type NumDomain NoRandomness = Double
+  type IntDomain NoRandomness = Integer
   laplace   = laplaceNoRandomness
   laplace'  = const laplaceNoRandomness
+
+  geometric = geometricNoRandomness
+
   gaussian  = gaussianNoRandomness
   gaussian' = const gaussianNoRandomness
 
 instance MonadDist TracedDist where
   type NumDomain TracedDist = WithDistributionProvenance Double
+  type IntDomain TracedDist = WithDistributionProvenance Integer
   laplace   = laplaceTraced
   laplace'  = const laplaceTraced
+
+  geometric = geometricTraced
+
   gaussian  = gaussianTraced
   gaussian' = const gaussianTraced
 

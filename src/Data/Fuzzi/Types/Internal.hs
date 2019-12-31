@@ -115,7 +115,7 @@ class Boolean a => ConcreteBoolean (a :: *) where
 class ( Monad m
       , Typeable m
       , FracNumeric (NumDomain m)
-      , IntNumeric (IntDomain m)
+      , Numeric (IntDomain m)
       ) => MonadDist m where
   type NumDomain m :: *
   type IntDomain m :: *
