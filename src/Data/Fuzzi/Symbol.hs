@@ -36,7 +36,7 @@ type OpenSymbolTriple =
   (ConcreteSampleSymbol, ConcreteCenterSymbol, SymbolicSampleSymbol)
 
 type NameMap  = M.Map String Int
-type Bucket r = [(r, S.Seq (D.Trace Double))]
+type Bucket r = [(r, S.Seq D.AnyTrace)]
 
 data SymbolicState r = SymbolicState {
   _ssNameMap               :: NameMap
@@ -164,7 +164,7 @@ fillConstraintTemplate :: ( D.HasProvenance concrete
                        -> symbolic
                        -> SymbolicConstraints
                        -> concrete
-                       -> S.Seq (D.Trace Double)
+                       -> S.Seq D.AnyTrace
                        -> Either SymExecError ([PathCondition], [CouplingCondition], EqualityCondition)
 fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
   unless (match (D.dropProvenance cr) (D.dropProvenance sym)) $
@@ -193,11 +193,11 @@ fillConstraintTemplate idx sym sc cr traces = runSymbolic $ do
             ++ "\n===========\n"
             ++ show syms
     go _  _  _   []                  []                             = return []
-    go sr cr idx ((cs, cc, ss):syms) (D.TrLaplace cc' _ cs':traces) = do
+    go sr cr idx ((cs, cc, ss):syms) (D.D (D.TrLaplace cc' _ cs'):traces) = do
       ss' <- freshSReal $ "run_" ++ show idx ++ "_lap"
       subst <- go sr cr idx syms traces
       return $ (cs,double cs'):(cc,double cc'):(ss,sReal ss'):subst
-    go _sr _cr _idx ((_cs, _cc, _ss):_syms) (D.TrGaussian _cc' _ _cs':_traces) =
+    go _sr _cr _idx ((_cs, _cc, _ss):_syms) (D.D (D.TrGaussian _cc' _ _cs'):_traces) =
       error "not implemented yet..."
     go sr cr _    syms                traces                         =
       error $ "impossible: trace and symbol triples have different lengths...\n"
@@ -395,13 +395,13 @@ freshSReal name = do
 
 data PopTraceItem r =
   PopTraceItem {
-    popped :: D.Trace Double
-    , rest :: (r, S.Seq (D.Trace Double))
+    popped :: D.AnyTrace
+    , rest :: (r, S.Seq D.AnyTrace)
   }
 
 type PopTraceAcc r = Either SymExecError [PopTraceItem r]
 
-bucketEntryToPopTraceAcc :: r -> S.Seq (D.Trace Double) -> PopTraceAcc r
+bucketEntryToPopTraceAcc :: r -> S.Seq D.AnyTrace -> PopTraceAcc r
 bucketEntryToPopTraceAcc _ S.Empty      = Left UnbalancedLaplaceCalls
 bucketEntryToPopTraceAcc r (x S.:<| xs) = Right [PopTraceItem x (r, xs)]
 
@@ -411,7 +411,7 @@ instance Monoid (PopTraceAcc r) where
   mappend _ (Left e) = Left e
   mappend (Right xs) (Right ys) = Right (xs ++ ys)
 
-popTraces :: (Monad m) => SymbolicT r m [D.Trace Double]
+popTraces :: (Monad m) => SymbolicT r m [D.AnyTrace]
 popTraces = do
   bkt <- gets (^. bucket)
   let remaining = foldMap (uncurry bucketEntryToPopTraceAcc) bkt
@@ -443,11 +443,10 @@ laplaceSymbolic' tol centerWithProvenance widthWithProvenance = do
       -- Check the width of matching calls
       forM_ matchedTraces $
         \case
-          D.TrLaplace _ width _ ->
+          (D.D (D.TrLaplace _ width _)) ->
             when (width /= w) $
               throwError (DifferentLaplaceWidth width w)
-          D.TrGaussian{} ->
-            throwError MismatchingNoiseMechanism
+          _ -> throwError MismatchingNoiseMechanism
 
       concreteSampleSym <- freshSReal "concreteLap"
       concreteCenterSym <- freshSReal "concreteCenter"
@@ -477,6 +476,12 @@ laplaceSymbolic' tol centerWithProvenance widthWithProvenance = do
               (D.provenance centerWithProvenance)
               (D.provenance widthWithProvenance)
       return (D.WithDistributionProvenance (sReal' tol lapSym) provenance)
+
+geometricSymbolic :: (Monad m)
+                  => D.WithDistributionProvenance IntExpr
+                  -> D.WithDistributionProvenance RealExpr
+                  -> SymbolicT r m (D.WithDistributionProvenance IntExpr)
+geometricSymbolic = undefined
 
 gaussianSymbolic :: (Monad m)
                  => D.WithDistributionProvenance RealExpr
@@ -589,8 +594,10 @@ generalize (x:xs) =
 instance (Monad m, Typeable m, Typeable r)
   => MonadDist (SymbolicT r m) where
   type NumDomain (SymbolicT r m) = D.WithDistributionProvenance RealExpr
+  type IntDomain (SymbolicT r m) = D.WithDistributionProvenance IntExpr
   laplace   = laplaceSymbolic
   laplace'  = laplaceSymbolic'
+  geometric = geometricSymbolic
   gaussian  = gaussianSymbolic
   gaussian' = gaussianSymbolic'
 
