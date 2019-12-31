@@ -1,2 +1,0 @@
-:set -Wall -Wno-name-shadowing -fprint-potential-instances -Wno-orphans -fwarn-redundant-constraints -Wno-redundant-constraints -Wno-unused-top-binds -Werror
-:load Main

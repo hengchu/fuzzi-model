@@ -36,6 +36,9 @@ symbolicExprToZ3AST ctx (BoolVar name) = do
 symbolicExprToZ3AST ctx (RealVar name) = do
   sym <- liftIO (Z3.mkStringSymbol ctx name)
   liftIO (Z3.mkRealVar ctx sym)
+symbolicExprToZ3AST ctx (IntVar name) = do
+  sym <- liftIO (Z3.mkStringSymbol ctx name)
+  liftIO (Z3.mkIntVar ctx sym)
 {-
 symbolicExprToZ3AST _ (RealArrayVar name) =
   error $ "symbolicExprToZ3AST: found free-standing real array variable " ++ name ++ "\n"
@@ -114,6 +117,9 @@ symbolicExprToZ3AST ctx (RealArrayIndex (RealArrayVar x) idx) = do
 symbolicExprToZ3AST _ e@(RealArrayIndex _ _) =
   error $ "symbolicExprToZ3AST: unsupported array indexing in expression " ++ show e
 -}
+symbolicExprToZ3AST ctx (Int2Real e) = do
+  intE <- symbolicExprToZ3AST ctx e
+  liftIO $ Z3.mkInt2Real ctx intE
 symbolicExprToZ3AST ctx (Substitute a fts) = do
   let f (from, to) = do
         fromSym <- liftIO $ Z3.mkStringSymbol ctx from
