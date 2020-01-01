@@ -38,6 +38,7 @@ eval (IfM (cond :: Fuzzi bool) t f) =
         (error ("The type "
                 ++ show (typeRep @bool)
                 ++ " does not support concrete execution"))
+eval (Geometric c a) = geometric (eval c) (eval a)
 eval (Laplace c w) = laplace (eval c) (eval w)
 eval (Gaussian c w) = gaussian (eval c) w
 eval (Laplace' tol c w) = laplace' tol (eval c) (eval w)

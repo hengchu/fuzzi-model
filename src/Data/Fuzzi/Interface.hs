@@ -7,6 +7,7 @@ module Data.Fuzzi.Interface (
   , if_
   , ifM
   , lap
+  , geo
   , gauss
   , lap'
   , gauss'

@@ -115,6 +115,10 @@ pretty (IfM cond t f) = do
     text "else",
     nest 2 f'
     ]
+pretty (Geometric c a) = do
+  c' <- pretty c
+  a' <- pretty a
+  return $ hsep [ text "geo", c', a' ]
 pretty (Laplace c w) = do
   c' <- pretty c
   w' <- pretty w

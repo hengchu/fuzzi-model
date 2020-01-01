@@ -742,3 +742,24 @@ numericSparseVectorAux ((x6,x3):xs)  n  threshold acc
     ifM (x6 %> threshold)
         (numericSparseVectorAux xs (n-1) threshold (acc `snoc` just x3))
         (numericSparseVectorAux xs n     threshold (acc `snoc` nothing))
+
+simpleGeometric :: forall m int real.
+                   ( FuzziLang' m int real
+                   , FractionalOf int ~ real
+                   )
+                => Fuzzi int
+                -> Fuzzi real
+                -> Mon m (Fuzzi int)
+simpleGeometric trueAnswer alpha = geo trueAnswer alpha
+
+geometricFixedSens :: forall m int real.
+                      ( FuzziLang' m int real
+                      , FractionalOf int ~ real
+                      )
+                   => Fuzzi int
+                   -> Double
+                   -> Double
+                   -> Mon m (Fuzzi int)
+geometricFixedSens trueAnswer sens eps = do
+  let alpha = exp (- eps / sens)
+  simpleGeometric trueAnswer (realToFrac alpha)

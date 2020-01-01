@@ -12,6 +12,10 @@ module Data.Fuzzi.NeighborGen (
   , bagListSmall
   , bagListLarge
   , bagListLength
+  , SensitiveCount
+  , sensitiveCount
+  , GeoFixedSensParam(..)
+  , geoFixedSensParam
   ) where
 
 import Control.Lens
@@ -121,6 +125,33 @@ bagListLarge = bagList (6, 8)
 
 bagListLength :: BagList a -> (Int, Int)
 bagListLength (BagList left right) = (length left, length right)
+
+data SensitiveCount a = SensitiveCount a a
+  deriving (Show, Eq, Ord)
+
+sensitiveCount :: Integer -> Gen (SensitiveCount Integer)
+sensitiveCount sens = do
+  (NonNegative start) <- arbitrary
+  a <- choose (start, start + sens)
+  b <- choose (start, start + sens)
+  return $ SensitiveCount a b
+
+data GeoFixedSensParam a = GeoFixedSensParam a a Double Double
+  deriving (Show, Eq, Ord)
+
+geoFixedSensParam :: Gen (GeoFixedSensParam Integer)
+geoFixedSensParam = do
+  (sens :: Integer) <- choose (1, 5)
+  (eps :: Double) <- choose (1.0, 8.0)
+  (NonNegative start) <- arbitrary
+  a <- choose (start, start + sens)
+  b <- choose (start, start + sens)
+  return $ GeoFixedSensParam a b (fromIntegral sens) eps
+
+instance Num a => Neighbor (SensitiveCount a) where
+  type Element (SensitiveCount a) = a
+  left  (SensitiveCount a _) = a
+  right (SensitiveCount _ b) = b
 
 instance (Num a) => Neighbor (PairWiseL1List a) where
   type Element (PairWiseL1List a) = [a]
