@@ -11,6 +11,7 @@ import Data.Fuzzi.Types.Structures
 import Data.Fuzzi.Types.Optimize
 import Data.Fuzzi.Types.SymbolicExpr
 
-type family FractionalOf (t :: *) = (r :: *) | r -> t where
-  FractionalOf Integer = Double
-  FractionalOf IntExpr = RealExpr
+type family FractionalOf (t :: *) = (r :: *) | r -> t
+
+type instance FractionalOf Integer = Double
+type instance FractionalOf IntExpr = RealExpr

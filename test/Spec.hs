@@ -348,6 +348,29 @@ privTreeBuggy2NotPrivateTest = label "privTreeBuggy2" $
     , reify . privTreeBuggy2 . map realToFrac
     )
 
+simpleGeometricPrivacyTest :: SensitiveCount Integer -> Property
+simpleGeometricPrivacyTest xs = label ("simple geometric input: " ++ (show xs)) $
+  monadicIO $
+  expectDP
+    (log (1 / alpha))
+    500
+    ( reify . flip simpleGeometric alpha $ (fromIntegral . left  $ xs)
+    , reify . flip simpleGeometric alpha $ (fromIntegral . right $ xs)
+    )
+  where alpha :: Fractional a => a
+        alpha = 0.3
+
+geometricFixedSensPrivacyTest :: GeoFixedSensParam Integer -> Property
+geometricFixedSensPrivacyTest xs@(GeoFixedSensParam a b sens eps) =
+  label ("geometric fixed sensitivity input: " ++ (show xs)) $
+  monadicIO $
+  expectDP
+    (eps + 1e-17)
+    500
+    ( reify $ geometricFixedSens (fromIntegral a) sens eps
+    , reify $ geometricFixedSens (fromIntegral b) sens eps
+    )
+
 simpleCountPrivacyTest :: BagList Int -> Property
 simpleCountPrivacyTest xs = label ("simpleCount input length: " ++ (show (bagListLength xs))) $
   monadicIO $

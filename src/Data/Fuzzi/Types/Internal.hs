@@ -142,9 +142,12 @@ class ( Monad m
 class Matchable concrete symbolic where
   match :: concrete -> symbolic -> Bool
 
-type Distribution m a    = (MonadDist m, NumDomain m ~ a, FuzziType a, FracNumeric a)
-type Assertion    m bool = (MonadAssert m, BoolType m ~ bool, IfCxt (ConcreteBoolean bool))
-type FuzziLang    m a    = (Distribution m a, Assertion m (CmpResult a))
+type Distribution' m int real =
+  (MonadDist m, IntDomain m ~ int, NumDomain m ~ real, FuzziType int, Numeric real, FuzziType real, FracNumeric real)
+type Distribution  m a    = (MonadDist m, NumDomain m ~ a, FuzziType a, FracNumeric a)
+type Assertion     m bool = (MonadAssert m, BoolType m ~ bool, IfCxt (ConcreteBoolean bool))
+type FuzziLang     m a    = (Distribution m a, Assertion m (CmpResult a))
+type FuzziLang'    m int real = (Distribution' m int real, Assertion m (CmpResult int), Assertion m (CmpResult real))
 
 instance Boolean Bool where
   and = (&&)

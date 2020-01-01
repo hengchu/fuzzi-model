@@ -289,6 +289,18 @@ instance Matchable a b =>
 instance MonadThrow TracedDist where
   throwM = liftIO . throwM
 
+instance HasProvenance (WithDistributionProvenance Integer) where
+  type GetProvenance (WithDistributionProvenance Integer) = DistributionProvenance Integer
+  type DropProvenance (WithDistributionProvenance Integer) = Integer
+  getProvenance = provenance
+  dropProvenance = value
+
+instance HasProvenance (WithDistributionProvenance IntExpr) where
+  type GetProvenance (WithDistributionProvenance IntExpr) = DistributionProvenance IntExpr
+  type DropProvenance (WithDistributionProvenance IntExpr) = IntExpr
+  getProvenance = provenance
+  dropProvenance = value
+
 instance HasProvenance (WithDistributionProvenance Double) where
   type GetProvenance  (WithDistributionProvenance Double) = DistributionProvenance Double
   type DropProvenance (WithDistributionProvenance Double) = Double
@@ -361,3 +373,6 @@ instance SEq
 instance SEq
   (WithDistributionProvenance Double) RealExpr where
   symEq a b = symEq (value a) b
+
+type instance FractionalOf (WithDistributionProvenance Integer) = WithDistributionProvenance Double
+type instance FractionalOf (WithDistributionProvenance IntExpr) = WithDistributionProvenance RealExpr

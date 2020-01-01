@@ -8,6 +8,7 @@ module Data.Fuzzi.EDSL (
   , if_
   , ifM
   , lap
+  , geo
   , gauss
   , lap'
   , gauss'
@@ -63,6 +64,7 @@ data Fuzzi (a :: *) where
   IfM         :: (FuzziType a, Assertion m bool) => Fuzzi bool -> Fuzzi (m a) -> Fuzzi (m a) -> Fuzzi (m a)
   Laplace     :: (Distribution m a) =>             Fuzzi a -> Fuzzi a -> Fuzzi (m a)
   Laplace'    :: (Distribution m a) => Rational -> Fuzzi a -> Fuzzi a -> Fuzzi (m a)
+  Geometric   :: (Distribution' m int real, FractionalOf int ~ real) => Fuzzi int -> Fuzzi real -> Fuzzi (m int)
   Gaussian    :: (Distribution m a) =>             Fuzzi a -> Double -> Fuzzi (m a)
   Gaussian'   :: (Distribution m a) => Rational -> Fuzzi a -> Double -> Fuzzi (m a)
   Variable    :: (Typeable a) => Int -> Fuzzi a
@@ -167,6 +169,9 @@ ifM c t f = fromDeepRepr1 $ IfM c (toDeepRepr1 t) (toDeepRepr1 f)
 lap :: forall m a. Distribution m a => Fuzzi a -> Fuzzi a -> Mon m (Fuzzi a)
 lap c w = fromDeepRepr $ Laplace c w -- Mon ((Bind (Laplace c w)))
 
+geo :: forall m int real. (Distribution' m int real, FractionalOf int ~ real) => Fuzzi int -> Fuzzi real -> Mon m (Fuzzi int)
+geo c alpha = fromDeepRepr $ Geometric c alpha
+
 gauss :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
 gauss c w = fromDeepRepr $ Gaussian c w --  Mon ((Bind (Gaussian c w)))
 
@@ -230,9 +235,10 @@ subst v term filling =
     Lit x -> Lit x
     If cond t f -> If (subst v cond filling) (subst v t filling) (subst v f filling)
     IfM cond t f -> IfM (subst v cond filling) (subst v t filling) (subst v f filling)
-    Laplace c w -> Laplace (subst v c filling) w
+    Laplace c w -> Laplace (subst v c filling) (subst v w filling)
+    Geometric c a -> Geometric (subst v c filling) (subst v a filling)
     Gaussian c w -> Gaussian (subst v c filling) w
-    Laplace' tol c w -> Laplace' tol (subst v c filling) w
+    Laplace' tol c w -> Laplace' tol (subst v c filling) (subst v w filling)
     Gaussian' tol c w -> Gaussian' tol (subst v c filling) w
 
     Variable v' ->
@@ -311,12 +317,14 @@ streamlineAux var (IfM cond t f) =
   let conds = streamlineAux var cond
   in [Sequence (AssertTrueM cond') t' | cond' <- conds, t' <- streamlineAux var t]
      ++ [Sequence (AssertFalseM cond') f' | cond' <- conds, f' <- streamlineAux var f]
+streamlineAux var (Geometric c a) =
+  [Geometric c' a' | c' <- streamlineAux var c, a' <- streamlineAux var a]
 streamlineAux var (Laplace c w) =
-  [Laplace c' w | c' <- streamlineAux var c]
+  [Laplace c' w' | c' <- streamlineAux var c, w' <- streamlineAux var w]
 streamlineAux var (Gaussian c w) =
   [Gaussian c' w | c' <- streamlineAux var c]
 streamlineAux var (Laplace' tol c w) =
-  [Laplace' tol c' w | c' <- streamlineAux var c]
+  [Laplace' tol c' w' | c' <- streamlineAux var c, w' <- streamlineAux var w]
 streamlineAux var (Gaussian' tol c w) =
   [Gaussian' tol c' w | c' <- streamlineAux var c]
 streamlineAux _ v@(Variable _) = [v]
