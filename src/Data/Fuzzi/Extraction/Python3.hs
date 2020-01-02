@@ -1,14 +1,14 @@
 module Data.Fuzzi.Extraction.Python3 where
 
-import Control.Lens
+import Control.Lens hiding (List)
 import Control.Monad.Except
 import Control.Monad.Reader hiding (local)
 import Control.Monad.State.Strict
 import Data.Fuzzi.EDSL
 import Data.Fuzzi.IfCxt
-import Data.Fuzzi.Types hiding (And, Or, Not)
+import Data.Fuzzi.Types hiding (And, Or, Not, Add, Sub, Div)
 import Data.Proxy
-import Prelude hiding ((<>))
+import Prelude hiding ((<>), LT)
 import Text.PrettyPrint
 import Type.Reflection hiding (App)
 import qualified Data.Map.Strict as M
@@ -24,14 +24,22 @@ data Bop = Add  | Mult
          | Conj | Disj
   deriving (Show, Eq, Ord)
 
-data Exp = Binop Exp Bop Exp
+data Uop = BNot | Abs | Exp
+  deriving (Show, Eq, Ord)
+
+data Exp = Binary Exp Bop Exp
+         | List [Exp]
+         | Index Exp Exp
+         | Unary Uop Exp
          | Call Exp [Exp]
          | Var String
          | Val IR
+         | None
   deriving (Show, Eq, Ord)
 
 data Stmt = ExpStmt Exp
           | Assign  String Exp
+          | Assert  Exp
           | Cond    Exp    [Stmt] [Stmt]
           | Ret     Exp
           | Decl    FuncDecl
@@ -135,7 +143,7 @@ extractBinop' opName op a b = do
   (bStmts, bExp) <- extract' b
   case (aExp, bExp) of
     (Just aExp, Just bExp) -> do
-      return (aStmts ++ bStmts, Just $ Binop aExp op bExp)
+      return (aStmts ++ bStmts, Just $ Binary aExp op bExp)
     _ -> do
       throwError
         $ InternalError $ opName ++ ": expecting both operands to produce expression"
@@ -241,3 +249,104 @@ extract' (PrettyPrintVariable x) =
   return ([], Just $ Var x)
 extract' (And a b) = extractBinop' "And" Conj a b
 extract' (Or a b)  = extractBinop' "Or"  Disj a b
+extract' (Not a) = do
+  (aStmts, aExp) <- extract' a
+  return (aStmts, fmap (Unary BNot) aExp)
+extract' (Data.Fuzzi.EDSL.Add a b) =
+  extractBinop' "Add" Data.Fuzzi.Extraction.Python3.Add a b
+extract' (Data.Fuzzi.EDSL.Mult a b) =
+  extractBinop' "Mult" Data.Fuzzi.Extraction.Python3.Mult a b
+extract' (Data.Fuzzi.EDSL.Div a b) =
+  extractBinop' "Div" Data.Fuzzi.Extraction.Python3.Div a b
+extract' (Data.Fuzzi.EDSL.Sub a b) =
+  extractBinop' "Sub" Data.Fuzzi.Extraction.Python3.Sub a b
+extract' (Data.Fuzzi.EDSL.Sign a) = do
+  (aStmts, aExp) <- extract' a
+  let signFunc = Var "np.sign"
+  return (aStmts, fmap (\x -> Call signFunc [x]) aExp)
+extract' (Data.Fuzzi.EDSL.Abs a) = do
+  (aStmts, aExp) <- extract' a
+  let absFunc = Var "np.abs"
+  return (aStmts, fmap (\x -> Call absFunc [x]) aExp)
+extract' (Data.Fuzzi.EDSL.IDiv a b) = do
+  extractBinop' "IDiv" Data.Fuzzi.Extraction.Python3.IDiv a b
+extract' (Data.Fuzzi.EDSL.IMod a b) = do
+  extractBinop' "IMod" Data.Fuzzi.Extraction.Python3.IMod a b
+extract' (FExp a) = do
+  (aStmts, aExp) <- extract' a
+  let expFunc = Var "np.exp"
+  return (aStmts, fmap (\x -> Call expFunc [x]) aExp)
+extract' (Data.Fuzzi.EDSL.Lt a b) = do
+  extractBinop' "Lt" Data.Fuzzi.Extraction.Python3.Lt a b
+extract' (Data.Fuzzi.EDSL.Le a b) = do
+  extractBinop' "Le" Data.Fuzzi.Extraction.Python3.Le a b
+extract' (Data.Fuzzi.EDSL.Gt a b) = do
+  extractBinop' "Gt" Data.Fuzzi.Extraction.Python3.Gt a b
+extract' (Data.Fuzzi.EDSL.Ge a b) = do
+  extractBinop' "Ge" Data.Fuzzi.Extraction.Python3.Ge a b
+extract' (Data.Fuzzi.EDSL.Eq_ a b) = do
+  extractBinop' "Eq_" Data.Fuzzi.Extraction.Python3.Eq_ a b
+extract' (Data.Fuzzi.EDSL.Neq a b) = do
+  extractBinop' "Neq" Data.Fuzzi.Extraction.Python3.Neq a b
+extract' (Data.Fuzzi.EDSL.AssertTrueM cond) = do
+  (condStmts, condExpr) <- extract' cond
+  case condExpr of
+    Just condExpr ->
+      return (condStmts ++ [Assert condExpr], Nothing)
+    Nothing -> throwError
+      $ InternalError "AssertTrueM: expect condition to produce expression"
+extract' (Data.Fuzzi.EDSL.AssertFalseM cond) = do
+  (condStmts, condExpr) <- extract' (Data.Fuzzi.EDSL.Not cond)
+  case condExpr of
+    Just condExpr ->
+      return (condStmts ++ [Assert condExpr], Nothing)
+    Nothing -> throwError
+      $ InternalError "AssertFalseM: expect condition to produce expression"
+extract' ListNil =
+  return ([], Just . Val $ LT [])
+extract' (ListCons x xs) = do
+  (xStmts,  xExpr)  <- extract' x
+  (xsStmts, xsExpr) <- extract' xs
+  case (xExpr, xsExpr) of
+    (Just xExpr, Just xsExpr) -> do
+      return ( xStmts ++ xsStmts
+             , Just $ Binary (List [xExpr]) Data.Fuzzi.Extraction.Python3.Add xsExpr)
+    _ -> throwError
+      $ InternalError "ListCons: expecting both operands to produce expression"
+extract' (ListSnoc xs x) = do
+  (xsStmts, xsExpr) <- extract' xs
+  (xStmts,  xExpr)  <- extract' x
+  case (xsExpr, xExpr) of
+    (Just xsExpr, Just xExpr) -> do
+      return ( xsStmts ++ xStmts
+             , Just $ Binary xsExpr Data.Fuzzi.Extraction.Python3.Add (List [xExpr]))
+    _ -> throwError
+      $ InternalError "ListSnoc: expecting both operands to produce expression"
+extract' (ListIsNil xs) = do
+  (xsStmts, xsExpr) <- extract' xs
+  return (xsStmts, fmap (Binary (List []) Data.Fuzzi.Extraction.Python3.Eq_) xsExpr)
+extract' (Just_ x) = extract' x
+extract' Nothing_ = return ([], Just None)
+extract' (Pair a b) = do
+  (aStmts, aExpr) <- extract' a
+  (bStmts, bExpr) <- extract' b
+  case (aExpr, bExpr) of
+    (Just aExpr, Just bExpr) ->
+      return (aStmts ++ bStmts, Just $ List [aExpr, bExpr])
+    _ -> throwError $
+      InternalError "Pair: expect both operands to produce expression"
+extract' (Fst a) = do
+  (aStmts, aExpr) <- extract' a
+  return (aStmts, fmap (flip Index (Val (IT 0))) aExpr)
+extract' (Snd a) = do
+  (aStmts, aExpr) <- extract' a
+  return (aStmts, fmap (flip Index (Val (IT 1))) aExpr)
+extract' (Abort _reason) =
+  throwError $ InternalError "Abort: extraction is not implemented yet"
+extract' (UpdatePrivTree _ _ _) =
+  throwError $ InternalError "UpdatePrivTree: extraction is not implemented yet"
+extract' (Gaussian'{}) =
+  throwError $ InternalError "Gaussian': extraction is not implemented yet"
+extract' (NumCast a) = do
+  (aStmts, aExpr) <- extract' a
+  return (aStmts, fmap (\e -> Call (Var "float") [e]) aExpr)
