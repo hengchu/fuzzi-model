@@ -9,7 +9,7 @@ import Data.Fuzzi.Types.SymbolicExpr
 --import Data.Fuzzi.Types.Optimize
 import Data.List (find)
 import Data.Maybe
-import Prelude hiding (and, or)
+import Prelude hiding (and, or, LT)
 import Type.Reflection
 import qualified Data.Map.Merge.Strict as MM
 import qualified Data.Map.Strict as M
@@ -54,6 +54,7 @@ class ( SymbolicRepr a
       , Eq a
       , Ord a
       , Matchable a a
+      , IfCxt (ToIR a)
       ) => FuzziType (a :: *)
 
 -- |This typeclass is defined for values that have a symbolic representation,
@@ -575,3 +576,33 @@ instance SEq a b => SEq (PrivTree1D a) (PrivTree1D b) where
       Just equalities -> foldr and (bool True) equalities
     where whenMissing = MM.traverseMissing (\_ _ -> Nothing)
           whenMatched = MM.zipWithAMatched (\_ c s -> Just (symEq c s))
+
+data IR = DB Double
+        | IT Integer
+        | LT [IR]
+        | MP (M.Map IR IR)
+  deriving (Show, Eq, Ord)
+
+class ToIR a where
+  toIR :: a -> IR
+
+instance ToIR Double where
+  toIR = DB
+
+instance {-# OVERLAPS #-} IfCxt (ToIR Double) where
+  ifCxt _ t _ = t
+
+instance ToIR Integer where
+  toIR = IT
+
+instance {-# OVERLAPS #-} IfCxt (ToIR Integer) where
+  ifCxt _ t _ = t
+
+instance ToIR a => ToIR [a] where
+  toIR = LT . fmap toIR
+
+instance {-# OVERLAPS #-} IfCxt (ToIR [Integer]) where
+  ifCxt _ t _ = t
+
+instance {-# OVERLAPS #-} IfCxt (ToIR [Double]) where
+  ifCxt _ t _ = t

@@ -219,9 +219,9 @@ pretty (ListSnoc xs x) = do
 pretty (ListIsNil xs) = do
   xs' <- pretty xs
   return $ hsep [text "isNil", xs']
-pretty (ListLength xs) = do
-  xs' <- pretty xs
-  return $ hsep [text "length", xs']
+--pretty (ListLength xs) = do
+--  xs' <- pretty xs
+--  return $ hsep [text "length", xs']
 {-
 pretty (ListFilter f xs) = do
   f' <- pretty f

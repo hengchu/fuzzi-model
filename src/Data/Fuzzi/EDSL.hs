@@ -26,7 +26,7 @@ module Data.Fuzzi.EDSL (
   , just
   , nothing
   , isNil
-  , length_
+--  , length_
   , fromIntegral_
   , reify
   , streamline
@@ -100,7 +100,7 @@ data Fuzzi (a :: *) where
   ListCons   :: (FuzziType a) => Fuzzi a   -> Fuzzi [a] -> Fuzzi [a]
   ListSnoc   :: (FuzziType a) => Fuzzi [a] -> Fuzzi a   -> Fuzzi [a]
   ListIsNil  :: (FuzziType a, ConcreteBoolean bool) => Fuzzi [a] -> Fuzzi bool
-  ListLength :: (FuzziType a) => Fuzzi [a] -> Fuzzi Int
+  --ListLength :: (FuzziType a) => Fuzzi [a] -> Fuzzi Int
 
   Just_      :: (FuzziType a) => Fuzzi a -> Fuzzi (Maybe a)
   Nothing_   :: (FuzziType a) => Fuzzi (Maybe a)
@@ -133,8 +133,8 @@ snoc = ListSnoc
 isNil :: (FuzziType a, ConcreteBoolean bool) => Fuzzi [a] -> Fuzzi bool
 isNil = ListIsNil
 
-length_ :: (FuzziType a) => Fuzzi [a] -> Fuzzi Int
-length_ = ListLength
+--length_ :: (FuzziType a) => Fuzzi [a] -> Fuzzi Int
+--length_ = ListLength
 
 updatePT :: (FuzziType a)
          => Fuzzi PrivTreeNode1D
@@ -279,7 +279,7 @@ subst v term filling =
     ListCons x xs -> ListCons (subst v x filling)  (subst v xs filling)
     ListSnoc xs x -> ListSnoc (subst v xs filling) (subst v x filling)
     ListIsNil xs  -> ListIsNil (subst v xs filling)
-    ListLength xs -> ListLength (subst v xs filling)
+    -- ListLength xs -> ListLength (subst v xs filling)
     -- ListFilter f xs -> ListFilter (subst v f filling) (subst v xs filling)
 
     Just_ x -> Just_ (subst v x filling)
@@ -378,8 +378,8 @@ streamlineAux var (ListSnoc xs x) =
   [ListSnoc xs' x' | xs' <- streamlineAux var xs, x' <- streamlineAux var x]
 streamlineAux var (ListIsNil x) =
   [ListIsNil x' | x' <- streamlineAux var x]
-streamlineAux var (ListLength x) =
-  [ListLength x' | x' <- streamlineAux var x]
+--streamlineAux var (ListLength x) =
+--  [ListLength x' | x' <- streamlineAux var x]
 --streamlineAux var (ListFilter f xs) =
 --  [ListFilter f' xs' | f' <- streamlineAux var f, xs' <- streamlineAux var xs]
 streamlineAux var (Pair a b) =

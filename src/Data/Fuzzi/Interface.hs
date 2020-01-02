@@ -23,7 +23,7 @@ module Data.Fuzzi.Interface (
   , cons
   , snoc
   , isNil
-  , length_
+--  , length_
   , just
   , nothing
   , fromIntegral_

@@ -56,6 +56,8 @@ library
                 , Data.Fuzzi.Types.SymbolicExpr
                 , Data.Fuzzi.Z3
                 , Data.Fuzzi.Util
+                , Data.Fuzzi.Extraction
+                , Data.Fuzzi.Extraction.Python3
   other-modules:
       Paths_fuzzi_model
   hs-source-dirs:
