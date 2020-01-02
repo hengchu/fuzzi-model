@@ -139,7 +139,7 @@ gaussianNoRandomness center _ = NoRandomness center
 data ArithOp = Add | Mult | Sub | Div
   deriving (Show, Eq, Ord)
 
-data UOp = Abs | Sign
+data UOp = Abs | Sign | Exp
   deriving (Show, Eq, Ord)
 
 data DistributionProvenance (a :: *) where
@@ -187,6 +187,9 @@ instance Fractional a => Fractional (DistributionProvenance a) where
   a / b          = Arith a Div b
   fromRational v = Deterministic (fromRational v)
 
+instance LiteFloating a => LiteFloating (DistributionProvenance a) where
+  fexp a = Unary Exp a
+
 data WithDistributionProvenance a =
   WithDistributionProvenance { value :: a
                              , provenance :: DistributionProvenance a
@@ -208,6 +211,9 @@ instance Fractional a => Fractional (WithDistributionProvenance a) where
   a / b = WithDistributionProvenance (value a / value b) (provenance a / provenance b)
   fromRational v = WithDistributionProvenance (fromRational v) (fromRational v)
 
+instance LiteFloating a => LiteFloating (WithDistributionProvenance a) where
+  fexp a = WithDistributionProvenance (fexp (value a)) (fexp (provenance a))
+
 instance Ordered a => Ordered (WithDistributionProvenance a) where
   type CmpResult (WithDistributionProvenance a) = CmpResult a
   a %<  b = value a %<  value b
@@ -219,6 +225,7 @@ instance Ordered a => Ordered (WithDistributionProvenance a) where
 
 instance Numeric a     => Numeric (WithDistributionProvenance a)
 instance FracNumeric a => FracNumeric (WithDistributionProvenance a)
+instance FloatNumeric a => FloatNumeric (WithDistributionProvenance a)
 instance FuzziType a => FuzziType (WithDistributionProvenance a)
 
 instance MonadDist ConcreteDist where

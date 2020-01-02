@@ -84,6 +84,7 @@ data Fuzzi (a :: *) where
   Div         :: (FracNumeric a) => Fuzzi a -> Fuzzi a -> Fuzzi a
   IDiv        :: (IntNumeric a)  => Fuzzi a -> Fuzzi a -> Fuzzi a
   IMod        :: (IntNumeric a)  => Fuzzi a -> Fuzzi a -> Fuzzi a
+  FExp        :: (FloatNumeric a) => Fuzzi a -> Fuzzi a
 
   Lt          :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
   Le          :: (Ordered a) => Fuzzi a -> Fuzzi a -> Fuzzi (CmpResult a)
@@ -259,9 +260,10 @@ subst v term filling =
     Sign a   -> Sign (subst v a filling)
     Abs  a   -> Abs  (subst v a filling)
 
-    Div   a b -> Div   (subst v a filling) (subst v b filling)
-    IDiv  a b -> IDiv  (subst v a filling) (subst v b filling)
-    IMod  a b -> IMod  (subst v a filling) (subst v b filling)
+    Div  a b -> Div   (subst v a filling) (subst v b filling)
+    IDiv a b -> IDiv  (subst v a filling) (subst v b filling)
+    IMod a b -> IMod  (subst v a filling) (subst v b filling)
+    FExp a   -> FExp  (subst v a filling)
 
     Lt  a b  -> Lt   (subst v a filling) (subst v b filling)
     Le  a b  -> Le   (subst v a filling) (subst v b filling)
@@ -351,6 +353,8 @@ streamlineAux var (IDiv a b) =
   [IDiv a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (IMod a b) =
   [IMod a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
+streamlineAux var (FExp a) =
+  [FExp a' | a' <- streamlineAux var a]
 streamlineAux var (Lt a b) =
   [Lt a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (Le a b) =
@@ -462,6 +466,9 @@ instance (FuzziType a, FracNumeric a) => Fractional (Fuzzi a) where
 instance (IntNumeric a) => LiteIntegral (Fuzzi a) where
   idiv = IDiv
   imod = IMod
+
+instance (FuzziType a, FracNumeric a, FloatNumeric a) => LiteFloating (Fuzzi a) where
+  fexp = FExp
 
 instance ( Boolean (Fuzzi (CmpResult a))
          , Ordered a) => Ordered (Fuzzi a) where

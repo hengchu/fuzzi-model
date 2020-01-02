@@ -757,9 +757,9 @@ geometricFixedSens :: forall m int real.
                       , FractionalOf int ~ real
                       )
                    => Fuzzi int
-                   -> Double
-                   -> Double
+                   -> Fuzzi real
+                   -> Fuzzi real
                    -> Mon m (Fuzzi int)
 geometricFixedSens trueAnswer sens eps = do
-  let alpha = exp (- eps / sens)
-  simpleGeometric trueAnswer (realToFrac alpha)
+  let alpha = fexp (- eps / sens)
+  simpleGeometric trueAnswer alpha

@@ -365,10 +365,10 @@ geometricFixedSensPrivacyTest xs@(GeoFixedSensParam a b sens eps) =
   label ("geometric fixed sensitivity input: " ++ (show xs)) $
   monadicIO $
   expectDP
-    (eps + 1e-17)
+    (eps + 1e-15)
     500
-    ( reify $ geometricFixedSens (fromIntegral a) sens eps
-    , reify $ geometricFixedSens (fromIntegral b) sens eps
+    ( reify $ geometricFixedSens (fromIntegral a) (realToFrac sens) (realToFrac eps)
+    , reify $ geometricFixedSens (fromIntegral b) (realToFrac sens) (realToFrac eps)
     )
 
 simpleCountPrivacyTest :: BagList Int -> Property

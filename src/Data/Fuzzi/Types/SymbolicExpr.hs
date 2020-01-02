@@ -51,6 +51,9 @@ int = IntExpr . JustInt
 double :: Double -> RealExpr
 double = fromRational . toRational
 
+double' :: Rational -> Double -> RealExpr
+double' tol v = (double v){getTolerance = tol}
+
 int2real :: IntExpr -> RealExpr
 int2real (IntExpr e) = RealExpr 0 (Int2Real e)
 
