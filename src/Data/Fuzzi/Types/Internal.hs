@@ -94,10 +94,24 @@ instance LiteIntegral Integer where
   idiv = div
   imod = mod
 
+class Fractional (a :: *) => LiteFloating (a :: *) where
+  fexp :: a -> a
+
+instance LiteFloating Double where
+  fexp = exp
+
+instance LiteFloating RealExpr where
+  fexp v =
+    let tol = getTolerance v
+    in case tryEvalReal v of
+         Just v  -> double' tol (exp (realToFrac v))
+         Nothing -> error "fexp: can only be applied to constant symbolic real values"
+
 -- |This constraint is only satisfied by numeric datatypes supported in Fuzzi.
 class (Ordered a, Num a, Typeable a) => Numeric (a :: *)
 class (Numeric a, Fractional a)      => FracNumeric (a :: *)
 class (Numeric a, LiteIntegral a)    => IntNumeric (a :: *)
+class (Numeric a, LiteFloating a)    => FloatNumeric (a :: *)
 
 infixr 3 `and`
 infixr 2 `or`
@@ -143,8 +157,8 @@ class Matchable concrete symbolic where
   match :: concrete -> symbolic -> Bool
 
 type Distribution' m int real =
-  (MonadDist m, IntDomain m ~ int, NumDomain m ~ real, FuzziType int, Numeric real, FuzziType real, FracNumeric real)
-type Distribution  m a    = (MonadDist m, NumDomain m ~ a, FuzziType a, FracNumeric a)
+  (MonadDist m, IntDomain m ~ int, NumDomain m ~ real, FuzziType int, Numeric real, FuzziType real, FloatNumeric real)
+type Distribution  m a    = (MonadDist m, NumDomain m ~ a, FuzziType a, FloatNumeric a)
 type Assertion     m bool = (MonadAssert m, BoolType m ~ bool, IfCxt (ConcreteBoolean bool))
 type FuzziLang     m a    = (Distribution m a, Assertion m (CmpResult a))
 type FuzziLang'    m int real = (Distribution' m int real, Assertion m (CmpResult int), Assertion m (CmpResult real))
@@ -231,8 +245,10 @@ instance Ordered IntExpr where
 instance Numeric     IntExpr
 instance Numeric     RealExpr
 instance FracNumeric RealExpr
+instance FloatNumeric RealExpr
 instance Numeric Double
 instance FracNumeric Double
+instance FloatNumeric Double
 instance Numeric Int
 instance IntNumeric Int
 instance Numeric Integer

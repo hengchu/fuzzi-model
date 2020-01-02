@@ -174,6 +174,9 @@ pretty (IMod a b) = do
   a' <- pretty a
   b' <- pretty b
   return $ hsep [a', text "%", b']
+pretty (FExp a) = do
+  a' <- pretty a
+  return $ text "fexp" <> parens a'
 pretty (Lt a b) = do
   a' <- pretty a
   b' <- pretty b
