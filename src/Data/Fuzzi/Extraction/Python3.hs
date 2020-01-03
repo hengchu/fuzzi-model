@@ -4,15 +4,16 @@ import Control.Lens hiding (List)
 import Control.Monad.Except
 import Control.Monad.Reader hiding (local)
 import Control.Monad.State.Strict
+import Data.Fuzzi.Distribution()
 import Data.Fuzzi.EDSL
 import Data.Fuzzi.IfCxt
 import Data.Fuzzi.Types hiding (And, Or, Not, Add, Sub, Div)
+import Data.Maybe
 import Data.Proxy
 import Prelude hiding ((<>), LT)
 import Text.PrettyPrint
 import Type.Reflection hiding (App)
 import qualified Data.Map.Strict as M
-import Data.Fuzzi.Distribution()
 
 --data IndentChar = Space | Tab
 --  deriving (Show, Eq, Ord)
@@ -46,7 +47,7 @@ data Uop = BNot
 
 -- |All operators associate left to right
 precTable :: M.Map String Int
-precTable = fmap (*100) $ M.fromList [("list", 10),
+precTable = fmap (*100) $ M.fromList [("list", 10), ("slice", 10), ("tuple", 10),
                                       ("index", 9), ("call", 9),
                                       ("neg", 8),
                                       ("*", 7), ("/", 7), ("//", 7), ("%", 7),
@@ -59,7 +60,9 @@ precTable = fmap (*100) $ M.fromList [("list", 10),
 
 data Exp = Binary Exp Bop Exp
          | List [Exp]
+         | Tuple [Exp]
          | Index Exp Exp
+         | Slice Exp (Maybe Exp) (Maybe Exp)
          | Unary Uop Exp
          | Call Exp [Exp]
          | Var String
@@ -71,6 +74,7 @@ data Stmt = ExpStmt Exp
           | Assign  String Exp
           | Assert  Exp
           | Cond    Exp    [Stmt] [Stmt]
+          | While   Exp    [Stmt]
           | Ret     Exp
           | Decl    FuncDecl
           | Skip
@@ -372,14 +376,40 @@ extract' (ListSnoc xs x) = do
 extract' (ListIsNil xs) = do
   (xsStmts, xsExpr) <- extract' xs
   return (xsStmts, fmap (Binary (List []) Data.Fuzzi.Extraction.Python3.Eq_) xsExpr)
+extract' (ListUncons xs) = do
+  (xsStmts, xsExpr) <- extract' xs
+  case xsExpr of
+    Just xsExpr -> do
+      headName <- freshL "uncons_head"
+      tailName <- freshL "uncons_tail"
+      resultName <- freshL "uncons_result"
+      let cond = Cond xsExpr
+                   [ Assign headName (Index xsExpr (Val $ IT 0))
+                   , Assign tailName (Slice xsExpr (Just $ Val $ IT 1) Nothing)
+                   , Assign resultName (Tuple [Var headName, Var tailName])
+                   ]
+                   [ Assign resultName None ]
+      return (xsStmts ++ [cond], Just (Var resultName))
+    Nothing -> throwError
+      $ InternalError "ListUncons: expecting both operands to produce expression"
 extract' (Just_ x) = extract' x
 extract' Nothing_ = return ([], Just None)
+extract' (IsJust_ x) = do
+  (xStmts, xExp) <- extract' x
+  case xExp of
+    Just xExp -> return (xStmts, Just xExp)
+    Nothing -> throwError $ InternalError "IsJust_: expect operand to produce expression"
+extract' (FromJust_ x) = do
+  (xStmts, xExp) <- extract' x
+  case xExp of
+    Just xExp -> return (xStmts, Just xExp)
+    Nothing -> throwError $ InternalError "FromJust_: expect operand to produce expression"
 extract' (Pair a b) = do
   (aStmts, aExpr) <- extract' a
   (bStmts, bExpr) <- extract' b
   case (aExpr, bExpr) of
     (Just aExpr, Just bExpr) ->
-      return (aStmts ++ bStmts, Just $ List [aExpr, bExpr])
+      return (aStmts ++ bStmts, Just $ Tuple [aExpr, bExpr])
     _ -> throwError $
       InternalError "Pair: expect both operands to produce expression"
 extract' (Fst a) = do
@@ -397,6 +427,27 @@ extract' (Gaussian'{}) =
 extract' (NumCast a) = do
   (aStmts, aExpr) <- extract' a
   return (aStmts, fmap (\e -> Call (Var "float") [e]) aExpr)
+extract' (Loop acc pred iter) = do
+  (accStmts, accExp) <- extract' acc
+  case accExp of
+    Just accExp -> do
+      accName <- freshL "loop_acc"
+      let assignAcc = Assign accName accExp
+      condName <- freshL "loop_cond"
+      (condStmts, condExp) <- extract' (pred (PrettyPrintVariable accName))
+      case condExp of
+        Just condExp -> do
+          let assignCond = Assign condName condExp
+          (iterStmts, iterExp) <- extract' (iter (PrettyPrintVariable accName))
+          case iterExp of
+            Just iterExp -> do
+              let reAssignAcc = Assign accName iterExp
+              let stmts = accStmts ++ (assignAcc:condStmts ++ [assignCond]) ++ [While (Var condName) (iterStmts ++ [reAssignAcc] ++ condStmts ++ [assignCond])]
+              return (stmts, Just (Var accName))
+            Nothing ->
+              throwError $ InternalError "Loop: expected iterator to produce expression"
+        Nothing -> throwError $ InternalError "Loop: expected predicate to produce expression"
+    Nothing -> throwError $ InternalError "Loop: expected accumulator to produce expression"
 
 extractTopFuncDecl' :: ( MonadState  ExtractionState   m
                   , MonadReader ExtractionOptions m
@@ -431,11 +482,20 @@ prettyExp prec (Binary e1 op e2) =
 prettyExp prec (List es) =
   let es' = map (prettyExp 0) es
   in parensIf (prec > precTable M.! "list") $ brackets $ hsep $ punctuate comma es'
+prettyExp _ (Tuple es) =
+  let es' = map (prettyExp 0) es
+  in parens $ hsep $ punctuate comma es'
 prettyExp prec (Index e eidx) =
   let indexPrec = precTable M.! "index"
       e' = prettyExp indexPrec e
       eidx' = prettyExp 0 eidx
   in parensIf (prec > indexPrec) $ e' <> brackets eidx'
+prettyExp prec (Slice e start end) =
+  let slicePrec = precTable M.! "slice"
+      e' = prettyExp slicePrec e
+      start' = fromMaybe empty $ fmap (prettyExp 0) start
+      end'   = fromMaybe empty $ fmap (prettyExp 0) end
+  in parensIf (prec > slicePrec) $ e' <> (brackets (start' <> colon <> end'))
 prettyExp prec (Unary BNot e) =
   let notPrec = precTable M.! "not"
       e' = prettyExp notPrec e
@@ -471,6 +531,7 @@ prettyStmt lvl (Cond e stmts1 stmts2) =
       stmts2' = if length stmts2 == 0 then text "skip" else vcat $ map (prettyStmt lvl) stmts2
   in vcat [ text "if" <+> e' <> colon
           , nest lvl stmts1'
+          , text "else" <> colon
           , nest lvl stmts2'
           ]
 prettyStmt _   (Ret e) =
@@ -481,7 +542,12 @@ prettyStmt lvl (Decl (FuncDecl name paramNames stmts)) =
           , nest lvl stmts'
           , text "\n"
           ]
-prettyStmt _ Skip = text "skip"
+prettyStmt lvl (While cond stmts) =
+  let stmts' = if length stmts == 0 then text "skip" else vcat $ map (prettyStmt lvl) stmts
+  in vcat [ text "while" <+> prettyExp 0 cond <> colon
+          , nest lvl stmts'
+          ]
+prettyStmt _   Skip = text "skip"
 
 commaSpace :: Doc
 commaSpace = comma <+> space

@@ -23,12 +23,15 @@ module Data.Fuzzi.Interface (
   , cons
   , snoc
   , isNil
---  , length_
+  , uncons
   , just
   , nothing
+  , isJust_
+  , fromJust_
   , fromIntegral_
   , reify
   , streamline
+  , loop
 
   , module Data.Fuzzi.Types
   ) where

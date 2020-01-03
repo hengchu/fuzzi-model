@@ -7,6 +7,7 @@ import Control.Monad.Catch
 import Data.Fuzzi.EDSL
 import Data.Fuzzi.IfCxt
 import Data.Fuzzi.Types hiding (SymbolicExpr(..))
+import Data.Maybe
 import Data.Proxy
 import GHC.Generics
 import Prelude hiding (and, or)
@@ -73,6 +74,10 @@ eval ListNil         = []
 eval (ListCons x xs) = (eval x):(eval xs)
 eval (ListSnoc xs x) = (eval xs) ++ [eval x]
 eval (ListIsNil xs)  = fromBool $ null (eval xs)
+eval (ListUncons xs) =
+  case eval xs of
+    []     -> Nothing
+    (x:xs) -> Just (x,xs)
 --eval (ListLength xs) = length (eval xs)
 --eval (ListFilter f xs) = filter_ (eval f) (eval xs)
 eval (Pair a b) = ((,) $! eval a) $! eval b
@@ -83,3 +88,16 @@ eval (Abort reason) = throwM (AbortException reason)
 eval (UpdatePrivTree node value tree) = update (eval node) (eval value) (eval tree)
 eval (Just_ x) = Just (eval x)
 eval Nothing_ = Nothing
+eval (FromJust_ x) = fromJust (eval x)
+eval (IsJust_ x) = fromBool $ isJust (eval x)
+eval (Loop (acc :: Fuzzi acc) (pred :: Fuzzi acc -> Fuzzi bool) iter) =
+  runLoop (eval acc) (eval . pred . Lit) (eval . iter . Lit)
+
+runLoop :: (ConcreteBoolean bool, Monad m) => a -> (a -> bool) -> (a -> m a) -> m a
+runLoop acc pred iter = do
+  if toBool $ pred acc
+  then do
+    acc' <- iter acc
+    runLoop acc' pred iter
+  else
+    return acc

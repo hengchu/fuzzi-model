@@ -219,6 +219,9 @@ pretty (ListSnoc xs x) = do
 pretty (ListIsNil xs) = do
   xs' <- pretty xs
   return $ hsep [text "isNil", xs']
+pretty (ListUncons xs) = do
+  xs' <- pretty xs
+  return $ hsep [text "uncons", xs']
 --pretty (ListLength xs) = do
 --  xs' <- pretty xs
 --  return $ hsep [text "length", xs']
@@ -252,3 +255,10 @@ pretty (Just_ x) = do
   x' <- pretty x
   return $ hsep [text "Just", x']
 pretty Nothing_ = return (text "Nothing")
+pretty (IsJust_ x) = do
+  x' <- pretty x
+  return (text "isJust" <> (parens x'))
+pretty (FromJust_ x) = do
+  x' <- pretty x
+  return (text "fromJust" <> (parens x'))
+pretty Loop{} = return $ text "loop prettyprint is not implemented yet..."

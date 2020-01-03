@@ -763,3 +763,29 @@ geometricFixedSens :: forall m int real.
 geometricFixedSens trueAnswer sens eps = do
   let alpha = fexp ((- eps) / sens)
   simpleGeometric trueAnswer alpha
+
+loopGeometricFixedSens :: forall m int real.
+                          ( FuzziLang' m int real
+                          , FractionalOf int ~ real
+                          )
+                       => Fuzzi [(int, (real, real))]
+                       -> Mon m (Fuzzi [int])
+loopGeometricFixedSens inputs = do
+  r <- loop (pair inputs (nil @int))
+            loopCond
+            loopIter
+  return (snd_ r)
+  where loopCond inputsWithOutputs =
+          let inputs  = fst_ inputsWithOutputs
+          in (neg $ isNil inputs :: Fuzzi Bool)
+        loopIter inputsWithOutputs = do
+          let inputs  = fst_ inputsWithOutputs
+          let outputs = snd_ inputsWithOutputs
+          let thisInputAndTail = fromJust_ $ uncons inputs
+          let thisInput = fst_ thisInputAndTail
+          let more = snd_ thisInputAndTail
+          let trueAnswer = fst_ thisInput
+          let sens = fst_ (snd_ thisInput)
+          let eps  = snd_ (snd_ thisInput)
+          noisedAnswer <- geometricFixedSens trueAnswer sens eps
+          return $ pair more (snoc outputs noisedAnswer)

@@ -25,11 +25,14 @@ module Data.Fuzzi.EDSL (
   , snoc
   , just
   , nothing
+  , isJust_
+  , fromJust_
   , isNil
---  , length_
+  , uncons
   , fromIntegral_
   , reify
   , streamline
+  , loop
   ) where
 
 import Data.Coerce
@@ -69,6 +72,12 @@ data Fuzzi (a :: *) where
   Gaussian'   :: (Distribution m a) => Rational -> Fuzzi a -> Double -> Fuzzi (m a)
   Variable    :: (Typeable a) => Int -> Fuzzi a
 
+  Loop :: (Monad m, FuzziType acc, FuzziType bool, ConcreteBoolean bool)
+       => Fuzzi acc                    -- ^loop accumulator
+       -> (Fuzzi acc -> Fuzzi bool)    -- ^loop condition
+       -> (Fuzzi acc -> Fuzzi (m acc)) -- ^loop iteration
+       -> Fuzzi (m acc)
+
   PrettyPrintVariable :: (Typeable a) => String -> Fuzzi a
 
   And         :: (Boolean bool) => Fuzzi bool -> Fuzzi bool -> Fuzzi bool
@@ -100,10 +109,12 @@ data Fuzzi (a :: *) where
   ListCons   :: (FuzziType a) => Fuzzi a   -> Fuzzi [a] -> Fuzzi [a]
   ListSnoc   :: (FuzziType a) => Fuzzi [a] -> Fuzzi a   -> Fuzzi [a]
   ListIsNil  :: (FuzziType a, ConcreteBoolean bool) => Fuzzi [a] -> Fuzzi bool
-  --ListLength :: (FuzziType a) => Fuzzi [a] -> Fuzzi Int
+  ListUncons :: (FuzziType a) => Fuzzi [a] -> Fuzzi (Maybe (a, [a]))
 
   Just_      :: (FuzziType a) => Fuzzi a -> Fuzzi (Maybe a)
   Nothing_   :: (FuzziType a) => Fuzzi (Maybe a)
+  IsJust_    :: (FuzziType a, FuzziType bool, ConcreteBoolean bool) => Fuzzi (Maybe a) -> Fuzzi bool
+  FromJust_  :: (FuzziType a) => Fuzzi (Maybe a) -> Fuzzi a
 
   Pair      :: (FuzziType a, FuzziType b) => Fuzzi a -> Fuzzi b      -> Fuzzi (a, b)
   Fst       :: (FuzziType a, FuzziType b) =>            Fuzzi (a, b) -> Fuzzi a
@@ -121,6 +132,12 @@ just = Just_
 nothing :: (FuzziType a) => Fuzzi (Maybe a)
 nothing = Nothing_
 
+fromJust_ :: (FuzziType a) => Fuzzi (Maybe a) -> Fuzzi a
+fromJust_ = FromJust_
+
+isJust_ :: (FuzziType a, FuzziType bool, ConcreteBoolean bool) => Fuzzi (Maybe a) -> Fuzzi bool
+isJust_ = IsJust_
+
 nil :: (FuzziType a) => Fuzzi [a]
 nil = ListNil
 
@@ -132,6 +149,9 @@ snoc = ListSnoc
 
 isNil :: (FuzziType a, ConcreteBoolean bool) => Fuzzi [a] -> Fuzzi bool
 isNil = ListIsNil
+
+uncons :: (FuzziType a) => Fuzzi [a] -> Fuzzi (Maybe (a, [a]))
+uncons = ListUncons
 
 --length_ :: (FuzziType a) => Fuzzi [a] -> Fuzzi Int
 --length_ = ListLength
@@ -161,6 +181,14 @@ fromIntegral_ = NumCast
 if_ :: (Syntactic a, FuzziType bool, IfCxt (ConcreteBoolean bool)) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
 
+loop :: ( ConcreteBoolean bool
+        , FuzziType bool
+        , FuzziType acc
+        , Monad m
+        , Typeable m
+        ) => Fuzzi acc -> (Fuzzi acc -> Fuzzi bool) -> (Fuzzi acc -> Mon m (Fuzzi acc)) -> Mon m (Fuzzi acc)
+loop acc pred iter = fromDeepRepr $ Loop acc pred (toDeepRepr . iter)
+
 ifM :: ( Syntactic1 m
        , Syntactic a
        , Assertion (DeepRepr1 m) bool
@@ -182,8 +210,8 @@ lap' tol c w = fromDeepRepr $ Laplace' tol c w -- Mon ((Bind (Laplace c w)))
 gauss' :: forall m a. Distribution m a => Rational -> Fuzzi a -> Double -> Mon m (Fuzzi a)
 gauss' tol c w = fromDeepRepr $ Gaussian' tol c w --  Mon ((Bind (Gaussian c w)))
 
-pair :: (FuzziType (DeepRepr a), FuzziType (DeepRepr b), Syntactic a, Syntactic b) => a -> b -> (a, b)
-pair a b = fromDeepRepr $ Pair (toDeepRepr a) (toDeepRepr b)
+pair :: (FuzziType a, FuzziType b) => Fuzzi a -> Fuzzi b -> Fuzzi (a, b)
+pair = Pair
 
 fst_ :: (FuzziType a, FuzziType b) => Fuzzi (a, b) -> Fuzzi a
 fst_ = Fst
@@ -242,6 +270,8 @@ subst v term filling =
     Laplace' tol c w -> Laplace' tol (subst v c filling) (subst v w filling)
     Gaussian' tol c w -> Gaussian' tol (subst v c filling) w
 
+    Loop acc pred iter -> Loop (subst v acc filling) (\x -> subst v (pred x) filling) (\x -> subst v (iter x) filling)
+
     Variable v' ->
       case (v == v', eqTypeRep (typeRep @varType) (typeRep @a)) of
         (True, Just HRefl) -> filling
@@ -279,11 +309,12 @@ subst v term filling =
     ListCons x xs -> ListCons (subst v x filling)  (subst v xs filling)
     ListSnoc xs x -> ListSnoc (subst v xs filling) (subst v x filling)
     ListIsNil xs  -> ListIsNil (subst v xs filling)
-    -- ListLength xs -> ListLength (subst v xs filling)
-    -- ListFilter f xs -> ListFilter (subst v f filling) (subst v xs filling)
+    ListUncons xs -> ListUncons (subst v xs filling)
 
     Just_ x -> Just_ (subst v x filling)
     Nothing_ -> Nothing_
+    FromJust_ x -> FromJust_ (subst v x filling)
+    IsJust_ x -> IsJust_ (subst v x filling)
 
     NumCast a -> NumCast (subst v a filling)
 
@@ -329,6 +360,12 @@ streamlineAux var (Laplace' tol c w) =
   [Laplace' tol c' w' | c' <- streamlineAux var c, w' <- streamlineAux var w]
 streamlineAux var (Gaussian' tol c w) =
   [Gaussian' tol c' w | c' <- streamlineAux var c]
+streamlineAux var (Loop (acc :: Fuzzi acc) pred iter) =
+  let preds = streamlineAux (var + 1) (pred (Variable var))
+      iters = streamlineAux (var + 1) (iter (Variable var))
+  in [ Loop acc' (subst @acc var pred') (subst @acc var iter')
+     | acc' <- streamlineAux var acc, pred' <- preds, iter' <- iters
+     ]
 streamlineAux _ v@(Variable _) = [v]
 streamlineAux _ v@(PrettyPrintVariable _) = [v]
 streamlineAux var (And a b) =
@@ -378,10 +415,8 @@ streamlineAux var (ListSnoc xs x) =
   [ListSnoc xs' x' | xs' <- streamlineAux var xs, x' <- streamlineAux var x]
 streamlineAux var (ListIsNil x) =
   [ListIsNil x' | x' <- streamlineAux var x]
---streamlineAux var (ListLength x) =
---  [ListLength x' | x' <- streamlineAux var x]
---streamlineAux var (ListFilter f xs) =
---  [ListFilter f' xs' | f' <- streamlineAux var f, xs' <- streamlineAux var xs]
+streamlineAux var (ListUncons x) =
+  [ListUncons x' | x' <- streamlineAux var x]
 streamlineAux var (Pair a b) =
   [Pair a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
 streamlineAux var (Fst p) =
@@ -398,6 +433,10 @@ streamlineAux var (Just_ x) =
   Just_ <$> streamlineAux var x
 streamlineAux _ Nothing_ =
   [Nothing_]
+streamlineAux var (FromJust_ x) =
+  FromJust_ <$> streamlineAux var x
+streamlineAux var (IsJust_ x) =
+  IsJust_ <$> streamlineAux var x
 
 instance Applicative (Mon m) where
   pure a  = Mon $ \k -> k a
