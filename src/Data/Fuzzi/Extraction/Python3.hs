@@ -110,8 +110,9 @@ data ExtractionState = ExtractionState {
   , _esLocal :: [NameMap]
   } deriving (Show, Eq, Ord)
 
-emptyExtractionState :: ExtractionState
-emptyExtractionState = ExtractionState M.empty []
+emptyExtractionState :: [String] -> ExtractionState
+emptyExtractionState functionParams =
+  ExtractionState M.empty [M.fromList $ map (\x -> (x,1)) functionParams]
 
 makeLensesWith abbreviatedFields ''ExtractionState
 
@@ -133,7 +134,7 @@ extractPython3Default = extractPython3 defaultExtractionOptions
 
 extractPython3 :: ExtractionOptions -> Fuzzi a -> Either ExtractionError Doc
 extractPython3 opts prog =
-  evalStateT (runReaderT (extractDoc' prog) opts) emptyExtractionState
+  evalStateT (runReaderT (extractDoc' prog) opts) (emptyExtractionState $ opts ^. functionParams)
 
 freshG :: MonadState ExtractionState m => String -> m String
 freshG name = do
@@ -429,7 +430,7 @@ prettyExp prec (Binary e1 op e2) =
   in parensIf (prec > opPrec) $ e1' <+> text opStr <+> e2'
 prettyExp prec (List es) =
   let es' = map (prettyExp 0) es
-  in parensIf (prec > precTable M.! "list") $ brackets $ foldr commaSep empty es'
+  in parensIf (prec > precTable M.! "list") $ brackets $ hsep $ punctuate comma es'
 prettyExp prec (Index e eidx) =
   let indexPrec = precTable M.! "index"
       e' = prettyExp indexPrec e
@@ -443,7 +444,7 @@ prettyExp prec (Call e es) =
   let callPrec = precTable M.! "call"
       e' = prettyExp callPrec e
       es' = map (prettyExp 0) es
-  in parensIf (callPrec > prec) $ e' <> (parens $ foldr commaSep empty es')
+  in parensIf (callPrec > prec) $ e' <> (parens $ hsep $ punctuate comma es')
 prettyExp _ (Var x) = text x
 prettyExp prec (Val ir) = prettyIR prec ir
 prettyExp _ None = text "None"
@@ -453,10 +454,10 @@ prettyIR _    (DB d) = Text.PrettyPrint.double d
 prettyIR _    (IT i) = Text.PrettyPrint.integer i
 prettyIR prec (LT irs) =
   let irs' = map (prettyIR 0) irs
-  in parensIf (prec > precTable M.! "list") $ brackets $ foldr commaSep empty irs'
+  in parensIf (prec > precTable M.! "list") $ brackets $ hsep $ punctuate comma irs'
 prettyIR prec (MP (M.toList -> kvs)) =
   let kvs'= fmap (bimap (prettyIR 0) (prettyIR 0)) kvs :: [(Doc, Doc)]
-  in parensIf (prec > precTable M.! "dict") $ braces $ foldr commaSep empty (formatKVs kvs')
+  in parensIf (prec > precTable M.! "dict") $ braces $ hsep $ punctuate comma (formatKVs kvs')
   where formatKVs []           = []
         formatKVs ((k,v):more) = (k <> colon <+> v):(formatKVs more)
 
@@ -476,8 +477,11 @@ prettyStmt _   (Ret e) =
   text "return" <+> prettyExp 0 e
 prettyStmt lvl (Decl (FuncDecl name paramNames stmts)) =
   let stmts' = vcat $ map (prettyStmt lvl) stmts
-  in vcat [ text "def" <+> text name <> (parens $ foldr commaSep empty (map text paramNames)) <> colon
+  in vcat [ text "def" <+> text name <> (parens $ hsep $ punctuate comma (map text paramNames)) <> colon
           , nest lvl stmts'
           , text "\n"
           ]
 prettyStmt _ Skip = text "skip"
+
+commaSpace :: Doc
+commaSpace = comma <+> space
