@@ -1,20 +1,21 @@
 module Data.Fuzzi.Distribution where
 
+import Control.Monad.Catch
+import Control.Monad.IO.Class
 import Control.Monad.State.Class
 import Control.Monad.Trans.State hiding (modify, gets)
 import Data.Functor.Classes
 import Data.Functor.Identity
+import Data.Fuzzi.IfCxt
+import Data.Fuzzi.Types hiding (SymbolicExpr(..))
 import Data.Random.Distribution.Normal
 import Data.Random.Distribution.Uniform
 import Data.Random.RVar
 import Data.Sequence
 import Type.Reflection
-import Data.Fuzzi.Types hiding (SymbolicExpr(..))
 import qualified Control.Monad.Trans.Class as MT
 import qualified Data.Map.Strict as M
 import qualified Data.Random as R
-import Control.Monad.Catch
-import Control.Monad.IO.Class
 
 class Eq (GetProvenance a) => HasProvenance a where
   type GetProvenance  a :: *
@@ -250,6 +251,10 @@ instance MonadDist NoRandomness where
   gaussian  = gaussianNoRandomness
   gaussian' = const gaussianNoRandomness
 
+instance MonadAssert ConcreteDist where
+  type BoolType ConcreteDist = Bool
+  assertTrue _ = return ()
+
 instance MonadDist TracedDist where
   type NumDomain TracedDist = WithDistributionProvenance Double
   type IntDomain TracedDist = WithDistributionProvenance Integer
@@ -292,6 +297,9 @@ instance Matchable a b =>
     let _provA = provenance a
         _provB = provenance b
     in match (value a) (value b) -- && matchProvenance provA provB
+
+instance MonadThrow ConcreteDist where
+  throwM = liftIO . throwM
 
 instance MonadThrow TracedDist where
   throwM = liftIO . throwM
@@ -383,3 +391,18 @@ instance SEq
 
 type instance FractionalOf (WithDistributionProvenance Integer) = WithDistributionProvenance Double
 type instance FractionalOf (WithDistributionProvenance IntExpr) = WithDistributionProvenance RealExpr
+
+instance ToIR a => ToIR (WithDistributionProvenance a) where
+  toIR v = toIR (value v)
+
+instance {-# OVERLAPS #-} IfCxt (ToIR (WithDistributionProvenance Integer)) where
+  ifCxt _ t _ = t
+
+instance {-# OVERLAPS #-} IfCxt (ToIR (WithDistributionProvenance Double)) where
+  ifCxt _ t _ = t
+
+instance {-# OVERLAPS #-} IfCxt (ToIR (WithDistributionProvenance [Integer])) where
+  ifCxt _ t _ = t
+
+instance {-# OVERLAPS #-} IfCxt (ToIR (WithDistributionProvenance [Double])) where
+  ifCxt _ t _ = t

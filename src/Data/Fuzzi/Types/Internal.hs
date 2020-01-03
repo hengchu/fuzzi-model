@@ -1,23 +1,23 @@
 module Data.Fuzzi.Types.Internal where
 
+--import Data.Fuzzi.Types.Optimize
+import Control.DeepSeq
 import Control.Lens hiding (matching)
 import Control.Monad.Catch
 import Data.Coerce
 import Data.Functor.Compose
 import Data.Fuzzi.IfCxt
 import Data.Fuzzi.Types.SymbolicExpr
---import Data.Fuzzi.Types.Optimize
 import Data.List (find)
 import Data.Maybe
+import GHC.Generics
 import Prelude hiding (and, or, LT)
 import Type.Reflection
 import qualified Data.Map.Merge.Strict as MM
 import qualified Data.Map.Strict as M
+import qualified Data.Sequence as SS
 import qualified Data.Set as S
 import qualified Prelude
-import GHC.Generics
-import Control.DeepSeq
-import qualified Data.Sequence as SS
 
 {- HLINT ignore "Use camelCase" -}
 

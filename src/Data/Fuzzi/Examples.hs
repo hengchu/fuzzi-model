@@ -761,5 +761,5 @@ geometricFixedSens :: forall m int real.
                    -> Fuzzi real
                    -> Mon m (Fuzzi int)
 geometricFixedSens trueAnswer sens eps = do
-  let alpha = fexp (- eps / sens)
+  let alpha = fexp ((- eps) / sens)
   simpleGeometric trueAnswer alpha

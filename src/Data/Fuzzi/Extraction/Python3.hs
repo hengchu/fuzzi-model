@@ -12,9 +12,10 @@ import Prelude hiding ((<>), LT)
 import Text.PrettyPrint
 import Type.Reflection hiding (App)
 import qualified Data.Map.Strict as M
+import Data.Fuzzi.Distribution()
 
-data IndentChar = Space | Tab
-  deriving (Show, Eq, Ord)
+--data IndentChar = Space | Tab
+--  deriving (Show, Eq, Ord)
 
 data Bop = Add  | Mult
          | Sub  | Div
@@ -24,8 +25,37 @@ data Bop = Add  | Mult
          | Conj | Disj
   deriving (Show, Eq, Ord)
 
-data Uop = BNot | Abs | Exp
+bop2str :: Bop -> String
+bop2str Data.Fuzzi.Extraction.Python3.Add = "+"
+bop2str Data.Fuzzi.Extraction.Python3.Mult = "*"
+bop2str Data.Fuzzi.Extraction.Python3.Sub = "-"
+bop2str Data.Fuzzi.Extraction.Python3.Div = "/"
+bop2str Data.Fuzzi.Extraction.Python3.IDiv = "//"
+bop2str Data.Fuzzi.Extraction.Python3.IMod = "%"
+bop2str Data.Fuzzi.Extraction.Python3.Lt = "<"
+bop2str Data.Fuzzi.Extraction.Python3.Le = "<="
+bop2str Data.Fuzzi.Extraction.Python3.Gt = ">"
+bop2str Data.Fuzzi.Extraction.Python3.Ge = ">="
+bop2str Data.Fuzzi.Extraction.Python3.Eq_ = "=="
+bop2str Data.Fuzzi.Extraction.Python3.Neq = "!="
+bop2str Data.Fuzzi.Extraction.Python3.Conj = "and"
+bop2str Data.Fuzzi.Extraction.Python3.Disj = "or"
+
+data Uop = BNot
   deriving (Show, Eq, Ord)
+
+-- |All operators associate left to right
+precTable :: M.Map String Int
+precTable = fmap (*100) $ M.fromList [("list", 10),
+                                      ("index", 9), ("call", 9),
+                                      ("neg", 8),
+                                      ("*", 7), ("/", 7), ("//", 7), ("%", 7),
+                                      ("+", 6), ("-", 6),
+                                      ("<", 5), ("<=", 5), (">", 5), (">=", 5), ("!=", 5), ("==", 5),
+                                      ("not", 4),
+                                      ("and", 3),
+                                      ("or", 2)
+                                     ]
 
 data Exp = Binary Exp Bop Exp
          | List [Exp]
@@ -43,6 +73,7 @@ data Stmt = ExpStmt Exp
           | Cond    Exp    [Stmt] [Stmt]
           | Ret     Exp
           | Decl    FuncDecl
+          | Skip
   deriving (Show, Eq, Ord)
 
 data FuncDecl = FuncDecl {
@@ -55,10 +86,15 @@ data FuncDecl = FuncDecl {
 makeLensesWith abbreviatedFields ''FuncDecl
 
 data ExtractionOptions = ExtractionOptions {
-  _eoIndentChar :: IndentChar
-  , _eoIndentLevel :: Int
+  _eoIndentLevel :: Int
   , _eoFunctionName :: String
+  , _eoFunctionParams :: [String]
   }
+
+makeLensesWith abbreviatedFields ''ExtractionOptions
+
+defaultExtractionOptions :: ExtractionOptions
+defaultExtractionOptions = ExtractionOptions 2 "fuzzi_fun" []
 
 type NameMap = M.Map String Int
 
@@ -74,6 +110,9 @@ data ExtractionState = ExtractionState {
   , _esLocal :: [NameMap]
   } deriving (Show, Eq, Ord)
 
+emptyExtractionState :: ExtractionState
+emptyExtractionState = ExtractionState M.empty []
+
 makeLensesWith abbreviatedFields ''ExtractionState
 
 newtype ExtractionM a = ExtractionM {
@@ -88,6 +127,13 @@ newtype ExtractionM a = ExtractionM {
     via (ReaderT ExtractionOptions (StateT ExtractionState (Except ExtractionError)))
     deriving (MonadError ExtractionError)
     via (ReaderT ExtractionOptions (StateT ExtractionState (Except ExtractionError)))
+
+extractPython3Default :: Fuzzi a -> Either ExtractionError Doc
+extractPython3Default = extractPython3 defaultExtractionOptions
+
+extractPython3 :: ExtractionOptions -> Fuzzi a -> Either ExtractionError Doc
+extractPython3 opts prog =
+  evalStateT (runReaderT (extractDoc' prog) opts) emptyExtractionState
 
 freshG :: MonadState ExtractionState m => String -> m String
 freshG name = do
@@ -350,3 +396,88 @@ extract' (Gaussian'{}) =
 extract' (NumCast a) = do
   (aStmts, aExpr) <- extract' a
   return (aStmts, fmap (\e -> Call (Var "float") [e]) aExpr)
+
+extractTopFuncDecl' :: ( MonadState  ExtractionState   m
+                  , MonadReader ExtractionOptions m
+                  , MonadError  ExtractionError   m
+                  ) => Fuzzi a -> m FuncDecl
+extractTopFuncDecl' prog = do
+  v <- extract' prog
+  topFunName   <- (^. functionName)   <$> ask
+  topFunParams <- (^. functionParams) <$> ask
+  case v of
+    (stmts, Just e)  ->
+      return $ FuncDecl topFunName topFunParams $ stmts ++ [Ret e]
+    (stmts, Nothing) ->
+      return $ FuncDecl topFunName topFunParams $ if length stmts == 0 then [Skip] else stmts
+
+extractDoc' :: ( MonadState  ExtractionState   m
+               , MonadReader ExtractionOptions m
+               , MonadError  ExtractionError   m
+               ) => Fuzzi a -> m Doc
+extractDoc' prog = do
+  fDecl <- extractTopFuncDecl' prog
+  indentLvl <- (^. indentLevel) <$> ask
+  return $ prettyStmt indentLvl (Decl fDecl)
+
+prettyExp :: Int -> Exp -> Doc
+prettyExp prec (Binary e1 op e2) =
+  let opStr = bop2str op
+      opPrec = precTable M.! opStr
+      e1' = prettyExp opPrec e1
+      e2' = prettyExp (opPrec + 1) e2
+  in parensIf (prec > opPrec) $ e1' <+> text opStr <+> e2'
+prettyExp prec (List es) =
+  let es' = map (prettyExp 0) es
+  in parensIf (prec > precTable M.! "list") $ brackets $ foldr commaSep empty es'
+prettyExp prec (Index e eidx) =
+  let indexPrec = precTable M.! "index"
+      e' = prettyExp indexPrec e
+      eidx' = prettyExp 0 eidx
+  in parensIf (prec > indexPrec) $ e' <> brackets eidx'
+prettyExp prec (Unary BNot e) =
+  let notPrec = precTable M.! "not"
+      e' = prettyExp notPrec e
+  in parensIf (prec > notPrec) $ text "not" <+> e'
+prettyExp prec (Call e es) =
+  let callPrec = precTable M.! "call"
+      e' = prettyExp callPrec e
+      es' = map (prettyExp 0) es
+  in parensIf (callPrec > prec) $ e' <> (parens $ foldr commaSep empty es')
+prettyExp _ (Var x) = text x
+prettyExp prec (Val ir) = prettyIR prec ir
+prettyExp _ None = text "None"
+
+prettyIR :: Int -> IR -> Doc
+prettyIR _    (DB d) = Text.PrettyPrint.double d
+prettyIR _    (IT i) = Text.PrettyPrint.integer i
+prettyIR prec (LT irs) =
+  let irs' = map (prettyIR 0) irs
+  in parensIf (prec > precTable M.! "list") $ brackets $ foldr commaSep empty irs'
+prettyIR prec (MP (M.toList -> kvs)) =
+  let kvs'= fmap (bimap (prettyIR 0) (prettyIR 0)) kvs :: [(Doc, Doc)]
+  in parensIf (prec > precTable M.! "dict") $ braces $ foldr commaSep empty (formatKVs kvs')
+  where formatKVs []           = []
+        formatKVs ((k,v):more) = (k <> colon <+> v):(formatKVs more)
+
+prettyStmt :: Int -> Stmt -> Doc
+prettyStmt _   (ExpStmt e)  = prettyExp 0 e
+prettyStmt _   (Assign x e) = text x <+> equals <+> prettyExp 0 e
+prettyStmt _   (Assert e) = text "assert" <+> prettyExp 0 e
+prettyStmt lvl (Cond e stmts1 stmts2) =
+  let e'      = prettyExp 0 e
+      stmts1' = if length stmts1 == 0 then text "skip" else vcat $ map (prettyStmt lvl) stmts1
+      stmts2' = if length stmts2 == 0 then text "skip" else vcat $ map (prettyStmt lvl) stmts2
+  in vcat [ text "if" <+> e' <> colon
+          , nest lvl stmts1'
+          , nest lvl stmts2'
+          ]
+prettyStmt _   (Ret e) =
+  text "return" <+> prettyExp 0 e
+prettyStmt lvl (Decl (FuncDecl name paramNames stmts)) =
+  let stmts' = vcat $ map (prettyStmt lvl) stmts
+  in vcat [ text "def" <+> text name <> (parens $ foldr commaSep empty (map text paramNames)) <> colon
+          , nest lvl stmts'
+          , text "\n"
+          ]
+prettyStmt _ Skip = text "skip"
