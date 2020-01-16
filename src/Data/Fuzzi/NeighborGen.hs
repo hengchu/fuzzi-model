@@ -16,6 +16,7 @@ module Data.Fuzzi.NeighborGen (
   , sensitiveCount
   , GeoFixedSensParam(..)
   , geoFixedSensParam
+  , nonEmptyListOfGeoFixedSensParams
   ) where
 
 import Control.Lens
@@ -147,6 +148,9 @@ geoFixedSensParam = do
   a <- choose (start, start + sens)
   b <- choose (start, start + sens)
   return $ GeoFixedSensParam a b (fromIntegral sens) eps
+
+nonEmptyListOfGeoFixedSensParams :: Gen (NonEmptyList (GeoFixedSensParam Integer))
+nonEmptyListOfGeoFixedSensParams = NonEmpty <$> listOf1 geoFixedSensParam
 
 instance Num a => Neighbor (SensitiveCount a) where
   type Element (SensitiveCount a) = a

@@ -183,11 +183,15 @@ if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
 
 loop :: ( ConcreteBoolean bool
         , FuzziType bool
-        , FuzziType acc
+        , FuzziType (DeepRepr acc)
+        , Syntactic acc
+        , Syntactic1 m
         , Monad m
+        , Monad (DeepRepr1 m)
         , Typeable m
-        ) => Fuzzi acc -> (Fuzzi acc -> Fuzzi bool) -> (Fuzzi acc -> Mon m (Fuzzi acc)) -> Mon m (Fuzzi acc)
-loop acc pred iter = fromDeepRepr $ Loop acc pred (toDeepRepr . iter)
+        ) => acc -> (acc -> Fuzzi bool) -> (acc -> m acc) -> m acc
+loop acc pred iter =
+  fromDeepRepr1 $ Loop (toDeepRepr acc) (pred . fromDeepRepr) (toDeepRepr1 . iter . fromDeepRepr)
 
 ifM :: ( Syntactic1 m
        , Syntactic a
@@ -328,115 +332,122 @@ subst v term filling =
       UpdatePrivTree (subst v node filling) (subst v value filling) (subst v tree filling)
 
 streamline :: Typeable a => Fuzzi a -> [Fuzzi a]
-streamline = map optimize . streamlineAux 0
+streamline = map optimize . streamlineAux 0 False
 
-streamlineAux :: Typeable a => Int -> Fuzzi a -> [Fuzzi a]
-streamlineAux var (Lam (f :: Fuzzi x -> Fuzzi y)) =
-  let bodies = streamlineAux (var + 1) (f (Variable var))
+streamlineAux :: Typeable a => Int -> Bool -> Fuzzi a -> [Fuzzi a]
+streamlineAux var inLoop (Lam (f :: Fuzzi x -> Fuzzi y)) =
+  let bodies = streamlineAux (var + 1) inLoop (f (Variable var))
   in [Lam (subst @x var body) | body <- bodies]
-streamlineAux var (App f a) =
-  [App f' a' | f' <- streamlineAux var f, a' <- streamlineAux var a]
-streamlineAux var (Return x) =
-  [Return x' | x' <- streamlineAux var x]
-streamlineAux var (Sequence a b) =
-  [Sequence a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Bind a (f :: Fuzzi a -> Fuzzi (m b))) =
-  let bodies = streamlineAux (var + 1) (f (Variable var))
-  in [Bind a' (subst @a var body') | a' <- streamlineAux var a, body' <- bodies]
-streamlineAux _ (Lit x) = [Lit x]
-streamlineAux var (If cond t f) =
-  [If cond' t' f' | cond' <- streamlineAux var cond, t' <- streamlineAux var t, f' <- streamlineAux var f]
-streamlineAux var (IfM cond t f) =
-  let conds = streamlineAux var cond
-  in [Sequence (AssertTrueM cond') t' | cond' <- conds, t' <- streamlineAux var t]
-     ++ [Sequence (AssertFalseM cond') f' | cond' <- conds, f' <- streamlineAux var f]
-streamlineAux var (Geometric c a) =
-  [Geometric c' a' | c' <- streamlineAux var c, a' <- streamlineAux var a]
-streamlineAux var (Laplace c w) =
-  [Laplace c' w' | c' <- streamlineAux var c, w' <- streamlineAux var w]
-streamlineAux var (Gaussian c w) =
-  [Gaussian c' w | c' <- streamlineAux var c]
-streamlineAux var (Laplace' tol c w) =
-  [Laplace' tol c' w' | c' <- streamlineAux var c, w' <- streamlineAux var w]
-streamlineAux var (Gaussian' tol c w) =
-  [Gaussian' tol c' w | c' <- streamlineAux var c]
-streamlineAux var (Loop (acc :: Fuzzi acc) pred iter) =
-  let preds = streamlineAux (var + 1) (pred (Variable var))
-      iters = streamlineAux (var + 1) (iter (Variable var))
+streamlineAux var inLoop (App f a) =
+  [App f' a' | f' <- streamlineAux var inLoop f, a' <- streamlineAux var inLoop a]
+streamlineAux var inLoop (Return x) =
+  [Return x' | x' <- streamlineAux var inLoop x]
+streamlineAux var inLoop (Sequence a b) =
+  [Sequence a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Bind a (f :: Fuzzi a -> Fuzzi (m b))) =
+  let bodies = streamlineAux (var + 1) inLoop (f (Variable var))
+  in [Bind a' (subst @a var body') | a' <- streamlineAux var inLoop a, body' <- bodies]
+streamlineAux _ _ (Lit x) = [Lit x]
+streamlineAux _var True If{} =
+  error "streamline: cannot streamline branches in loop, use explicit recursion instead"
+streamlineAux var False (If cond t f) =
+  [If cond' t' f' | cond' <- streamlineAux var False cond,
+   t' <- streamlineAux var False t, f' <- streamlineAux var False f]
+streamlineAux _var True IfM{} =
+  error "streamline: cannot streamline branches in loop, use explicit recursion instead"
+streamlineAux var False (IfM cond t f) =
+  let conds = streamlineAux var False cond
+  in [Sequence (AssertTrueM cond') t' | cond' <- conds, t' <- streamlineAux var False t]
+     ++ [Sequence (AssertFalseM cond') f' | cond' <- conds, f' <- streamlineAux var False f]
+streamlineAux var inLoop (Geometric c a) =
+  [Geometric c' a' | c' <- streamlineAux var inLoop c, a' <- streamlineAux var inLoop a]
+streamlineAux var inLoop (Laplace c w) =
+  [Laplace c' w' | c' <- streamlineAux var inLoop c, w' <- streamlineAux var inLoop w]
+streamlineAux var inLoop (Gaussian c w) =
+  [Gaussian c' w | c' <- streamlineAux var inLoop c]
+streamlineAux var inLoop (Laplace' tol c w) =
+  [Laplace' tol c' w' | c' <- streamlineAux var inLoop c, w' <- streamlineAux var inLoop w]
+streamlineAux var inLoop (Gaussian' tol c w) =
+  [Gaussian' tol c' w | c' <- streamlineAux var inLoop c]
+streamlineAux var inLoop (Loop (acc :: Fuzzi acc) pred iter) =
+  let preds = streamlineAux (var + 1) inLoop (pred (Variable var))
+      iters = streamlineAux (var + 1) True (iter (Variable var))
   in [ Loop acc' (subst @acc var pred') (subst @acc var iter')
-     | acc' <- streamlineAux var acc, pred' <- preds, iter' <- iters
+     | acc' <- streamlineAux var True acc, pred' <- preds, iter' <- iters
      ]
-streamlineAux _ v@(Variable _) = [v]
-streamlineAux _ v@(PrettyPrintVariable _) = [v]
-streamlineAux var (And a b) =
-  [And a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Or  a b) =
-  [Or a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Not a) =
-  [Not a' | a' <- streamlineAux var a]
-streamlineAux var (Add a b) =
-  [Add a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Mult a b) =
-  [Mult a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Sub a b) =
-  [Sub a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Sign a) =
-  [Sign a' | a' <- streamlineAux var a]
-streamlineAux var (Abs a) =
-  [Abs a' | a' <- streamlineAux var a]
-streamlineAux var (Div a b) =
-  [Div a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (IDiv a b) =
-  [IDiv a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (IMod a b) =
-  [IMod a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (FExp a) =
-  [FExp a' | a' <- streamlineAux var a]
-streamlineAux var (Lt a b) =
-  [Lt a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Le a b) =
-  [Le a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Gt a b) =
-  [Gt a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Ge a b) =
-  [Ge a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Eq_ a b) =
-  [Eq_ a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Neq a b) =
-  [Neq a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (AssertTrueM cond) =
-  [AssertTrueM cond' | cond' <- streamlineAux var cond]
-streamlineAux var (AssertFalseM cond) =
-  [AssertFalseM cond' | cond' <- streamlineAux var cond]
-streamlineAux _ ListNil = [ListNil]
-streamlineAux var (ListCons x xs) =
-  [ListCons x' xs' | x' <- streamlineAux var x, xs' <- streamlineAux var xs]
-streamlineAux var (ListSnoc xs x) =
-  [ListSnoc xs' x' | xs' <- streamlineAux var xs, x' <- streamlineAux var x]
-streamlineAux var (ListIsNil x) =
-  [ListIsNil x' | x' <- streamlineAux var x]
-streamlineAux var (ListUncons x) =
-  [ListUncons x' | x' <- streamlineAux var x]
-streamlineAux var (Pair a b) =
-  [Pair a' b' | a' <- streamlineAux var a, b' <- streamlineAux var b]
-streamlineAux var (Fst p) =
-  Fst <$> streamlineAux var p
-streamlineAux var (Snd p) =
-  Snd <$> streamlineAux var p
-streamlineAux var (NumCast x) =
-  NumCast <$> streamlineAux var x
-streamlineAux _var (Abort reason) =
+streamlineAux _ _ v@(Variable _) = [v]
+streamlineAux _ _ v@(PrettyPrintVariable _) = [v]
+streamlineAux var inLoop (And a b) =
+  [And a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Or  a b) =
+  [Or a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Not a) =
+  [Not a' | a' <- streamlineAux var inLoop a]
+streamlineAux var inLoop (Add a b) =
+  [Add a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Mult a b) =
+  [Mult a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Sub a b) =
+  [Sub a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Sign a) =
+  [Sign a' | a' <- streamlineAux var inLoop a]
+streamlineAux var inLoop (Abs a) =
+  [Abs a' | a' <- streamlineAux var inLoop a]
+streamlineAux var inLoop (Div a b) =
+  [Div a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (IDiv a b) =
+  [IDiv a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (IMod a b) =
+  [IMod a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (FExp a) =
+  [FExp a' | a' <- streamlineAux var inLoop a]
+streamlineAux var inLoop (Lt a b) =
+  [Lt a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Le a b) =
+  [Le a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Gt a b) =
+  [Gt a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Ge a b) =
+  [Ge a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Eq_ a b) =
+  [Eq_ a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Neq a b) =
+  [Neq a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (AssertTrueM cond) =
+  [AssertTrueM cond' | cond' <- streamlineAux var inLoop cond]
+streamlineAux var inLoop (AssertFalseM cond) =
+  [AssertFalseM cond' | cond' <- streamlineAux var inLoop cond]
+streamlineAux _ _ ListNil = [ListNil]
+streamlineAux var inLoop (ListCons x xs) =
+  [ListCons x' xs' | x' <- streamlineAux var inLoop x, xs' <- streamlineAux var inLoop xs]
+streamlineAux var inLoop (ListSnoc xs x) =
+  [ListSnoc xs' x' | xs' <- streamlineAux var inLoop xs, x' <- streamlineAux var inLoop x]
+streamlineAux var inLoop (ListIsNil x) =
+  [ListIsNil x' | x' <- streamlineAux var inLoop x]
+streamlineAux var inLoop (ListUncons x) =
+  [ListUncons x' | x' <- streamlineAux var inLoop x]
+streamlineAux var inLoop (Pair a b) =
+  [Pair a' b' | a' <- streamlineAux var inLoop a, b' <- streamlineAux var inLoop b]
+streamlineAux var inLoop (Fst p) =
+  Fst <$> streamlineAux var inLoop p
+streamlineAux var inLoop (Snd p) =
+  Snd <$> streamlineAux var inLoop p
+streamlineAux var inLoop (NumCast x) =
+  NumCast <$> streamlineAux var inLoop x
+streamlineAux _var _ (Abort reason) =
   [Abort reason]
-streamlineAux var (UpdatePrivTree node value tree) =
-  [UpdatePrivTree node' value' tree' | node' <- streamlineAux var node, value' <- streamlineAux var value, tree' <- streamlineAux var tree]
-streamlineAux var (Just_ x) =
-  Just_ <$> streamlineAux var x
-streamlineAux _ Nothing_ =
+streamlineAux var inLoop (UpdatePrivTree node value tree) =
+  [UpdatePrivTree node' value' tree' | node' <- streamlineAux var inLoop node,
+   value' <- streamlineAux var inLoop value,
+   tree' <- streamlineAux var inLoop tree]
+streamlineAux var inLoop (Just_ x) =
+  Just_ <$> streamlineAux var inLoop x
+streamlineAux _ _ Nothing_ =
   [Nothing_]
-streamlineAux var (FromJust_ x) =
-  FromJust_ <$> streamlineAux var x
-streamlineAux var (IsJust_ x) =
-  IsJust_ <$> streamlineAux var x
+streamlineAux var inLoop (FromJust_ x) =
+  FromJust_ <$> streamlineAux var inLoop x
+streamlineAux var inLoop (IsJust_ x) =
+  IsJust_ <$> streamlineAux var inLoop x
 
 instance Applicative (Mon m) where
   pure a  = Mon $ \k -> k a

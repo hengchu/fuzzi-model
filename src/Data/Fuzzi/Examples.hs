@@ -771,16 +771,11 @@ loopGeometricFixedSens :: forall m int real.
                        => Fuzzi [(int, (real, real))]
                        -> Mon m (Fuzzi [int])
 loopGeometricFixedSens inputs = do
-  r <- loop (pair inputs (nil @int))
-            loopCond
-            loopIter
-  return (snd_ r)
-  where loopCond inputsWithOutputs =
-          let inputs  = fst_ inputsWithOutputs
-          in (neg $ isNil inputs :: Fuzzi Bool)
-        loopIter inputsWithOutputs = do
-          let inputs  = fst_ inputsWithOutputs
-          let outputs = snd_ inputsWithOutputs
+  (_, outputs) <- loop (inputs, (nil @int)) loopCond loopIter
+  return outputs
+  where loopCond (inputs, _) =
+          (neg $ isNil inputs :: Fuzzi Bool)
+        loopIter (inputs, outputs) = do
           let thisInputAndTail = fromJust_ $ uncons inputs
           let thisInput = fst_ thisInputAndTail
           let more = snd_ thisInputAndTail
@@ -788,4 +783,4 @@ loopGeometricFixedSens inputs = do
           let sens = fst_ (snd_ thisInput)
           let eps  = snd_ (snd_ thisInput)
           noisedAnswer <- geometricFixedSens trueAnswer sens eps
-          return $ pair more (snoc outputs noisedAnswer)
+          return $ (more, snoc outputs noisedAnswer)

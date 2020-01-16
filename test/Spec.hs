@@ -371,6 +371,24 @@ geometricFixedSensPrivacyTest xs@(GeoFixedSensParam a b sens eps) =
     , reify $ geometricFixedSens (fromIntegral b) (realToFrac sens) (realToFrac eps)
     )
 
+loopGeometricFixedSensPrivacyTest :: NonEmptyList (GeoFixedSensParam Integer) -> Property
+loopGeometricFixedSensPrivacyTest (getNonEmpty -> xs) =
+  label ("loop geometric input size: " ++ (show (length xs))) $
+  monadicIO $
+  expectDP
+    (eps + 1e-15)
+    500
+    ( reify $ loopGeometricFixedSens (lit inputs1)
+    , reify $ loopGeometricFixedSens (lit inputs2)
+    )
+  where sensValues = map (\(GeoFixedSensParam _ _ sens _)   -> sens) xs
+        epsValues  = map (\(GeoFixedSensParam _ _ _    eps) -> eps)  xs
+        counts1    = map (\(GeoFixedSensParam a _ _    _)   -> a)    xs
+        counts2    = map (\(GeoFixedSensParam _ b _    _)   -> b)    xs
+        inputs1    = zipWith3 (\count sens eps -> (fromIntegral count, (realToFrac sens, realToFrac eps))) counts1 sensValues epsValues
+        inputs2    = zipWith3 (\count sens eps -> (fromIntegral count, (realToFrac sens, realToFrac eps))) counts2 sensValues epsValues
+        eps        = sum epsValues
+
 simpleCountPrivacyTest :: BagList Int -> Property
 simpleCountPrivacyTest xs = label ("simpleCount input length: " ++ (show (bagListLength xs))) $
   monadicIO $
