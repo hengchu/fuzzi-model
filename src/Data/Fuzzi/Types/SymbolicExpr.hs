@@ -126,7 +126,7 @@ instance Num IntExpr where
 
 instance Fractional RealExpr where
   RealExpr tol left / RealExpr tol' right = RealExpr (max tol tol') (Div left right)
-  fromRational = RealExpr 0 . Rat
+  fromRational = RealExpr 1e-6 . Rat
 
 instance Show SymbolicExpr where
   showsPrec prec expr = showParen (prec > 10) $

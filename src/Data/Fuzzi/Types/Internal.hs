@@ -272,8 +272,9 @@ instance Matchable PrivTreeNode1D PrivTreeNode1D where
 
 instance Matchable Double RealExpr where
   match v sv =
+    let tol = getTolerance sv in
     case tryEvalReal sv of
-      Just v' -> toRational v == v'
+      Just v' -> (toRational v - v') <= tol
       Nothing -> True
 
 instance ( Matchable a b

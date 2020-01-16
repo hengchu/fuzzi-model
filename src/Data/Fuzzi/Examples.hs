@@ -759,19 +759,21 @@ geometricFixedSens :: forall m int real.
                    => Fuzzi int
                    -> Fuzzi real
                    -> Fuzzi real
-                   -> Mon m (Fuzzi int)
+                   -> Mon m (Fuzzi int, Fuzzi real)
 geometricFixedSens trueAnswer sens eps = do
   let alpha = fexp ((- eps) / sens)
-  simpleGeometric trueAnswer alpha
+  let prob  = 1 - alpha
+  noisedAnswer <- simpleGeometric trueAnswer alpha
+  return (noisedAnswer, 2 * alpha / (prob * prob))
 
 loopGeometricFixedSens :: forall m int real.
                           ( FuzziLang' m int real
                           , FractionalOf int ~ real
                           )
                        => Fuzzi [(int, (real, real))]
-                       -> Mon m (Fuzzi [int])
+                       -> Mon m (Fuzzi [(int, real)]) -- list of (noisedAnswer, variance)
 loopGeometricFixedSens inputs = do
-  (_, outputs) <- loop (inputs, (nil @int)) loopCond loopIter
+  (_, outputs) <- loop (inputs, (nil @(int, real))) loopCond loopIter
   return outputs
   where loopCond (inputs, _) =
           (neg $ isNil inputs :: Fuzzi Bool)
@@ -782,5 +784,5 @@ loopGeometricFixedSens inputs = do
           let trueAnswer = fst_ thisInput
           let sens = fst_ (snd_ thisInput)
           let eps  = snd_ (snd_ thisInput)
-          noisedAnswer <- geometricFixedSens trueAnswer sens eps
-          return $ (more, snoc outputs noisedAnswer)
+          (noisedAnswer, variance) <- geometricFixedSens trueAnswer sens eps
+          return $ (more, snoc outputs (pair noisedAnswer variance))
