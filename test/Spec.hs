@@ -376,7 +376,7 @@ loopGeometricFixedSensPrivacyTest (getNonEmpty -> xs) =
   label ("loop geometric input size: " ++ (show (length xs))) $
   monadicIO $
   expectDP
-    (eps + 1e-15)
+    (eps + 1e-12)
     500
     ( reify $ loopGeometricFixedSens (lit inputs1)
     , reify $ loopGeometricFixedSens (lit inputs2)
@@ -535,6 +535,10 @@ prop_unboundedMeanIsNotDifferentiallyPrivate :: Property
 prop_unboundedMeanIsNotDifferentiallyPrivate =
   unboundedMeanNotPrivateTest
 
+prop_loopGeometricFixedSensIsDifferentiallyPrivate :: Property
+prop_loopGeometricFixedSensIsDifferentiallyPrivate =
+  forAll nonEmptyListOfGeoFixedSensParams loopGeometricFixedSensPrivacyTest
+
 newtype SmallList a = SmallList {
   getSmallList :: [a]
   } deriving (Show, Eq, Ord)
@@ -627,15 +631,19 @@ main = do
         else stdArgs{maxSuccess = 20, maxShrinks = 20}
   let expectFailureArgs = stdArgs{maxSuccess = 5, maxShrinks = 20}
 
+  --quickCheckWithResult
+  --  stdArgs{maxSuccess=2000}
+  --  simpleProperties >>= printAndExitIfFailed
+  --quickCheckWithResult
+  --  stdArgs{maxSuccess=500, maxShrinks=20}
+  --  prop_mergeUnionResultIsSuperSet >>= printAndExitIfFailed
+  --quickCheckWithResult
+  --  stdArgs{maxSuccess=500, maxShrinks=20}
+  --  prop_mergeUnionCommutes >>= printAndExitIfFailed
+
   quickCheckWithResult
-    stdArgs{maxSuccess=2000}
-    simpleProperties >>= printAndExitIfFailed
-  quickCheckWithResult
-    stdArgs{maxSuccess=500, maxShrinks=20}
-    prop_mergeUnionResultIsSuperSet >>= printAndExitIfFailed
-  quickCheckWithResult
-    stdArgs{maxSuccess=500, maxShrinks=20}
-    prop_mergeUnionCommutes >>= printAndExitIfFailed
+    expectSuccessArgs
+    prop_loopGeometricFixedSensIsDifferentiallyPrivate >>= printAndExitIfFailed
 
   quickCheckWithResult
     expectSuccessArgs
@@ -713,7 +721,6 @@ main = do
   quickCheckWithResult
     expectFailureArgs
     rnmGapBuggyNotPrivateTest >>= printAndExitIfFailed
-
 
   putStrLn $
     "\n#######################################"

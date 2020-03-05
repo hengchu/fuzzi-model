@@ -48,7 +48,7 @@ profile :: ( Show (GetProvenance a)
         -> Fuzzi (TracedDist a)
         -> m (Buckets a)
 profile ntimes prog = do
-  outputs <- replicateM ntimes (liftIO $ run prog) -- `catch` (\(_ :: AbortException) -> return Nothing))
+  outputs <- replicateM ntimes (liftIO $ run prog `catch` (\(_ :: AbortException) -> return Nothing))
   let Just outputs' = sequence (filter isJust outputs)
   $(logInfo) ("collected " <> pack (show (length outputs')) <> " buckets")
   let bucketsWithKey = buildMapAux outputs' M.empty
