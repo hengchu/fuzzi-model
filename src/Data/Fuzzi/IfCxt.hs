@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 module Data.Fuzzi.IfCxt where
 
 import Data.Kind

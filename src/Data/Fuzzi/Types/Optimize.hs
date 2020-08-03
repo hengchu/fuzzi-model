@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 module Data.Fuzzi.Types.Optimize where
 
 import Data.Fuzzi.Types.SymbolicExpr

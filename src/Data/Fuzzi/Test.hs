@@ -1,4 +1,31 @@
-module Data.Fuzzi.Test where
+{-# OPTIONS_HADDOCK prune #-}
+
+{-|
+Module: Data.Fuzzi.Test
+Description: Test combinators that checks DP/non-DP properties.
+-}
+module Data.Fuzzi.Test (
+  -- ** A type that groups symbolic return values, constraints, and concrete sampled traces together
+  TestBundle(..)
+  , constraints
+  , symbolicResult
+  , bucket
+  -- *** Sample concrete probabilistic traces from a program
+  , profile
+  , profileIO
+  , profileIOVerbose
+  -- *** Top-level test combinators for testing DP/non-DP properties
+  , expectDP
+  , expectDPRosette
+  , expectDPVerbose
+  , expectDPRosetteVerbose
+  , expectNotDP
+  , expectNotDPVerbose
+  , expectNotDPRosette
+  , expectNotDPRosetteVerbose
+
+  , symExecGeneralize
+  ) where
 
 {- HLINT ignore "Use mapM" -}
 
@@ -29,6 +56,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Sequence as S
 import qualified Data.Set as SS
 
+-- | A test bundle is a grouped symbolic return value grouped with matching
+-- concrete return values and their sampled traces.
 data TestBundle concrete symbolic = TestBundle {
   _tbConstraints :: SymbolicConstraints
   , _tbSymbolicResult :: symbolic
@@ -37,6 +66,7 @@ data TestBundle concrete symbolic = TestBundle {
 
 makeLensesWith abbreviatedFields ''TestBundle
 
+-- | Sample 'ntimes' traces from the given program 'prog'.
 profile :: ( Show (GetProvenance a)
            , Ord (GetProvenance a)
            , HasProvenance a
@@ -44,8 +74,8 @@ profile :: ( Show (GetProvenance a)
            , MonadLogger m
            , MonadUnliftIO m
            )
-        => Int
-        -> Fuzzi (TracedDist a)
+        => Int -- ^ The number of traces to sample
+        -> Fuzzi (TracedDist a) -- ^ The program to sample from
         -> m (Buckets a)
 profile ntimes prog = do
   outputs <- replicateM ntimes (liftIO $ run prog `catch` (\(_ :: AbortException) -> return Nothing))
@@ -60,21 +90,23 @@ profile ntimes prog = do
           r <- (sampleTraced . eval) prog
           return (Just r)
 
+-- | Same as 'profile', but monomorphize the monad to 'IO'.
 profileIO :: ( Show (GetProvenance a)
              , Ord (GetProvenance a)
              , HasProvenance a
              )
-          => Int
-          -> Fuzzi (TracedDist a)
+          => Int -- ^ The number of traces to sample
+          -> Fuzzi (TracedDist a) -- ^ The program to sample from
           -> IO (Buckets a)
 profileIO ntimes prog = runNoLoggingT $ profile ntimes prog
 
+-- | Same as 'profile', but monomorphize the monad to 'IO', and enable verbose logging.
 profileIOVerbose :: ( Show (GetProvenance a)
                     , Ord (GetProvenance a)
                     , HasProvenance a
                     )
-                 => Int
-                 -> Fuzzi (TracedDist a)
+                 => Int -- ^ The number of traces to sample
+                 -> Fuzzi (TracedDist a) -- ^ The program to sample from
                  -> IO (Buckets a)
 profileIOVerbose ntimes prog = runStdoutColoredLoggingT $ profile ntimes prog
 
@@ -328,6 +360,9 @@ expectNotDPRosette' logHandler eps ntrials nretries gen (left, right) = do
       stop True
   Test.QuickCheck.Monadic.assert False
 
+-- | Test a program using an *experimental* (probably very buggy!) optimized
+-- symbolic execution engine (based on Rosette's type-based state-merging
+-- algorithm), expecting the program to be differentially private.
 expectDPRosette :: ( Typeable concrete
                     , Typeable symbolic
                     , HasProvenance concrete
@@ -336,14 +371,18 @@ expectDPRosette :: ( Typeable concrete
                     , Show symbolic
                     , SEq concrete symbolic
                     )
-                 => Epsilon
-                 -> Int
+                 => Epsilon -- ^ The expected epsilon privacy parameter
+                 -> Int -- ^ The number of concrete traces to sample in this test
                  -> ( Fuzzi (TracedDist concrete)
                     , Fuzzi (RosetteT (LoggingT IO) symbolic)
-                    )
+                    ) -- ^ The pair of programs, one monomorphized for concrete execution, and the other one monomorphized for symbolic execution, and both have been partially applied on their respective inputs
                  -> PropertyM IO ()
 expectDPRosette = expectDPRosette' runStdoutColoredLoggingWarnT
 
+-- | Test a program using an *experimental* (probably very buggy!) optimized
+-- symbolic execution engine (based on Rosette's type-based state-merging
+-- algorithm), expecting the program to be differentially private, while
+-- enabling verbose logging.
 expectDPRosetteVerbose :: ( Typeable concrete
                           , Typeable symbolic
                           , HasProvenance concrete
@@ -352,15 +391,16 @@ expectDPRosetteVerbose :: ( Typeable concrete
                           , Show symbolic
                           , SEq concrete symbolic
                           )
-                       => Epsilon
-                       -> Int
+                       => Epsilon -- ^ The expected epsilon privacy parameter
+                       -> Int -- ^ The number of concrete traces to sample in this test
                        -> ( Fuzzi (TracedDist concrete)
                           , Fuzzi (RosetteT (LoggingT IO) symbolic)
-                          )
+                          ) -- ^ The pair of programs, one monomorphized for concrete execution, and the other one monomorphized for symbolic execution, and both have been partially applied on their respective inputs
                        -> PropertyM IO ()
 expectDPRosetteVerbose = expectDPRosette' (runStdoutColoredLoggingAboveLevelT LevelInfo)
 
-
+-- | Test a program, expecting the program to be differentially private, while
+-- enabling verbose logging.
 expectDPVerbose :: ( Typeable concrete
                    , Typeable symbolic
                    , Matchable concrete symbolic
@@ -371,13 +411,14 @@ expectDPVerbose :: ( Typeable concrete
                    , ConstraintsWithProvenance Show concrete
                    , ConstraintsWithProvenance Show symbolic
                    , SEq (DropProvenance concrete) (DropProvenance symbolic)) =>
-                   Epsilon
-                -> Int
+                   Epsilon -- ^ The expected epsilon privacy parameter
+                -> Int -- ^ The number of concrete traces to sample in this test
                 -> (Fuzzi (TracedDist concrete),
-                    Fuzzi (SymbolicT concrete (LoggingT IO) symbolic))
+                    Fuzzi (SymbolicT concrete (LoggingT IO) symbolic)) -- ^ The pair of programs, one monomorphized for concrete execution, and the other one monomorphized for symbolic execution, and both have been partially applied on their respective inputs
                 -> PropertyM IO ()
 expectDPVerbose = expectDP' runStdoutColoredLoggingT
 
+-- | Test a program, expecting the program to be differentially private.
 expectDP :: ( Typeable concrete
             , Typeable symbolic
             , Matchable concrete symbolic
@@ -388,10 +429,10 @@ expectDP :: ( Typeable concrete
             , ConstraintsWithProvenance Show concrete
             , ConstraintsWithProvenance Show symbolic
             , SEq (DropProvenance concrete) (DropProvenance symbolic)) =>
-            Epsilon
-         -> Int
+            Epsilon -- ^ The expected epsilon privacy parameter
+         -> Int -- ^ The number of concrete traces to sample in this test
          -> (Fuzzi (TracedDist concrete),
-             Fuzzi (SymbolicT concrete (LoggingT IO) symbolic))
+             Fuzzi (SymbolicT concrete (LoggingT IO) symbolic)) -- ^ The pair of programs, one monomorphized for concrete execution, and the other one monomorphized for symbolic execution, and both have been partially applied on their respective inputs
          -> PropertyM IO ()
 expectDP = expectDP' runStdoutColoredLoggingWarnT
 
@@ -446,6 +487,10 @@ expectNotDP' logHandler eps ntrials nretries gen (left, right) = do
               stop True
   Test.QuickCheck.Monadic.assert False
 
+-- | Test a program, expecting the program to *NOT* be epsilon-differentially
+-- private. This test passes only if the program under test is detected faulty
+-- within a given number of trials, and fails if no fault is detected before
+-- giving up. This runs the test while also turning on verbose logging.
 expectNotDPVerbose :: ( Typeable concrete
                       , Typeable symbolic
                       , Matchable concrete symbolic
@@ -459,16 +504,20 @@ expectNotDPVerbose :: ( Typeable concrete
                       , Show symbolicInput
                       , SEq (DropProvenance concrete) (DropProvenance symbolic)
                       )
-                   => Epsilon
-                   -> Int
-                   -> Int
-                   -> Gen (concreteInput, symbolicInput)
+                   => Epsilon -- ^ The epsilon privacy parameter that the program is expected to violate
+                   -> Int -- ^ The number of concrete sampled traces to use per trial
+                   -> Int -- ^ The number of of trials to run before giving up
+                   -> Gen (concreteInput, symbolicInput) -- ^ The generator for neighboring inputs
                    -> ( concreteInput -> Fuzzi (TracedDist concrete)
                       , symbolicInput -> Fuzzi (SymbolicT concrete (LoggingT IO) symbolic)
-                      )
+                      ) -- ^ The program to test, with one of them monomorphized for concrete execution, and the other one monomorphized for symbolic execution
                    -> PropertyM IO ()
 expectNotDPVerbose = expectNotDP' runStdoutColoredLoggingT
 
+-- | Test a program, expecting the program to *NOT* be epsilon-differentially
+-- private. This test passes only if the program under test is detected faulty
+-- within a given number of trials, and fails if no fault is detected before
+-- giving up.
 expectNotDP :: ( Typeable concrete
                , Typeable symbolic
                , Matchable concrete symbolic
@@ -482,16 +531,22 @@ expectNotDP :: ( Typeable concrete
                , Show symbolicInput
                , SEq (DropProvenance concrete) (DropProvenance symbolic)
                )
-            => Epsilon
-            -> Int
-            -> Int
-            -> Gen (concreteInput, symbolicInput)
+            => Epsilon -- ^ The epsilon privacy parameter that the program is expected to violate
+            -> Int -- ^ The number of concrete sampled traces to use per trial
+            -> Int -- ^ The number of of trials to run before giving up
+            -> Gen (concreteInput, symbolicInput) -- ^ The generator for neighboring inputs
             -> ( concreteInput -> Fuzzi (TracedDist concrete)
                , symbolicInput -> Fuzzi (SymbolicT concrete (LoggingT IO) symbolic)
-               )
+               ) -- ^ The program to test, with one of them monomorphized for concrete execution, and the other one monomorphized for symbolic execution
             -> PropertyM IO ()
 expectNotDP = expectNotDP' runStdoutColoredLoggingWarnT
 
+-- | Test a program, using an *experimental* (probably very buggy!) optimized
+-- symbolic execution engine (based on Rosette's type-based state-merging
+-- algorithm), expecting the program to *NOT* be epsilon-differentially
+-- private. This test passes only if the program under test is detected faulty
+-- within a given number of trials, and fails if no fault is detected before
+-- giving up.
 expectNotDPRosette :: ( Typeable concrete
                       , Typeable symbolic
                       , HasProvenance concrete
@@ -502,16 +557,22 @@ expectNotDPRosette :: ( Typeable concrete
                       , Show symbolic
                       , SEq concrete symbolic
                       )
-                   => Epsilon
-                   -> Int
-                   -> Int
-                   -> Gen (concreteInput, symbolicInput)
+                   => Epsilon -- ^ The epsilon privacy parameter that the program is expected to violate
+                   -> Int -- ^ The number of concrete sampled traces to use per trial
+                   -> Int -- ^ The number of of trials to run before giving up
+                   -> Gen (concreteInput, symbolicInput) -- ^ The generator for neighboring inputs
                    -> ( concreteInput -> Fuzzi (TracedDist concrete)
                       , symbolicInput -> Fuzzi (RosetteT (LoggingT IO) symbolic)
-                      )
+                      ) -- ^ The program to test, with one of them monomorphized for concrete execution, and the other one monomorphized for symbolic execution
                    -> PropertyM IO ()
 expectNotDPRosette = expectNotDPRosette' runStdoutColoredLoggingWarnT
 
+-- | Test a program, using an *experimental* (probably very buggy!) optimized
+-- symbolic execution engine (based on Rosette's type-based state-merging
+-- algorithm), expecting the program to *NOT* be epsilon-differentially
+-- private. This test passes only if the program under test is detected faulty
+-- within a given number of trials, and fails if no fault is detected before
+-- giving up. This runs the test while turning on verbose logging.
 expectNotDPRosetteVerbose :: ( Typeable concrete
                              , Typeable symbolic
                              , HasProvenance concrete
@@ -522,12 +583,12 @@ expectNotDPRosetteVerbose :: ( Typeable concrete
                              , Show symbolic
                              , SEq concrete symbolic
                              )
-                          => Epsilon
-                          -> Int
-                          -> Int
+                          => Epsilon -- ^ The epsilon privacy parameter that the program is expected to violate
+                          -> Int -- ^ The number of concrete sampled traces to use per trial
+                          -> Int -- ^ The number of of trials to run before giving up
                           -> Gen (concreteInput, symbolicInput)
                           -> ( concreteInput -> Fuzzi (TracedDist concrete)
                              , symbolicInput -> Fuzzi (RosetteT (LoggingT IO) symbolic)
-                             )
+                             ) -- ^ The program to test, with one of them monomorphized for concrete execution, and the other one monomorphized for symbolic execution
                           -> PropertyM IO ()
 expectNotDPRosetteVerbose = expectNotDPRosette' (runStdoutColoredLoggingAboveLevelT LevelInfo)

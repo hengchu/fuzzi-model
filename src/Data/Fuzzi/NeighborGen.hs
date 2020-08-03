@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 module Data.Fuzzi.NeighborGen (
   Neighbor(..)
   , PairWiseL1List

@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE DerivingVia #-}
 module Data.Fuzzi.EDSL (
   Fuzzi(..)
@@ -41,6 +42,7 @@ import Data.Fuzzi.Types hiding (SymbolicExpr(..))
 import Control.Monad.Catch
 import Data.Fuzzi.IfCxt
 
+-- |A type for shallowly embedding monadic code
 newtype Mon m a = Mon { runMon :: forall b. (FuzziType b) => (a -> Fuzzi (m b)) -> Fuzzi (m b) }
   deriving (Functor)
 
@@ -50,11 +52,13 @@ class Typeable (DeepRepr a) => Syntactic a where
   toDeepRepr      :: a -> Fuzzi (DeepRepr a)
   fromDeepRepr    :: Fuzzi (DeepRepr a) -> a
 
+-- |A typeclass for converting programs between deep and shallow representation
 class Syntactic1 (m :: * -> *) where
   type DeepRepr1 m :: * -> *
   toDeepRepr1   :: (Syntactic a, FuzziType (DeepRepr a)) => m a -> Fuzzi (DeepRepr1 m (DeepRepr a))
   fromDeepRepr1 :: (Syntactic a, FuzziType (DeepRepr a)) => Fuzzi (DeepRepr1 m (DeepRepr a)) -> m a
 
+-- |The deep representation of a program
 data Fuzzi (a :: *) where
   Lam         :: (FuzziType a, FuzziType b) => (Fuzzi a -> Fuzzi b) -> Fuzzi (a -> b)
   App         :: (FuzziType a, FuzziType b) => Fuzzi (a -> b) -> Fuzzi a -> Fuzzi b
@@ -126,36 +130,47 @@ data Fuzzi (a :: *) where
 
   UpdatePrivTree :: (FuzziType a) => Fuzzi PrivTreeNode1D -> Fuzzi a -> Fuzzi (PrivTree1D a) -> Fuzzi (PrivTree1D a)
 
+-- |Creates an optional value that is 'Just' something.
 just :: (FuzziType a) => Fuzzi a -> Fuzzi (Maybe a)
 just = Just_
 
+-- |Creates an optional value that does not contain anything.
 nothing :: (FuzziType a) => Fuzzi (Maybe a)
 nothing = Nothing_
 
+-- |Unwraps an optional value, extracting the contained 'Just' value, crashes if
+-- the optional value is 'Nothing'.
 fromJust_ :: (FuzziType a) => Fuzzi (Maybe a) -> Fuzzi a
 fromJust_ = FromJust_
 
+-- |Tests if an optional value is 'Just' something.
 isJust_ :: (FuzziType a, FuzziType bool, ConcreteBoolean bool) => Fuzzi (Maybe a) -> Fuzzi bool
 isJust_ = IsJust_
 
+-- |Empty list.
 nil :: (FuzziType a) => Fuzzi [a]
 nil = ListNil
 
+-- |List cons.
 cons :: (FuzziType a) => Fuzzi a -> Fuzzi [a] -> Fuzzi [a]
 cons = ListCons
 
+-- |List append.
 snoc :: (FuzziType a) => Fuzzi [a] -> Fuzzi a -> Fuzzi [a]
 snoc = ListSnoc
 
+-- |Tests if a list is empty.
 isNil :: (FuzziType a, ConcreteBoolean bool) => Fuzzi [a] -> Fuzzi bool
 isNil = ListIsNil
 
+-- |Split a non-empty list into head and tail, crashes if list is empty.
 uncons :: (FuzziType a) => Fuzzi [a] -> Fuzzi (Maybe (a, [a]))
 uncons = ListUncons
 
 --length_ :: (FuzziType a) => Fuzzi [a] -> Fuzzi Int
 --length_ = ListLength
 
+-- |Updates a privtree data structure.
 updatePT :: (FuzziType a)
          => Fuzzi PrivTreeNode1D
          -> Fuzzi a
@@ -163,24 +178,31 @@ updatePT :: (FuzziType a)
          -> Fuzzi (PrivTree1D a)
 updatePT = UpdatePrivTree
 
+-- |A "crash" statement, evaluation that hits this statement immediately
+-- terminates.
 abort :: ( FuzziType a
          , Typeable m
          , MonadThrow m
          ) => String -> Mon m (Fuzzi a)
 abort reason = fromDeepRepr $ Abort reason
 
+-- |Boolean true.
 true :: Fuzzi Bool
 true = Lit True
 
+-- |Boolean false.
 false :: Fuzzi Bool
 false = Lit False
 
+-- |Convert integral values into fractional values.
 fromIntegral_ :: (FuzziType a, FuzziType b, Integral a, Num b) => Fuzzi a -> Fuzzi b
 fromIntegral_ = NumCast
 
+-- |Creates a control flow statement that branches on deterministic data.
 if_ :: (Syntactic a, FuzziType bool, IfCxt (ConcreteBoolean bool)) => Fuzzi bool -> a -> a -> a
 if_ c t f = fromDeepRepr $ If c (toDeepRepr t) (toDeepRepr f)
 
+-- |Creates an explicit loop.
 loop :: ( ConcreteBoolean bool
         , FuzziType bool
         , FuzziType (DeepRepr acc)
@@ -193,39 +215,49 @@ loop :: ( ConcreteBoolean bool
 loop acc pred iter =
   fromDeepRepr1 $ Loop (toDeepRepr acc) (pred . fromDeepRepr) (toDeepRepr1 . iter . fromDeepRepr)
 
+-- |Creates a control flow statement that may branch on probabilistic samples.
 ifM :: ( Syntactic1 m
        , Syntactic a
        , Assertion (DeepRepr1 m) bool
        , FuzziType (DeepRepr a)) => Fuzzi bool -> m a -> m a -> m a
 ifM c t f = fromDeepRepr1 $ IfM c (toDeepRepr1 t) (toDeepRepr1 f)
 
+-- |Sampling instruction for a laplace distribution.
 lap :: forall m a. Distribution m a => Fuzzi a -> Fuzzi a -> Mon m (Fuzzi a)
 lap c w = fromDeepRepr $ Laplace c w -- Mon ((Bind (Laplace c w)))
 
+-- |Sampling instruction for a two-sided geometric distribution.
 geo :: forall m int real. (Distribution' m int real, FractionalOf int ~ real) => Fuzzi int -> Fuzzi real -> Mon m (Fuzzi int)
 geo c alpha = fromDeepRepr $ Geometric c alpha
 
 gauss :: forall m a. Distribution m a => Fuzzi a -> Double -> Mon m (Fuzzi a)
 gauss c w = fromDeepRepr $ Gaussian c w --  Mon ((Bind (Gaussian c w)))
 
+-- |Sampling instruction for a laplace distribution, while also specifying a
+-- "tolerance" threshold for symbolic execution.
 lap' :: forall m a. Distribution m a => Rational -> Fuzzi a -> Fuzzi a -> Mon m (Fuzzi a)
 lap' tol c w = fromDeepRepr $ Laplace' tol c w -- Mon ((Bind (Laplace c w)))
 
 gauss' :: forall m a. Distribution m a => Rational -> Fuzzi a -> Double -> Mon m (Fuzzi a)
 gauss' tol c w = fromDeepRepr $ Gaussian' tol c w --  Mon ((Bind (Gaussian c w)))
 
+-- |Creates a tuple.
 pair :: (FuzziType a, FuzziType b) => Fuzzi a -> Fuzzi b -> Fuzzi (a, b)
 pair = Pair
 
+-- |Projects 1st value out of a tuple.
 fst_ :: (FuzziType a, FuzziType b) => Fuzzi (a, b) -> Fuzzi a
 fst_ = Fst
 
+-- |Projects 2nd value out of a tuple.
 snd_ :: (FuzziType a, FuzziType b) => Fuzzi (a, b) -> Fuzzi b
 snd_ = Snd
 
+-- |Injects a haskell value into the embedded program as a literal value.
 lit :: (FuzziType a) => a -> Fuzzi a
 lit = Lit
 
+-- |Converts a shallowly embedded program into its deep representation.
 reify :: (Syntactic a) => a -> Fuzzi (DeepRepr a)
 reify = optimize . toDeepRepr
 
@@ -331,6 +363,7 @@ subst v term filling =
     UpdatePrivTree node value tree ->
       UpdatePrivTree (subst v node filling) (subst v value filling) (subst v tree filling)
 
+-- |Convert a program with conditionals into a list of all straightline single-path programs.
 streamline :: Typeable a => Fuzzi a -> [Fuzzi a]
 streamline = map optimize . streamlineAux 0 False
 

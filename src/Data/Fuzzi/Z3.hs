@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 module Data.Fuzzi.Z3 where
 
 --import Control.Monad

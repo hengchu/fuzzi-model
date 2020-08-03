@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 module Data.Fuzzi.Logging (
   runStdoutColoredLoggingAboveLevelT
   , runStdoutColoredLoggingWarnT

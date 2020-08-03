@@ -1,3 +1,5 @@
+{-# OPTIONS_HADDOCK hide #-}
+
 module Data.Fuzzi.Symbol where
 
 {- HLINT ignore "Use newtype instead of data" -}

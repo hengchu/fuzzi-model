@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 module Data.Fuzzi.Types.Internal where
 
 --import Data.Fuzzi.Types.Optimize

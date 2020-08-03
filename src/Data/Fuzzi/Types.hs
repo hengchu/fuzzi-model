@@ -1,3 +1,5 @@
+{-# OPTIONS_HADDOCK hide #-}
+
 module Data.Fuzzi.Types (
   module Data.Fuzzi.Types.Internal
   , module Data.Fuzzi.Types.Structures

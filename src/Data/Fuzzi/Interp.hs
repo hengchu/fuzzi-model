@@ -1,5 +1,5 @@
+{-# OPTIONS_HADDOCK hide #-}
 {- HLINT ignore "Redundant bracket" -}
-
 module Data.Fuzzi.Interp where
 
 import Control.DeepSeq

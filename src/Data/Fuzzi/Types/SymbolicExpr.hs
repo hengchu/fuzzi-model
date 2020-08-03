@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 module Data.Fuzzi.Types.SymbolicExpr where
 
 import Data.Text (Text)

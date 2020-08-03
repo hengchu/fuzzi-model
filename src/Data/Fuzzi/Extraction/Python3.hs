@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 module Data.Fuzzi.Extraction.Python3 where
 
 import Control.Lens hiding (List)

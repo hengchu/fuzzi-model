@@ -1,3 +1,5 @@
+{-# OPTIONS_HADDOCK hide #-}
+
 module Data.Fuzzi.Rosette where
 
 import Control.Applicative
@@ -199,7 +201,6 @@ runWithBucket' eps bucket action = do
   maybeArraysAndCondition <- (Just <$> coupleBucket ctx solver eps bucket action) `catch` handler
   case maybeArraysAndCondition of
     Just (costSum, cond) -> do
-      -- $(logError) (pack $ show cond)
       z3Ast <- symbolicExprToZ3AST ctx (getBoolExpr cond)
       let condPretty = pretty (getBoolExpr cond)
       label <- liftIO $ Z3.mkFreshBoolVar ctx condPretty
@@ -277,6 +278,7 @@ coupleBucket ctx solver eps bucket symbolicResults = do
                          `and` guardCond
                          `and` (coupling ^. couplingConstraints)
                          `and` asserts
+{-
           -- $(logDebug) (pack $ "============possible world " ++ show (concreteRunIdx, idx) ++ "============")
           -- $(logDebug) (pack $ "concrete: " ++ show concreteResult)
           -- $(logDebug) (pack $ "symbolic: " ++ show symResult)
@@ -285,6 +287,7 @@ coupleBucket ctx solver eps bucket symbolicResults = do
           -- $(logDebug) (pack $ "guard: " ++ show guardCond)
           -- $(logDebug) (pack $ "coupling: " ++ show (coupling ^. couplingConstraints))
           -- $(logDebug) ("============END===============")
+-}
           return cond
 
         forEachConcrete
@@ -335,11 +338,11 @@ coupleBucket ctx solver eps bucket symbolicResults = do
 
           cond <- runAnySat
             $ forEach (zip [0..] symbolicResultUnion) (forEachSymbolic runIdx concreteResult symbolicState)
-
+{-
           -- $(logInfo) (pack $ "=========RUN " ++ show runIdx ++ "===========")
           -- $(logInfo) (pack $ show cond)
           -- $(logInfo) (pack $ "=========END RUN " ++ show runIdx ++ "===========")
-
+-}
           return $ optimizeBool cond
 
 mergeCouplingInfo :: BoolExpr -> CouplingInfo -> CouplingInfo -> CouplingInfo
