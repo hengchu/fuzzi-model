@@ -56,6 +56,7 @@ benchmark results table in the evaluation section.
 | prop_sparseVectorBuggy5IsNotDifferentiallyPrivate     | `test/Spec.hs:494` | sv         |         | x     |
 | prop_sparseVectorBuggy6IsNotDifferentiallyPrivate     | `test/Spec.hs:498` | sv         |         | x     |
 | prop_sparseVectorGapIsDifferentiallyPrivate           | `test/Spec.hs:514` | svGap      | x       |       |
+| sparseVectorGapBuggyNotPrivateTest                    | `test/Spec.hs:306` | svGap      |         | x     |
 
 #### Claims not supported by this artifact
 

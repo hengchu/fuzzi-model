@@ -799,7 +799,7 @@ passOrFail :: forall real bool.
 passOrFail score = score %>= 60.0
 
 countPassedDP :: forall m real. (FuzziLang m real) => [Fuzzi real] -> Mon m (Fuzzi real)
-countPassedDP []     = lap 0 0.1
+countPassedDP []     = lap 0 1.0 -- change to 1.0 to 0.1 to observe test failure
 countPassedDP (x:xs) = do
   ifM (passOrFail x)
       (do
