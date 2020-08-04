@@ -786,3 +786,19 @@ loopGeometricFixedSens inputs = do
           let eps  = snd_ (snd_ thisInput)
           (noisedAnswer, variance) <- geometricFixedSens trueAnswer sens eps
           return $ (more, snoc outputs (pair noisedAnswer variance))
+
+passOrFail :: forall real bool.
+  ( FuzziType real
+  , FracNumeric real
+  , CmpResult real ~ bool
+  ) => Fuzzi real -> Fuzzi bool
+passOrFail score = score %>= 60.0
+
+countPassedDP :: forall m real. (FuzziLang m real) => [Fuzzi real] -> Mon m (Fuzzi real)
+countPassedDP []     = lap 1.0 0
+countPassedDP (x:xs) = do
+  ifM (passOrFail x)
+      (do
+          tailCount <- countPassedDP xs
+          return (1.0 + tailCount))
+      (countPassedDP xs)

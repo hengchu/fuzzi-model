@@ -66,4 +66,76 @@ the 1940s Census Data along with this software package.
 
 #### Detailed guide on writing your own program and testing it
 
-*TODO*
+We will walk through an example of implementing a simple noisy count algorithm
+in FuzzDP. The algorithm can be motivated by the following scenario:
+
+A teacher is grading an exam for a group of students, and also releasing
+statistics on the number of students that passed/failed the exam. Suppose there
+were 50 students in total, and 49 of them took the exam as scheduled, among
+which 39 passed, and 10 failed, and the teacher published the following statistic:
+
+| Pass | Fail |
+|------|------|
+| 39   | 10   |
+
+The one student who did not take the exam as scheduled took the exam at a later
+time. Now, suppose the teacher updates the statistic like the following:
+
+| Pass | Fail |
+|------|------|
+| 39   | 11   |
+
+Then, just by comparing the published statistics, we can deduce the student had
+failed the exam, even though the teacher did not publish any identifiable
+information about any student.
+
+A better alternative is to publish these statistics by adding a certain amount
+of noise, so that this process is differentially private.
+
+We model this problem using FuzzDP. First, we define the criteria of passing the
+exam. Let's say the passing grade is 60/100.
+```haskell
+passOrFail :: forall real bool.
+  ( FuzziType real
+  , FracNumeric real
+  , CmpResult real ~ bool
+  ) => Fuzzi real -> Fuzzi bool
+passOrFail score = score %>= 60.0
+```
+
+Next, we define a function that counts how many passing scores there
+are in an input list of scores, and adds randomly sampled noise to the count.
+
+We need to decide how much noise to add. This step requires some analysis of how
+adding/removing a single score from the input may influence the exact count of
+number of passing scores. In this case, adding/removing a single score can
+change the exact count by up to 1. This factor is known as the "sensitivity" of
+a private value.
+
+If a private value has sensitivity `s`, and we add noise sampled from the
+laplace distribution with width `w` to it, then the resulting algorithm is
+`s/w`-differentially private. In other words, the privacy parameter epsilon for
+such a procedure is `s/w`. In this example, we choose the width to be `1.0`, so
+that `countPassedDP` is a 1-differential private program. We will use FuzzDP's
+testing combinators to check this property.
+
+```haskell
+countPassedDP :: forall m real.
+    FuzziLang m real => [Fuzzi real] -> Mon m (Fuzzi real)
+countPassedDP []     = lap 1.0 0
+countPassedDP (x:xs) = do
+  ifM (passOrFail x)
+      (do
+          tailCount <- countPassedDP xs
+          return (1.0 + tailCount))
+      (countPassedDP xs)
+```
+
+These functions have some elaborate type signatures and typeclass
+constraints. These constraints enable us generalize the same piece of code for
+the two kinds of interpretation that FuzzDP uses: concrete interpretation, and
+symbolic interpretation. This flexibility comes at the cost of moderately
+complex typeclass based abstractions. More details about these types and
+typeclasses can be found in FuzzDP's documentation, which we also provide along
+with the docker image. Please see the section below on how to best read the
+documentation.
