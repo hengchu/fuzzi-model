@@ -24,8 +24,8 @@ FuzzDP's build system is managed by the Haskell build tool `stack`. We use
 `stack` to build, and also run the entire benchmark algorithm test suite.
 
 To start, run `stack test` in the docker shell. This will run the entire test
-suite for all benchmark algorithms listed in the paper. The entire process will
-take around *TODO* (provide approximate numbers) minutes to complete.
+suite for all benchmark algorithms listed in the paper. The entire process takes
+around 70 minutes to complete on a 4.0GHz quad-core CPU (using only 1 core).
 
 We also provide a detailed guide on writing your own differentiall private
 program in FuzzDP and testing it at the detailed guide below.
