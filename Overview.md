@@ -14,7 +14,7 @@ image for modifying and experimenting with programs in the docker image.
 1. Install Docker following the [official guide](https://docs.docker.com/install/)
 2. Download the image *TODO* (provide link)
 3. Start the docker daemon. Docker will ask for your host system credential on first time startup, and it may also show a login UI for dockerhub. However, you do *not* need to login for the following steps
-4. Run `docker image load -i fuzzdp-artifact.tgz`, this may take a while to complete
+4. Run `docker image load -i fuzz-dp-artifact.tgz`, this may take a while to complete
 5. Run `docker images`, and verify it shows an image with `REPOSITORY fuzz-dp`
 6. Run `docker run --rm -it fuzz-dp`
 
