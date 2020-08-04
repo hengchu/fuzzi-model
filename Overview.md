@@ -92,6 +92,19 @@ information about any student.
 A better alternative is to publish these statistics by adding a certain amount
 of noise, so that this process is differentially private.
 
+The easiest way to reproduce the following steps is to first launch a ghci
+Haskell interpreter session by:
+
+1. multiplex the docker shell with `tmux` or `screen`
+2. in one of the sessions, launch up a Haskell interpreter `ghci` instance with
+   `stack ghci`
+3. in another session, edit the file `src/Data/Fuzzi/Examples.hs`
+4. to load the edited content into the interpreter, type the command `:r` in the
+   `ghci` session
+
+Note that the `src/Data/Fuzzi/Examples.hs` already contains all the definitions
+introduced below.
+
 We model this problem using FuzzDP. First, we define the criteria of passing the
 exam. Let's say the passing grade is 60/100.
 ```haskell
@@ -139,3 +152,124 @@ complex typeclass based abstractions. More details about these types and
 typeclasses can be found in FuzzDP's documentation, which we also provide along
 with the docker image. Please see the section below on how to best read the
 documentation.
+
+We can concretely evaluate this function (on an artificial input that contains 30
+perfect scores, and 20 scores at 50) in the `ghci` session by typing the command
+```ghci
+> sampleConcrete $ eval (reify $ countPassedDP $ take 30 (repeat 100) ++ take 20 (repeat 50))
+30.89295347209235
+> sampleConcrete $ eval (reify $ countPassedDP $ take 30 (repeat 100) ++ take 20 (repeat 50))
+31.346492003757792
+> sampleConcrete $ eval (reify $ countPassedDP $ take 30 (repeat 100) ++ take 20 (repeat 50))
+29.420243650890267
+```
+
+Here, we first pass the artificial input to `countPassedDP`, and then we
+construct a concrete program abstract syntax tree by reifying the shallowly
+embedded program with the function `reify`. We then pass the resulting AST to
+the concrete interpreter `eval`. Since the result is a distribution object, we
+sample from this distribution object with `sampleConcrete`.
+
+Next, let's run some tests. First, we need to write down the expected
+differential privacy property as a Haskell function. FuzzDP uses the property
+testing framework QuickCheck to express such properties. The differential
+privacy property is universally quantified over a pair of similar inputs. In
+this case, our property is also parameterized by such a pair of neighboring
+inputs.
+
+```haskell
+countPassedDPPrivacyTest :: BagList Double -> Property
+countPassedDPPrivacyTest xs =
+  monadicIO $
+    expectDP -- replace with `expectDPVerbose` for logging
+      1.0    -- 1.0-differentially private
+      500    -- run test with 500 sampled traces
+      ( reify . countPassedDP . map realToFrac $ left xs
+      , reify . countPassedDP . map realToFrac $ right xs
+      )
+```
+
+Here, the type `BagList` is exported from `Data.Fuzzi.NeighborGen`, a module in
+FuzzDP that implements several generators of test data that satisfies common
+similarity relations. `BagList` means the pair of similar inputs generated
+satisfy a kind of relation called "bag distance". In particular, we assume the
+inputs have bag distance = 1 here, because at most one score needs to be
+removed/added to the input list to make the two input lists contain the same set
+of data (up to reordering).
+
+We use the test combinator `expectDP` exported from `Data.Fuzzi.Test` to assert
+that the program is expected to be `1.0` differentially private. The parameter
+`500` asks the testing framework to use 500 sampled concrete execution traces to
+generate SMT formulas that will be checked by Z3 as evidence of differential
+privacy.
+
+Finally, the last argument tuple passed to `expectDP` are `countPassedDP`
+applied to the `left` and `right` projections of the pair of similar bag list
+inputs.
+
+We can run this test in the `ghci` session by running the command
+```ghci
+> quickCheckWith stdArgs{maxSuccess = 20} $ forAll (bagListSmall (40, 80) 1) countPassedDPPrivacyTest
+[Ok 1.6653345369377348e-16]
+[Ok 1.8041124150158794e-16]
+[Ok 0.9999999999999998]
+[Ok 0.9999999999999999]
+[Ok 3.469446951953614e-18]
+[Ok 1.91224152101474e-18]
+[Ok 5.002217949828752e-7]
+[Ok 1.0]
+[Ok 0.9999994999999998]
+[Ok 2.500000002220446e-7]
+[Ok 5.722198694046998e-17]
+[Ok 0.9999999999999999]
+[Ok 2.483632295657845e-16]
+[Ok 7.667369328650443e-17]
+[Ok 1.1027877500069394e-17]
+[Ok 1.0]
+[Ok 1.2263329207909403e-16]
+[Ok 2.50000000194289e-7]
+[Ok 6.552397513459596e-18]
+[Ok 5.008958e-7]
++++ OK, passed 20 tests.
+```
+
+This command kicks off the testing process, asking QuickCheck to generate 20
+random pairs of similar inputs, and checks that the differential privacy test
+succeeds on all generated inputs. The printed numbers (`Ok 1.0`, etc.) are the
+empirical privacy cost observed by solving the SMT fomulas passed to Z3.
+
+We can then modify the `countPassedDP` program to be faulty, for example, by
+making it use less noise than currently designed. Let's change the source code
+so that we now sample from a laplace distribution with width `0.1` instead of
+`1.0`.
+
+```haskell
+countPassedDP :: forall m real.
+    FuzziLang m real => [Fuzzi real] -> Mon m (Fuzzi real)
+countPassedDP []     = lap 0 0.1 -- width parameter changed here
+countPassedDP (x:xs) = do
+  ifM (passOrFail x)
+      (do
+          tailCount <- countPassedDP xs
+          return (1.0 + tailCount))
+      (countPassedDP xs)
+```
+
+Now, if we run the same tests again, we observe the testing framework
+successfully reports a privacy violation:
+```ghci
+> quickCheckWith stdArgs{maxSuccess = 20} $ forAll (bagListSmall (40, 80) 1) countPassedDPPrivacyTest
+[FailedUnSat ["|eps >= abs(0 % 1 + shift - 0 % 1) / 3602879701896397 % 36028797018963968!1|","|abs(5122616779373027 % 72057594037927936 + shift - run_499_lap) <= 1 % 1000000!1497|","|abs(6915481215411151 % 2251799813685248 - (1 % 1 + (1 % 1 + (1 % 1 + (1 % 1 + run_499_lap))))) <= 1 % 1000000!1499|","|eps <= 1 % 1!1500|"]]
+*** Failed! Assertion failed (after 1 test):
+BagList {_blDataLeft = [68.91823750212234,78.25974633049898,62.42855681062086], _blDataRight = [78.90182712823368,68.91823750212234,78.25974633049898,62.42855681062086]}
+```
+
+FuzzDP prints the unsat core reported from Z3, and QuickCheck prints the
+particular pair of similar inputs that the test failed on. In this case, the two
+lists are `[68.91823750212234,78.25974633049898,62.42855681062086]` and
+`[78.90182712823368,68.91823750212234,78.25974633049898,62.42855681062086]`
+(`78.90182...` is the differing element among these two lists).
+
+To observe more internal logging from FuzzDP, users can change `expectDP` to a
+drop-in substitute `expectDPVerbose` to turn on verbose logging. But logging
+comes at a performance penalty.

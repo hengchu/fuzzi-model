@@ -5,6 +5,10 @@
 module Data.Fuzzi.Examples where
 
 import Data.Fuzzi.Interface
+import Data.Fuzzi.Test
+import Data.Fuzzi.NeighborGen
+import Test.QuickCheck
+import Test.QuickCheck.Monadic
 import qualified Data.Set as S
 
 {- HLINT ignore "Use camelCase" -}
@@ -795,10 +799,20 @@ passOrFail :: forall real bool.
 passOrFail score = score %>= 60.0
 
 countPassedDP :: forall m real. (FuzziLang m real) => [Fuzzi real] -> Mon m (Fuzzi real)
-countPassedDP []     = lap 1.0 0
+countPassedDP []     = lap 0 0.1
 countPassedDP (x:xs) = do
   ifM (passOrFail x)
       (do
           tailCount <- countPassedDP xs
           return (1.0 + tailCount))
       (countPassedDP xs)
+
+countPassedDPPrivacyTest :: BagList Double -> Property
+countPassedDPPrivacyTest xs =
+  monadicIO $
+    expectDP -- replace with `expectDPVerbose` for logging
+      1.0    -- 1.0-differentially private
+      500    -- run test with 500 sampled traces
+      ( reify . countPassedDP . map realToFrac $ left xs
+      , reify . countPassedDP . map realToFrac $ right xs
+      )
