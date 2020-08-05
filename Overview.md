@@ -270,9 +270,17 @@ successfully reports a privacy violation:
 ```ghci
 > :r
 > quickCheckWith stdArgs{maxSuccess = 20} $ forAll (bagListSmall (40, 80) 1) countPassedDPPrivacyTest
-[FailedUnSat ["|eps >= abs(0 % 1 + shift - 0 % 1) / 3602879701896397 % 36028797018963968!1|","|abs(5122616779373027 % 72057594037927936 + shift - run_499_lap) <= 1 % 1000000!1497|","|abs(6915481215411151 % 2251799813685248 - (1 % 1 + (1 % 1 + (1 % 1 + (1 % 1 + run_499_lap))))) <= 1 % 1000000!1499|","|eps <= 1 % 1!1500|"]]
+[FailedUnSat [
+  "|eps >= abs(0 % 1 + shift - 0 % 1) / 3602879701896397 % 36028797018963968!1|",
+  "|abs(5122616779373027 % 72057594037927936 + shift - run_499_lap) <= 1 % 1000000!1497|",
+  "|abs(6915481215411151 % 2251799813685248
+        - (1 % 1 + (1 % 1 + (1 % 1 + (1 % 1 + run_499_lap)))))
+    <= 1 % 1000000!1499|",
+  "|eps <= 1 % 1!1500|"]]
 *** Failed! Assertion failed (after 1 test):
-BagList {_blDataLeft = [68.91823750212234,78.25974633049898,62.42855681062086], _blDataRight = [78.90182712823368,68.91823750212234,78.25974633049898,62.42855681062086]}
+BagList {
+  _blDataLeft = [68.91823750212234,78.25974633049898,62.42855681062086],
+  _blDataRight = [78.90182712823368,68.91823750212234,78.25974633049898,62.42855681062086]}
 ```
 
 FuzzDP prints the unsat core reported from Z3, and QuickCheck prints the
@@ -303,11 +311,11 @@ documentation for FuzzDP and all of its dependencies. Once this step completes,
 look something like this:
 ```bash
 Updating Haddock index for local packages in
-/tmp/fuzzi-model/.stack-work/install/x86_64-linux/d3091bfee73c4626716431ca9b99c7813fc3b38105694ca8018eb67efb0ba59c/8.6.5/doc/index.html
+/tmp/fuzzi-model/.stack-work/install/x86_64-linux/d3091bfee<abbreviated>/8.6.5/doc/index.html
 Updating Haddock index for local packages and dependencies in
-/tmp/fuzzi-model/.stack-work/install/x86_64-linux/d3091bfee73c4626716431ca9b99c7813fc3b38105694ca8018eb67efb0ba59c/8.6.5/doc/all/index.html
+/tmp/fuzzi-model/.stack-work/install/x86_64-linux/d3091bfee<abbreviated>/8.6.5/doc/all/index.html
 Updating Haddock index for snapshot packages in
-/root/.stack/snapshots/x86_64-linux/d3091bfee73c4626716431ca9b99c7813fc3b38105694ca8018eb67efb0ba59c/8.6.5/doc/index.html
+/root/.stack/snapshots/x86_64-linux/d3091bfee<abbreviated>/8.6.5/doc/index.html
 ```
 
 Next, run the following sequence of commands to copy the documentation to your
@@ -318,7 +326,7 @@ host machine, and open them with a web browser of your choice.
 $ docker container ps -q
 dfddd1e36017 # this is just an example, your output may be different
 # run docker cp
-$ docker cp dfddd1e36017:/tmp/fuzzi-model/.stack-work/install/x86_64-linux/d3091bfee73c4626716431ca9b99c7813fc3b38105694ca8018eb67efb0ba59c/8.6.5/doc ./doc
+$ docker cp dfddd1e36017:/tmp/fuzzi-model/.stack-work/install/x86_64-linux/d3091bfee<abbreviated>/8.6.5/doc ./doc
 ```
 
 You may open doc/index.html for fuzz-dp documentation only, or open
