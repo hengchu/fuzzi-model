@@ -1,5 +1,9 @@
-{-# OPTIONS_HADDOCK hide #-}
+{-# OPTIONS_HADDOCK prune #-}
 {- HLINT ignore "Redundant bracket" -}
+{-|
+Module: Data.Fuzzi.Interp
+Description: The definitional interpreter for programs.
+-}
 module Data.Fuzzi.Interp where
 
 import Control.DeepSeq
@@ -20,6 +24,7 @@ newtype AbortException = AbortException {
 instance Exception AbortException
 instance NFData AbortException
 
+-- |The definitional interpreter for a program.
 eval :: forall a. Fuzzi a -> a
 eval (Lam f) = eval . f . Lit
 eval (App f a) = (eval f) (eval a)

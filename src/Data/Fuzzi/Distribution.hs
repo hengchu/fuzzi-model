@@ -1,4 +1,8 @@
-{-# OPTIONS_HADDOCK hide #-}
+{-# OPTIONS_HADDOCK prune #-}
+{-|
+Module: Data.Fuzzi.Distribution
+Description: The implementations and combinators for sampling and creating various distribution values.
+-}
 module Data.Fuzzi.Distribution where
 
 import Control.Monad.Catch
@@ -24,6 +28,7 @@ class Eq (GetProvenance a) => HasProvenance a where
   getProvenance  :: a -> GetProvenance a
   dropProvenance :: a -> DropProvenance a
 
+-- |A concrete distribution that is the result of concrete evaluation.
 newtype ConcreteDist a = ConcreteDist { runConcreteDist :: RVarT IO a }
   deriving (Functor, Applicative, Monad) via (RVarT IO)
   deriving MonadIO via (RVarT IO)
@@ -118,6 +123,7 @@ gaussianTraced center width = do
   modify (|> (D trace))
   return (WithDistributionProvenance gaussSample prov)
 
+-- |Sample from a 'ConcreteDist' distribution value.
 sampleConcrete :: ConcreteDist a -> IO a
 sampleConcrete = R.sample . runConcreteDist
 

@@ -1,5 +1,9 @@
-{-# OPTIONS_HADDOCK hide #-}
+{-# OPTIONS_HADDOCK prune #-}
 {-# LANGUAGE DerivingVia #-}
+{-|
+Module: Data.Fuzzi.EDSL
+Description: The *internal* definitions of program syntax. Users do not need these internals to use this library.
+-}
 module Data.Fuzzi.EDSL (
   Fuzzi(..)
   , Syntactic
@@ -49,7 +53,10 @@ newtype Mon m a = Mon { runMon :: forall b. (FuzziType b) => (a -> Fuzzi (m b)) 
 -- |The main typeclass for reification and reflection.
 class Typeable (DeepRepr a) => Syntactic a where
   type DeepRepr a :: *
+  -- |Convert a shallowly embedded program to its deep representation.
   toDeepRepr      :: a -> Fuzzi (DeepRepr a)
+
+  -- |Convert the deep representation of a program to its shallow representation.
   fromDeepRepr    :: Fuzzi (DeepRepr a) -> a
 
 -- |A typeclass for converting programs between deep and shallow representation

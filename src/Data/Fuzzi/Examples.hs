@@ -1,7 +1,10 @@
 -- I do not like enabling this in general, but the sparseVectorGapOpt example
 -- requires it... So we enable it locally in this file.
 {-# LANGUAGE AllowAmbiguousTypes #-}
-
+{-|
+Module: Data.Fuzzi.Examples
+Description: The example programs.
+-}
 module Data.Fuzzi.Examples where
 
 import Data.Fuzzi.Interface
