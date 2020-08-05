@@ -293,7 +293,11 @@ First launch a docker shell with the provided `fuzz-dp` image
 $ docker run -it --rm fuzz-dp
 ```
 
-Then, run the command `stack haddock` in the docker shell, which builds
+Then, run the command
+```bash
+stack haddock
+```
+in the docker shell, which builds
 documentation for FuzzDP and all of its dependencies. Once this step completes,
 `stack` will report the locations of the built documentation. The output will
 look something like this:
