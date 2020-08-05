@@ -14,7 +14,4 @@ RUN apt-get install -y emacs vim
 
 COPY . /tmp/fuzzi-model
 WORKDIR /tmp/fuzzi-model
-#RUN echo 'extra-include-dirs:\n  - /usr/local/include\nextra-lib-dirs:\n  - /usr/local/bin' >> stack.yaml
-#RUN ls -alh
-#RUN cat stack.yaml
 RUN stack build -j2
