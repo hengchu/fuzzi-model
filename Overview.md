@@ -5,16 +5,19 @@ language primitives differential privacy, and an automatic testing framework
 that checks differential privacy properties of languages written in the embedded
 language.
 
-#### Building FuzzDP with Docker
+#### Evaluating FuzzDP with Docker
 
 We have packaged FuzzDP and its external dependency `z3` into the provided
 docker image. We also provide both `vim` and `emacs` text editors in the docker
 image for modifying and experimenting with programs in the docker image.
 
 1. Install Docker following the [official guide](https://docs.docker.com/install/)
-2. Download the image *TODO* (provide link)
-3. Start the docker daemon. Docker will ask for your host system credential on first time startup, and it may also show a login UI for dockerhub. However, you do *not* need to login for the following steps
-4. Run `docker image load -i fuzz-dp-artifact.tar`, this may take a while to complete
+2. Download the image [here](https://drive.google.com/file/d/1q0WixAl3qHoLzMBY23f0eUEgeB0EcATs/view?usp=sharing)
+3. Start the docker daemon. Docker will ask for your host system credential on
+   first time startup, and it may also show a login UI for dockerhub. However,
+   you do *not* need to login for the following steps
+4. Run `docker image load -i fuzz-dp-artifact.tar`, this may take a while to
+   complete (around 20 minutes on a 4.0GHz quad-core CPU)
 5. Run `docker images`, and verify it shows an image with `REPOSITORY fuzz-dp`
 6. Run `docker run --rm -it fuzz-dp`
 
@@ -35,28 +38,49 @@ program in FuzzDP and testing it at the detailed guide below.
 Here is a table that matches the benchmark test definitions with the FuzzDP
 benchmark results table in the evaluation section.
 
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | Test name                                             | File:Line Number   | Evaluation | Correct | Buggy |
-|-------------------------------------------------------|--------------------|------------|---------|-------|
++:======================================================+:===================+:===========+:========+:======+
 | prop_simpleCountIsDifferentiallyPrivate               | `test/Spec.hs:522` | nc         | x       |       |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate | `test/Spec.hs:522` | nc         |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_simpleMeanIsDifferentiallyPrivate                | `test/Spec.hs:530` | nm         | x       |       |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_unboundedMeanIsNotDifferentiallyPrivate          | `test/Spec.hs:534` | nm         |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | simpleSumBuggyNotPrivateTest                          | `test/Spec.hs:108` | ns         |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_prefixSumIsDifferentiallyPrivate                 | `test/Spec.hs:458` | ps         | x       |       |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prefixSumBuggyNotPrivateTest                          | `test/Spec.hs:96`  | ps         |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_privTreeIsDifferentiallyPrivate                  | `test/Spec.hs:502` | pt         | x       |       |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_privTreeBuggyIsNotDifferentiallyPrivate          | `test/Spec.hs:506` | pt         |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_rnmIsDifferentiallyPrivate                       | `test/Spec.hs:435` | rnm        | x       |       |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_rnmBuggyIsNotDifferentiallyPrivate               | `test/Spec.hs:447` | rnm        |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_smartSumIsDifferentiallyPrivate                  | `test/Spec.hs:454` | ss         | x       |       |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_smartSumBuggyIsNotDifferentiallyPrivate          | `test/Spec.hs:462` | ss         |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_sparseVectorIsDifferentiallyPrivate              | `test/Spec.hs:466` | sv         | x       |       |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_sparseVectorBuggyIsNotDifferentiallyPrivate      | `test/Spec.hs:482` | sv         |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_sparseVectorBuggy4IsNotDifferentiallyPrivate     | `test/Spec.hs:490` | sv         |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_sparseVectorBuggy5IsNotDifferentiallyPrivate     | `test/Spec.hs:494` | sv         |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_sparseVectorBuggy6IsNotDifferentiallyPrivate     | `test/Spec.hs:498` | sv         |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | prop_sparseVectorGapIsDifferentiallyPrivate           | `test/Spec.hs:514` | svGap      | x       |       |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 | sparseVectorGapBuggyNotPrivateTest                    | `test/Spec.hs:306` | svGap      |         | x     |
++-------------------------------------------------------+--------------------+------------+---------+-------+
 
 #### Claims not supported by this artifact
 
@@ -147,13 +171,13 @@ countPassedDP (x:xs) = do
       (countPassedDP xs)
 ```
 
-These functions have some elaborate type signatures and typeclass
-constraints. These constraints enable us generalize the same piece of code for
-the two kinds of interpretation that FuzzDP uses: concrete interpretation, and
-symbolic interpretation. This flexibility comes at the cost of moderately
-complex typeclass based abstractions. More details about these types and
-typeclasses can be found in FuzzDP's documentation, which we also provide along
-with the docker image. Please see the section below on how to best read the
+These functions have elaborate type signatures and typeclass constraints. These
+constraints enable us generalize the same piece of code for the two kinds of
+interpretation that FuzzDP uses: concrete interpretation, and symbolic
+interpretation. This flexibility comes at the cost of moderately complex
+typeclass based abstractions. More details about these types and typeclasses can
+be found in FuzzDP's documentation, which we also provide along with the docker
+image. Please see the section at the bottom on how to best read the
 documentation.
 
 We can concretely evaluate this function (on an artificial input that contains 30
@@ -281,3 +305,38 @@ lists are `[68.91823750212234,78.25974633049898,62.42855681062086]` and
 To observe more internal logging from FuzzDP, users can change `expectDP` to a
 drop-in substitute `expectDPVerbose` to turn on verbose logging. But logging
 comes at a performance penalty.
+
+#### Building and reading FuzzDP documentation with Docker
+
+First launch a docker shell with the provided `fuzz-dp` image
+
+```bash
+$ docker run -it --rm fuzz-dp
+```
+
+Then, run the command `stack haddock` in the docker shell, which builds
+documentation for FuzzDP and all of its dependencies. Once this step completes,
+`stack` will report the locations of the built documentation. The output will
+look something like this:
+```bash
+Updating Haddock index for local packages in
+/tmp/fuzzi-model/.stack-work/install/x86_64-linux/d3091bfee73c4626716431ca9b99c7813fc3b38105694ca8018eb67efb0ba59c/8.6.5/doc/index.html
+Updating Haddock index for local packages and dependencies in
+/tmp/fuzzi-model/.stack-work/install/x86_64-linux/d3091bfee73c4626716431ca9b99c7813fc3b38105694ca8018eb67efb0ba59c/8.6.5/doc/all/index.html
+Updating Haddock index for snapshot packages in
+/root/.stack/snapshots/x86_64-linux/d3091bfee73c4626716431ca9b99c7813fc3b38105694ca8018eb67efb0ba59c/8.6.5/doc/index.html
+```
+
+Next, run the following sequence of commands to copy the documentation to your
+host machine, and open them with a web browser of your choice.
+
+```bash
+# determine the running fuzz-dp container id
+$ docker container ps -q
+dfddd1e36017 # this is just an example, your output may be different
+# run docker cp
+$ docker cp dfddd1e36017:/tmp/fuzzi-model/.stack-work/install/x86_64-linux/d3091bfee73c4626716431ca9b99c7813fc3b38105694ca8018eb67efb0ba59c/8.6.5/doc ./doc
+```
+
+You may open doc/index.html for fuzz-dp documentation only, or open
+doc/all/index.html for fuzz-dp and all dependencies documentation
