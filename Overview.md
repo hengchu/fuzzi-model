@@ -109,6 +109,7 @@ introduced below.
 We model this problem using FuzzDP. First, we define the criteria of passing the
 exam. Let's say the passing grade is 60/100.
 ```haskell
+-- In src/Data/Fuzzi/Examples.hs
 passOrFail :: forall real bool.
   ( FuzziType real
   , FracNumeric real
@@ -134,6 +135,7 @@ that `countPassedDP` is a 1-differential private program. We will use FuzzDP's
 testing combinators to check this property.
 
 ```haskell
+-- In src/Data/Fuzzi/Examples.hs
 countPassedDP :: forall m real.
     FuzziLang m real => [Fuzzi real] -> Mon m (Fuzzi real)
 countPassedDP []     = lap 1.0 0
@@ -157,6 +159,7 @@ documentation.
 We can concretely evaluate this function (on an artificial input that contains 30
 perfect scores, and 20 scores at 50) in the `ghci` session by typing the command
 ```ghci
+> :r
 > sampleConcrete $ eval (reify $ countPassedDP $ take 30 (repeat 100) ++ take 20 (repeat 50))
 30.89295347209235
 > sampleConcrete $ eval (reify $ countPassedDP $ take 30 (repeat 100) ++ take 20 (repeat 50))
@@ -179,6 +182,7 @@ this case, our property is also parameterized by such a pair of neighboring
 inputs.
 
 ```haskell
+-- In src/Data/Fuzzi/Examples.hs
 countPassedDPPrivacyTest :: BagList Double -> Property
 countPassedDPPrivacyTest xs =
   monadicIO $
@@ -210,6 +214,7 @@ inputs.
 
 We can run this test in the `ghci` session by running the command
 ```ghci
+> :r
 > quickCheckWith stdArgs{maxSuccess = 20} $ forAll (bagListSmall (40, 80) 1) countPassedDPPrivacyTest
 [Ok 1.6653345369377348e-16]
 [Ok 1.8041124150158794e-16]
@@ -245,6 +250,7 @@ so that we now sample from a laplace distribution with width `0.1` instead of
 `1.0`.
 
 ```haskell
+-- In src/Data/Fuzzi/Examples.hs
 countPassedDP :: forall m real.
     FuzziLang m real => [Fuzzi real] -> Mon m (Fuzzi real)
 countPassedDP []     = lap 0 0.1 -- width parameter changed here
@@ -259,6 +265,7 @@ countPassedDP (x:xs) = do
 Now, if we run the same tests again, we observe the testing framework
 successfully reports a privacy violation:
 ```ghci
+> :r
 > quickCheckWith stdArgs{maxSuccess = 20} $ forAll (bagListSmall (40, 80) 1) countPassedDPPrivacyTest
 [FailedUnSat ["|eps >= abs(0 % 1 + shift - 0 % 1) / 3602879701896397 % 36028797018963968!1|","|abs(5122616779373027 % 72057594037927936 + shift - run_499_lap) <= 1 % 1000000!1497|","|abs(6915481215411151 % 2251799813685248 - (1 % 1 + (1 % 1 + (1 % 1 + (1 % 1 + run_499_lap))))) <= 1 % 1000000!1499|","|eps <= 1 % 1!1500|"]]
 *** Failed! Assertion failed (after 1 test):
