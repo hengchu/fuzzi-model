@@ -10,8 +10,8 @@ RUN cd z3-z3-4.8.8 && python scripts/mk_make.py && cd build && make -j2 && make 
 RUN z3 --version
 
 RUN apt-get update -y
-RUN apt-get install -y emacs vim
+RUN apt-get install -y emacs vim tmux screen
 
 COPY . /tmp/fuzzi-model
 WORKDIR /tmp/fuzzi-model
-RUN stack build -j2
+RUN stack build -j2 && stack test --no-run-tests && stack haddock --fast

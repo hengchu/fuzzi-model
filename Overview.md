@@ -1,7 +1,7 @@
 ### Artifact Guide
 
 FuzzDP is a Haskell package that provides an embedded programming language with
-language primitives differential privacy, and an automatic testing framework
+language primitives for differential privacy, and an automatic testing framework
 that checks differential privacy properties of languages written in the embedded
 language.
 
@@ -12,14 +12,14 @@ docker image. We also provide both `vim` and `emacs` text editors in the docker
 image for modifying and experimenting with programs in the docker image.
 
 1. Install Docker following the [official guide](https://docs.docker.com/install/)
-2. Download the image [here](https://drive.google.com/file/d/1q0WixAl3qHoLzMBY23f0eUEgeB0EcATs/view?usp=sharing)
+2. Download the image (size: ~11G) [here](https://drive.google.com/file/d/1q0WixAl3qHoLzMBY23f0eUEgeB0EcATs/view?usp=sharing)
 3. Start the docker daemon. Docker will ask for your host system credential on
    first time startup, and it may also show a login UI for dockerhub. However,
    you do *not* need to login for the following steps
 4. Run `docker image load -i fuzz-dp-artifact.tar`, this may take a while to
    complete (around 20 minutes on a 4.0GHz quad-core CPU)
 5. Run `docker images`, and verify it shows an image with `REPOSITORY fuzz-dp`
-6. Run `docker run --rm -it fuzz-dp`
+6. Run `docker run --rm -it fuzz-dp` to start a docker shell
 
 #### Step-by-step guide
 
@@ -41,7 +41,7 @@ benchmark results table in the evaluation section.
 | Test name                                             | File:Line Number   | Evaluation | Correct | Buggy |
 |-------------------------------------------------------|--------------------|------------|---------|-------|
 | prop_simpleCountIsDifferentiallyPrivate               | `test/Spec.hs:522` | nc         | x       |       |
-| prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate | `test/Spec.hs:522` | nc         |         | x     |
+| prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate | `test/Spec.hs:526` | nc         |         | x     |
 | prop_simpleMeanIsDifferentiallyPrivate                | `test/Spec.hs:530` | nm         | x       |       |
 | prop_unboundedMeanIsNotDifferentiallyPrivate          | `test/Spec.hs:534` | nm         |         | x     |
 | simpleSumBuggyNotPrivateTest                          | `test/Spec.hs:108` | ns         |         | x     |
@@ -99,9 +99,10 @@ of noise, so that this process is differentially private.
 The easiest way to reproduce the following steps is to first launch a ghci
 Haskell interpreter session by:
 
-1. multiplex the docker shell with `tmux` or `screen`
-2. in one of the sessions, launch up a Haskell interpreter `ghci` instance with
-   `stack ghci`
+1. multiplex the docker shell with `tmux` or `screen` (both already installed in
+   the docker image)
+2. in one of the sessions, launch a Haskell interpreter `ghci` instance with
+   `stack ghci` under the fuzz-dp project directory
 3. in another session, edit the file `src/Data/Fuzzi/Examples.hs`
 4. to load the edited content into the interpreter, type the command `:r` in the
    `ghci` session
@@ -141,7 +142,7 @@ testing combinators to check this property.
 -- In src/Data/Fuzzi/Examples.hs
 countPassedDP :: forall m real.
     FuzziLang m real => [Fuzzi real] -> Mon m (Fuzzi real)
-countPassedDP []     = lap 1.0 0
+countPassedDP []     = lap 0 1.0
 countPassedDP (x:xs) = do
   ifM (passOrFail x)
       (do
@@ -156,7 +157,7 @@ interpretation that FuzzDP uses: concrete interpretation, and symbolic
 interpretation. This flexibility comes at the cost of moderately complex
 typeclass based abstractions. More details about these types and typeclasses can
 be found in FuzzDP's documentation, which we also provide along with the docker
-image. Please see the section at the bottom on how to best read the
+image. Please see the section at the bottom on how to access the
 documentation.
 
 We can concretely evaluate this function (on an artificial input that contains 30
@@ -179,10 +180,9 @@ sample from this distribution object with `sampleConcrete`.
 
 Next, let's run some tests. First, we need to write down the expected
 differential privacy property as a Haskell function. FuzzDP uses the property
-testing framework QuickCheck to express such properties. The differential
-privacy property is universally quantified over a pair of similar inputs. In
-this case, our property is also parameterized by such a pair of neighboring
-inputs.
+testing framework QuickCheck to express such properties. In this case, our
+property is parameterized by a pair of similar inputs, which we represent with
+the type `BagList Double`.
 
 ```haskell
 -- In src/Data/Fuzzi/Examples.hs
@@ -209,13 +209,20 @@ We use the test combinator `expectDP` exported from `Data.Fuzzi.Test` to assert
 that the program is expected to be `1.0` differentially private. The parameter
 `500` asks the testing framework to use 500 sampled concrete execution traces to
 generate SMT formulas that will be checked by Z3 as evidence of differential
-privacy.
+privacy. The `realToFrac` function is a Haskell's standard library that performs
+numeric type casting. In this example, the two calls to `realToFrac` convert the
+input `Double` values into values suitable for concrete and symbolic execution,
+respectively.
 
 Finally, the last argument tuple passed to `expectDP` are `countPassedDP`
 applied to the `left` and `right` projections of the pair of similar bag list
 inputs.
 
-We can run this test in the `ghci` session by running the command
+We can run this test in the `ghci` session by running the command. The `bagListSmall`
+function comes from `Data.Fuzzi.NeighborGen`, and is a utility function that defines
+a generator for small lists. Here, we ask the generator to produce small lists whose
+values are between `40` and `80`, and lists are considered similar if at most `1` element
+needs to be removed/added to make the two identical.
 ```ghci
 > :r
 > quickCheckWith stdArgs{maxSuccess = 20} $ forAll (bagListSmall (40, 80) 1) countPassedDPPrivacyTest
@@ -242,10 +249,12 @@ We can run this test in the `ghci` session by running the command
 +++ OK, passed 20 tests.
 ```
 
-This command kicks off the testing process, asking QuickCheck to generate 20
-random pairs of similar inputs, and checks that the differential privacy test
-succeeds on all generated inputs. The printed numbers (`Ok 1.0`, etc.) are the
-empirical privacy cost observed by solving the SMT fomulas passed to Z3.
+This command kicks off the testing process, asking the testing framework to
+generate 20 random pairs of similar inputs, and checks that the differential
+privacy test succeeds on all generated inputs. The printed numbers (`Ok 1.0`,
+etc.) are the empirical privacy cost observed by solving the SMT fomulas passed
+to Z3, we observe that they are all at most `1.0`---the expected epsilon privacy
+parameter of the program under test.
 
 We can then modify the `countPassedDP` program to be faulty, for example, by
 making it use less noise than currently designed. Let's change the source code

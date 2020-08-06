@@ -5,3 +5,6 @@ extraction_demo.py
 report.html
 .stack-work
 Overview.md
+fuzz-dp-artifact.tar
+.git
+.github
