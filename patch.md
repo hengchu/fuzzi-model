@@ -33,6 +33,9 @@ test harness now prints the following.
 [Ok 2.0,Ok 2.0,Ok 2.0,Ok 2.0,Ok 2.0,Ok 2.0,Ok 2.0]
 [Ok 2.0,Ok 2.0,Ok 2.0,Ok 2.0]
 +++ OK, passed 20 tests.
+```
+
+```
 > Test: buggy rnm
 > Expect: detects DP violation
 > Paper reference: table on page 16, line 738, rnm column
