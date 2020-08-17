@@ -34,8 +34,8 @@ testSmartSumProvenance = do
 
 allTests :: H.Test
 allTests = H.TestList [
-  H.TestLabel "Distribution" provenanceTests,
-  H.TestLabel "Symbol" smtTests
+  H.TestLabel "Distribution" provenanceTests
+  --H.TestLabel "Symbol" smtTests
   ]
 
 prop_symbolCongruence :: Double -> Double -> Bool
@@ -446,7 +446,7 @@ simpleMeanPrivacyTest clipBound xs =
     , reify . flip simpleMean (realToFrac clipBound) . map realToFrac $ right xs
     )
 
-simpleSumPrivacyTest :: BagList Double -> Property
+simpleSumPrivacyTest :: L1List Double -> Property
 simpleSumPrivacyTest xs =
   monadicIO $
   expectDP
@@ -577,7 +577,7 @@ prop_simpleMeanIsDifferentiallyPrivate =
 
 prop_simpleSumIsDifferentiallyPrivate :: Property
 prop_simpleSumIsDifferentiallyPrivate =
-  forAll (bagListLarge (-2.0, 2.0) 1) simpleSumPrivacyTest
+  forAll (l1List 1.0) simpleSumPrivacyTest
 
 prop_unboundedMeanIsNotDifferentiallyPrivate :: Property
 prop_unboundedMeanIsNotDifferentiallyPrivate =

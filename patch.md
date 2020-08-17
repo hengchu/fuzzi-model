@@ -112,7 +112,7 @@ found a bug in 24.821094s, 9 iterations
 
 ### Instructions on applying the patch
 
-The patch is a single file `Spec.hs` (md5 = `ea8d8edb4effac1beeef7481afda0ce2`). To apply the patch, please first start a
+The patch is a single file `Spec.hs` (md5 = `8af86922d5c642dac7dd11d3ccf5b5f0`). To apply the patch, please first start a
 docker container for the FuzzDP image:
 ```bash
 $ docker run -it --rm fuzz-dp:latest
