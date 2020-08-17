@@ -62,7 +62,7 @@ prop_rnmLengthConstraints (SmallList xs) = monadicIO $ do
 
 smartSumPrivacyTest :: L1List Double -> Property
 smartSumPrivacyTest xs =
-  label ("smartsum input size: " ++ show (length xs)) $
+  --label ("smartsum input size: " ++ show (length xs)) $
   monadicIO $
     expectDP
       2.0
@@ -73,7 +73,7 @@ smartSumPrivacyTest xs =
 
 smartSumPrivacyTestRosette :: L1List Double -> Property
 smartSumPrivacyTestRosette xs =
-  label ("smartsum input size: " ++ show (length xs)) $
+  --label ("smartsum input size: " ++ show (length xs)) $
   monadicIO $
     expectDPRosette
       2.0
@@ -84,7 +84,7 @@ smartSumPrivacyTestRosette xs =
 
 prefixSumPrivacyTest :: L1List Double -> Property
 prefixSumPrivacyTest xs =
-  label ("prefixsum input size: " ++ show (length xs)) $
+  --label ("prefixsum input size: " ++ show (length xs)) $
   monadicIO $
     expectDP
       1.0
@@ -94,9 +94,10 @@ prefixSumPrivacyTest xs =
       )
 
 prefixSumBuggyNotPrivateTest :: Property
-prefixSumBuggyNotPrivateTest = label "prefixSumBuggy" $
+prefixSumBuggyNotPrivateTest =
+  --label "prefixSumBuggy" $
   monadicIO $
-    expectNotDPRosette
+    expectNotDP --Rosette
       1.0
       500
       50
@@ -106,9 +107,10 @@ prefixSumBuggyNotPrivateTest = label "prefixSumBuggy" $
       )
 
 simpleSumBuggyNotPrivateTest :: Property
-simpleSumBuggyNotPrivateTest = label "simpleSumBuggy" $
+simpleSumBuggyNotPrivateTest =
+  --label "simpleSumBuggy" $
   monadicIO $
-    expectNotDPRosette
+    expectNotDP --Rosette
       1.0
       500
       50
@@ -119,7 +121,8 @@ simpleSumBuggyNotPrivateTest = label "simpleSumBuggy" $
 
 
 rnmPrivacyTest :: PairWiseL1List Double -> Property
-rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $
+rnmPrivacyTest xs =
+  --label ("rnm input size: " ++ show (length xs)) $
   monadicIO $
     expectDP
       2.0
@@ -129,7 +132,8 @@ rnmPrivacyTest xs = label ("rnm input size: " ++ show (length xs)) $
       )
 
 rnmPrivacyTestRosette :: PairWiseL1List Double -> Property
-rnmPrivacyTestRosette xs = label ("rnmOpt input size: " ++ show (length xs)) $
+rnmPrivacyTestRosette xs =
+  --label ("rnmOpt input size: " ++ show (length xs)) $
   monadicIO $
     expectDPRosette
       2.0
@@ -139,7 +143,8 @@ rnmPrivacyTestRosette xs = label ("rnmOpt input size: " ++ show (length xs)) $
       )
 
 rnmGapPrivacyTest :: PairWiseL1List Double -> Property
-rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $
+rnmGapPrivacyTest xs =
+  --label ("rnmGap input size: " ++ show (length xs)) $
   monadicIO $
     expectDPRosette
       4.0
@@ -149,9 +154,10 @@ rnmGapPrivacyTest xs = label ("rnmGap input size: " ++ show (length xs)) $
       )
 
 rnmGapBuggyNotPrivateTest :: Property
-rnmGapBuggyNotPrivateTest = label "rnmGapBuggy" $
+rnmGapBuggyNotPrivateTest =
+  --label "rnmGapBuggy" $
   monadicIO $
-    expectNotDPRosette
+    expectNotDP --Rosette
       4.0
       100
       50
@@ -161,7 +167,9 @@ rnmGapBuggyNotPrivateTest = label "rnmGapBuggy" $
       )
 
 rnmNotPrivateTest :: Property
-rnmNotPrivateTest = label "rnmBuggy" $ monadicIO $
+rnmNotPrivateTest =
+  --label "rnmBuggy" $
+  monadicIO $
   expectNotDP
     2.0
     300
@@ -172,7 +180,9 @@ rnmNotPrivateTest = label "rnmBuggy" $ monadicIO $
     ) -- code duplication because of let bindings monomorphises the types
 
 smartSumNotPrivateTest :: Property
-smartSumNotPrivateTest = label "smartSumBuggy" $ monadicIO $
+smartSumNotPrivateTest =
+  --label "smartSumBuggy" $
+  monadicIO $
   expectNotDP
     2.0
     500
@@ -184,7 +194,7 @@ smartSumNotPrivateTest = label "smartSumBuggy" $ monadicIO $
 
 numericSparseVectorPrivacyTest :: PairWiseL1List Double -> Property
 numericSparseVectorPrivacyTest xs =
-  label ("numericSparseVector input length: " ++ show (length xs)) $
+  --label ("numericSparseVector input length: " ++ show (length xs)) $
   monadicIO $
     expectDP
       1.0
@@ -195,7 +205,7 @@ numericSparseVectorPrivacyTest xs =
 
 sparseVectorPrivacyTest :: PairWiseL1List Double -> Property
 sparseVectorPrivacyTest xs =
-  label ("sparseVector input length: " ++ show (length xs)) $
+  --label ("sparseVector input length: " ++ show (length xs)) $
   monadicIO $
     expectDP
       1.0
@@ -206,7 +216,7 @@ sparseVectorPrivacyTest xs =
 
 sparseVectorRenoiseThresholdPrivacyTest :: PairWiseL1List Double -> Property
 sparseVectorRenoiseThresholdPrivacyTest xs =
-  label ("sparseVectorRenoiseThreshold input length: " ++ show (length xs)) $
+  --label ("sparseVectorRenoiseThreshold input length: " ++ show (length xs)) $
   monadicIO $
     expectDP
       1.0
@@ -217,7 +227,7 @@ sparseVectorRenoiseThresholdPrivacyTest xs =
 
 sparseVectorPrivacyTestRosette :: PairWiseL1List Double -> Property
 sparseVectorPrivacyTestRosette xs =
-  label ("sparseVectorOpt input length: " ++ show (length xs)) $
+  --label ("sparseVectorOpt input length: " ++ show (length xs)) $
   monadicIO $
     expectDPRosette
       1.0
@@ -228,7 +238,7 @@ sparseVectorPrivacyTestRosette xs =
 
 sparseVectorGapPrivacyTest :: PairWiseL1List Double -> Property
 sparseVectorGapPrivacyTest xs =
-  label ("sparseVectorGap input length: " ++ show (length xs)) $
+  --label ("sparseVectorGap input length: " ++ show (length xs)) $
   monadicIO $
     expectDP
       1.0
@@ -239,7 +249,7 @@ sparseVectorGapPrivacyTest xs =
 
 sparseVectorGapPrivacyTestRosette :: PairWiseL1List Double -> Property
 sparseVectorGapPrivacyTestRosette xs =
-  label ("sparseVectorGap input length: " ++ show (length xs)) $
+  --label ("sparseVectorGap input length: " ++ show (length xs)) $
   monadicIO $
     expectDPRosette
       1.0
@@ -249,7 +259,9 @@ sparseVectorGapPrivacyTestRosette xs =
       )
 
 sparseVectorNotPrivateTest :: Property
-sparseVectorNotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
+sparseVectorNotPrivateTest =
+  --label "sparseVectorBuggy" $
+  monadicIO $
   expectNotDPRosette
     1.0
     500
@@ -260,7 +272,9 @@ sparseVectorNotPrivateTest = label "sparseVectorBuggy" $ monadicIO $
     )
 
 sparseVectorNotPrivateTestRosette :: Property
-sparseVectorNotPrivateTestRosette = label "sparseVectorBuggyOpt" $ monadicIO $
+sparseVectorNotPrivateTestRosette =
+  --label "sparseVectorBuggyOpt" $
+  monadicIO $
   expectNotDPRosetteVerbose
     1.0
     500
@@ -271,7 +285,9 @@ sparseVectorNotPrivateTestRosette = label "sparseVectorBuggyOpt" $ monadicIO $
     )
 
 sparseVector4NotPrivateTest :: Property
-sparseVector4NotPrivateTest = label "sparseVectorBuggy4" $ monadicIO $
+sparseVector4NotPrivateTest =
+  --label "sparseVectorBuggy4" $
+  monadicIO $
   expectNotDP
     1.0
     500
@@ -282,7 +298,9 @@ sparseVector4NotPrivateTest = label "sparseVectorBuggy4" $ monadicIO $
     )
 
 sparseVector5NotPrivateTest :: Property
-sparseVector5NotPrivateTest = label "sparseVectorBuggy5" $ monadicIO $
+sparseVector5NotPrivateTest =
+  --label "sparseVectorBuggy5" $
+  monadicIO $
   expectNotDP
     1.0
     500
@@ -293,7 +311,9 @@ sparseVector5NotPrivateTest = label "sparseVectorBuggy5" $ monadicIO $
     )
 
 sparseVector6NotPrivateTest :: Property
-sparseVector6NotPrivateTest = label "sparseVectorBuggy6" $ monadicIO $
+sparseVector6NotPrivateTest =
+  --label "sparseVectorBuggy6" $
+  monadicIO $
   expectNotDP
     1.0
     500
@@ -304,7 +324,9 @@ sparseVector6NotPrivateTest = label "sparseVectorBuggy6" $ monadicIO $
     )
 
 sparseVectorGapBuggyNotPrivateTest :: Property
-sparseVectorGapBuggyNotPrivateTest = label "sparseVectorGapBuggy" $ monadicIO $
+sparseVectorGapBuggyNotPrivateTest =
+  --label "sparseVectorGapBuggy" $
+  monadicIO $
   expectNotDPRosette
     1.0
     500
@@ -315,7 +337,8 @@ sparseVectorGapBuggyNotPrivateTest = label "sparseVectorGapBuggy" $ monadicIO $
     )
 
 privTreePrivacyTest :: BagList Double -> Property
-privTreePrivacyTest xs = label ("privTree input length: " ++ show (bagListLength xs)) $
+privTreePrivacyTest xs =
+  --label ("privTree input length: " ++ show (bagListLength xs)) $
   monadicIO $
   expectDP
     k_PT_EPSILON
@@ -325,7 +348,8 @@ privTreePrivacyTest xs = label ("privTree input length: " ++ show (bagListLength
     )
 
 privTreeBuggyNotPrivateTest :: Property
-privTreeBuggyNotPrivateTest = label "privTreeBuggy" $
+privTreeBuggyNotPrivateTest =
+  --label "privTreeBuggy" $
   monadicIO $
   expectNotDP
     k_PT_EPSILON
@@ -337,7 +361,8 @@ privTreeBuggyNotPrivateTest = label "privTreeBuggy" $
     )
 
 privTreeBuggy2NotPrivateTest :: Property
-privTreeBuggy2NotPrivateTest = label "privTreeBuggy2" $
+privTreeBuggy2NotPrivateTest =
+  --label "privTreeBuggy2" $
   monadicIO $
   expectNotDP
     k_PT_EPSILON
@@ -349,7 +374,8 @@ privTreeBuggy2NotPrivateTest = label "privTreeBuggy2" $
     )
 
 simpleGeometricPrivacyTest :: SensitiveCount Integer -> Property
-simpleGeometricPrivacyTest xs = label ("simple geometric input: " ++ (show xs)) $
+simpleGeometricPrivacyTest xs =
+  --label ("simple geometric input: " ++ (show xs)) $
   monadicIO $
   expectDP
     (log (1 / alpha))
@@ -362,7 +388,7 @@ simpleGeometricPrivacyTest xs = label ("simple geometric input: " ++ (show xs)) 
 
 geometricFixedSensPrivacyTest :: GeoFixedSensParam Integer -> Property
 geometricFixedSensPrivacyTest xs@(GeoFixedSensParam a b sens eps) =
-  label ("geometric fixed sensitivity input: " ++ (show xs)) $
+  --label ("geometric fixed sensitivity input: " ++ (show xs)) $
   monadicIO $
   expectDP
     (eps + 1e-15)
@@ -373,7 +399,7 @@ geometricFixedSensPrivacyTest xs@(GeoFixedSensParam a b sens eps) =
 
 loopGeometricFixedSensPrivacyTest :: NonEmptyList (GeoFixedSensParam Integer) -> Property
 loopGeometricFixedSensPrivacyTest (getNonEmpty -> xs) =
-  label ("loop geometric input size: " ++ (show (length xs))) $
+  --label ("loop geometric input size: " ++ (show (length xs))) $
   monadicIO $
   expectDP
     (eps + 1e-12)
@@ -390,7 +416,8 @@ loopGeometricFixedSensPrivacyTest (getNonEmpty -> xs) =
         eps        = sum epsValues
 
 simpleCountPrivacyTest :: BagList Int -> Property
-simpleCountPrivacyTest xs = label ("simpleCount input length: " ++ (show (bagListLength xs))) $
+simpleCountPrivacyTest xs =
+  --label ("simpleCount input length: " ++ (show (bagListLength xs))) $
   monadicIO $
   expectDP
     1.0
@@ -400,7 +427,9 @@ simpleCountPrivacyTest xs = label ("simpleCount input length: " ++ (show (bagLis
     )
 
 simpleCountEpsTooSmallTest :: Property
-simpleCountEpsTooSmallTest = label "simpleCountEpsTooSmall" $ monadicIO $
+simpleCountEpsTooSmallTest =
+  --label "simpleCountEpsTooSmall" $
+  monadicIO $
   expectNotDP
     0.5
     500
@@ -411,7 +440,8 @@ simpleCountEpsTooSmallTest = label "simpleCountEpsTooSmall" $ monadicIO $
     )
 
 simpleMeanPrivacyTest :: Double -> BagList Double -> Property
-simpleMeanPrivacyTest clipBound xs = label ("simpleMean input length: " ++ (show (bagListLength xs))) $
+simpleMeanPrivacyTest clipBound xs =
+  --label ("simpleMean input length: " ++ (show (bagListLength xs))) $
   monadicIO $
   expectDP
     (clipBound + 1.0)
@@ -420,8 +450,19 @@ simpleMeanPrivacyTest clipBound xs = label ("simpleMean input length: " ++ (show
     , reify . flip simpleMean (realToFrac clipBound) . map realToFrac $ right xs
     )
 
+simpleSumPrivacyTest :: BagList Double -> Property
+simpleSumPrivacyTest xs =
+  monadicIO $
+  expectDP
+    1.0
+    500
+    ( reify . simpleSum . map realToFrac $ left xs
+    , reify . simpleSum . map realToFrac $ right xs
+    )
+
 unboundedMeanNotPrivateTest :: Property
-unboundedMeanNotPrivateTest = label "unboundedMeanBuggy" $
+unboundedMeanNotPrivateTest =
+  --label "unboundedMeanBuggy" $
   monadicIO $
   expectNotDP
     1.0
@@ -531,6 +572,10 @@ prop_simpleMeanIsDifferentiallyPrivate :: Property
 prop_simpleMeanIsDifferentiallyPrivate =
   forAll (bagListLarge (-2.0, 2.0) 1) (simpleMeanPrivacyTest 1.0)
 
+prop_simpleSumIsDifferentiallyPrivate :: Property
+prop_simpleSumIsDifferentiallyPrivate =
+  forAll (bagListLarge (-2.0, 2.0) 1) simpleSumPrivacyTest
+
 prop_unboundedMeanIsNotDifferentiallyPrivate :: Property
 prop_unboundedMeanIsNotDifferentiallyPrivate =
   unboundedMeanNotPrivateTest
@@ -601,7 +646,7 @@ prop_rnmGapLemma7 =
 
 printAndExitIfFailed :: Result -> IO ()
 printAndExitIfFailed r = do
-  print r
+  --print r
   unless (isSuccess r) $
     exitWith (ExitFailure 1)
 
@@ -641,86 +686,189 @@ main = do
   --  stdArgs{maxSuccess=500, maxShrinks=20}
   --  prop_mergeUnionCommutes >>= printAndExitIfFailed
 
+  putStrLn $ "> Test: loopGeometric (core mechanism of DAS)"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: page 18, line 842"
   quickCheckWithResult
     expectSuccessArgs
     prop_loopGeometricFixedSensIsDifferentiallyPrivate >>= printAndExitIfFailed
 
+  putStrLn $ "> Test: rnm"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: table on page 16, line 737, rnm column"
   quickCheckWithResult
     expectSuccessArgs
     prop_rnmIsDifferentiallyPrivate >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectSuccessArgs
-    prop_rnmIsDifferentiallyPrivateRosette >>= printAndExitIfFailed
-    {-
-  quickCheckWithResult
-    expectSuccessArgs
-    prop_rnmGapIsDifferentiallyPrivate >>= printAndExitIfFailed
--}
+  --quickCheckWithResult
+  --  expectSuccessArgs
+  --  prop_rnmIsDifferentiallyPrivateRosette >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy rnm"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, rnm column"
   quickCheckWithResult
     expectFailureArgs
     prop_rnmBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: rnmGap"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: table on page 16, line 737, rnmGap column"
+  quickCheckWithResult
+    expectSuccessArgs
+    prop_rnmGapIsDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy rnmGap"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, rnmGap column"
+  quickCheckWithResult
+    expectFailureArgs
+    rnmGapBuggyNotPrivateTest >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: ps"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: table on page 16, line 737, ps column"
   quickCheckWithResult
     expectSuccessArgs
     prop_prefixSumIsDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy ps"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 737, ps column"
+  quickCheckWithResult
+    expectFailureArgs
+    prefixSumBuggyNotPrivateTest >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: ss"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: table on page 16, line 737, ss column"
   quickCheckWithResult
     expectSuccessArgs
     prop_smartSumIsDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy ss"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, ss column"
   quickCheckWithResult
     stdArgs{maxSuccess=5}
     prop_smartSumBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: sv"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: table on page 16, line 737, sv column"
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorIsDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: sv (a different and correct variant)"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: table on page 16, line 737, sv column"
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorRenoiseThresholdIsDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy sv (buggy variant #1)"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, sv column"
+  quickCheckWithResult
+    expectFailureArgs
+    prop_sparseVectorBuggy4IsNotDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy sv (buggy variant #2)"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, sv column"
+  quickCheckWithResult
+    expectFailureArgs
+    prop_sparseVectorBuggy5IsNotDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy sv (buggy variant #3)"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, sv column"
+  quickCheckWithResult
+    expectFailureArgs
+    prop_sparseVectorBuggy6IsNotDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy sv (buggy variant #4)"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, sv column"
+  quickCheckWithResult
+    expectFailureArgs
+    prop_sparseVectorBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+
 {-
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorIsDifferentiallyPrivateRosette >>= printAndExitIfFailed
 -}
+
+  putStrLn $ "> Test: svGap"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: table on page 16, line 737, svGap column"
   quickCheckWithResult
     expectSuccessArgs
     prop_sparseVectorGapIsDifferentiallyPrivate >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectFailureArgs
-    prop_sparseVectorBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectFailureArgs
-    prop_sparseVectorBuggy4IsNotDifferentiallyPrivate >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectFailureArgs
-    prop_sparseVectorBuggy5IsNotDifferentiallyPrivate >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectFailureArgs
-    prop_sparseVectorBuggy6IsNotDifferentiallyPrivate >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectSuccessArgs
-    prop_privTreeIsDifferentiallyPrivate >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectFailureArgs
-    prop_privTreeBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectSuccessArgs
-    prop_simpleCountIsDifferentiallyPrivate >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectFailureArgs
-    prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectFailureArgs
-    prop_unboundedMeanIsNotDifferentiallyPrivate >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectFailureArgs
-    simpleSumBuggyNotPrivateTest >>= printAndExitIfFailed
-  quickCheckWithResult
-    expectFailureArgs
-    prefixSumBuggyNotPrivateTest >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy svGap"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, svGap column"
   quickCheckWithResult
     expectFailureArgs
     sparseVectorGapBuggyNotPrivateTest >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: pt"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: table on page 16, line 737, svGap column"
+  quickCheckWithResult
+    expectSuccessArgs
+    prop_privTreeIsDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy pt"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, svGap column"
   quickCheckWithResult
     expectFailureArgs
-    rnmGapBuggyNotPrivateTest >>= printAndExitIfFailed
+    prop_privTreeBuggyIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: nc"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: table on page 16, line 737, nc column"
+  quickCheckWithResult
+    expectSuccessArgs
+    prop_simpleCountIsDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy nc"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, nc column"
+  quickCheckWithResult
+    expectFailureArgs
+    prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: ns"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: table on page 16, line 737, ns column"
+  quickCheckWithResult
+    expectSuccessArgs
+    prop_simpleSumIsDifferentiallyPrivate >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: buggy ns"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, ns column"
+  quickCheckWithResult
+    expectFailureArgs
+    simpleSumBuggyNotPrivateTest >>= printAndExitIfFailed
+
+  putStrLn $ "> Test: nm"
+  putStrLn $ "> Expect: test to pass"
+  putStrLn $ "> Paper reference: table on page 16, line 737, nm column"
+  quickCheckWithResult
+    expectSuccessArgs
+    prop_simpleMeanIsDifferentiallyPrivate
+
+  putStrLn $ "> Test: buggy nm"
+  putStrLn $ "> Expect: detects DP violation"
+  putStrLn $ "> Paper reference: table on page 16, line 738, nm column"
+  quickCheckWithResult
+    expectFailureArgs
+    prop_unboundedMeanIsNotDifferentiallyPrivate >>= printAndExitIfFailed
 
   putStrLn $
     "\n#######################################"
