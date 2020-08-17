@@ -16,10 +16,6 @@ import Test.QuickCheck.Monadic
 import qualified Data.Map.Strict as M
 import qualified Test.HUnit.Base as H
 
-smtTests :: H.Test
-smtTests = H.TestList [
-  ]
-
 provenanceTests :: H.Test
 provenanceTests = H.TestList [
   H.TestCase (H.assert testSmartSumProvenance)
@@ -485,8 +481,12 @@ prop_rnmGapIsDifferentiallyPrivate :: Property
 prop_rnmGapIsDifferentiallyPrivate =
   forAllShrink (pairWiseL1 1.0) shrinkPairWiseL1 rnmGapPrivacyTest
 
+
+
 prop_rnmBuggyIsNotDifferentiallyPrivate :: Property
 prop_rnmBuggyIsNotDifferentiallyPrivate = rnmNotPrivateTest
+
+
 
 prop_smartSumIsDifferentiallyPrivate :: Property
 prop_smartSumIsDifferentiallyPrivate =
@@ -495,6 +495,7 @@ prop_smartSumIsDifferentiallyPrivate =
 prop_smartSumIsDifferentiallyPrivateRosette :: Property
 prop_smartSumIsDifferentiallyPrivateRosette =
   forAll (l1List 1.0) smartSumPrivacyTestRosette
+
 
 prop_prefixSumIsDifferentiallyPrivate :: Property
 prop_prefixSumIsDifferentiallyPrivate =
@@ -543,6 +544,8 @@ prop_sparseVectorBuggy6IsNotDifferentiallyPrivate =
 prop_privTreeIsDifferentiallyPrivate :: Property
 prop_privTreeIsDifferentiallyPrivate =
   forAll (bagListSmall (0.0, 1.0) 1) privTreePrivacyTest
+
+
 
 prop_privTreeBuggyIsNotDifferentiallyPrivate :: Property
 prop_privTreeBuggyIsNotDifferentiallyPrivate =

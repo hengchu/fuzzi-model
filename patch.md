@@ -109,7 +109,7 @@ found a bug in 24.821094s, 9 iterations
 
 ### Instructions on applying the patch
 
-The patch is a single file `Spec.hs` (md5 = `84b82720cb1abfd202785e0dd0fad8d6`). To apply the patch, please first start a
+The patch is a single file `Spec.hs` (md5 = `ea8d8edb4effac1beeef7481afda0ce2`). To apply the patch, please first start a
 docker container for the FuzzDP image:
 ```bash
 $ docker run -it --rm fuzz-dp:latest
@@ -165,24 +165,24 @@ the following updated table:
 
 | Test name                                             | File:Line Number   | Evaluation | Correct | Buggy |
 |-------------------------------------------------------|--------------------|------------|---------|-------|
-| prop_simpleCountIsDifferentiallyPrivate               | `test/Spec.hs:563` | nc         | x       |       |
-| prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate | `test/Spec.hs:567` | nc         |         | x     |
-| prop_simpleMeanIsDifferentiallyPrivate                | `test/Spec.hs:571` | nm         | x       |       |
-| prop_unboundedMeanIsNotDifferentiallyPrivate          | `test/Spec.hs:579` | nm         |         | x     |
-| prop_simpleSumIsDifferentiallyPrivate                 | `test/Spec.hs:575` | ns         | x       |       |
-| simpleSumBuggyNotPrivateTest                          | `test/Spec.hs:109` | ns         |         | x     |
-| prop_prefixSumIsDifferentiallyPrivate                 | `test/Spec.hs:499` | ps         | x       |       |
-| prefixSumBuggyNotPrivateTest                          | `test/Spec.hs:96`  | ps         |         | x     |
-| prop_privTreeIsDifferentiallyPrivate                  | `test/Spec.hs:543` | pt         | x       |       |
-| prop_privTreeBuggyIsNotDifferentiallyPrivate          | `test/Spec.hs:547` | pt         |         | x     |
-| prop_rnmIsDifferentiallyPrivate                       | `test/Spec.hs:476` | rnm        | x       |       |
-| prop_rnmBuggyIsNotDifferentiallyPrivate               | `test/Spec.hs:488` | rnm        |         | x     |
+| prop_simpleCountIsDifferentiallyPrivate               | `test/Spec.hs:566` | nc         | x       |       |
+| prop_simpleCountEpsTooSmallIsNotDifferentiallyPrivate | `test/Spec.hs:570` | nc         |         | x     |
+| prop_simpleMeanIsDifferentiallyPrivate                | `test/Spec.hs:574` | nm         | x       |       |
+| prop_unboundedMeanIsNotDifferentiallyPrivate          | `test/Spec.hs:582` | nm         |         | x     |
+| prop_simpleSumIsDifferentiallyPrivate                 | `test/Spec.hs:578` | ns         | x       |       |
+| simpleSumBuggyNotPrivateTest                          | `test/Spec.hs:105` | ns         |         | x     |
+| prop_prefixSumIsDifferentiallyPrivate                 | `test/Spec.hs:500` | ps         | x       |       |
+| prefixSumBuggyNotPrivateTest                          | `test/Spec.hs:92`  | ps         |         | x     |
+| prop_privTreeIsDifferentiallyPrivate                  | `test/Spec.hs:544` | pt         | x       |       |
+| prop_privTreeBuggyIsNotDifferentiallyPrivate          | `test/Spec.hs:550` | pt         |         | x     |
+| prop_rnmIsDifferentiallyPrivate                       | `test/Spec.hs:472` | rnm        | x       |       |
+| prop_rnmBuggyIsNotDifferentiallyPrivate               | `test/Spec.hs:486` | rnm        |         | x     |
 | prop_smartSumIsDifferentiallyPrivate                  | `test/Spec.hs:491` | ss         | x       |       |
-| prop_smartSumBuggyIsNotDifferentiallyPrivate          | `test/Spec.hs:503` | ss         |         | x     |
-| prop_sparseVectorIsDifferentiallyPrivate              | `test/Spec.hs:507` | sv         | x       |       |
-| prop_sparseVectorBuggyIsNotDifferentiallyPrivate      | `test/Spec.hs:523` | sv         |         | x     |
-| prop_sparseVectorBuggy4IsNotDifferentiallyPrivate     | `test/Spec.hs:531` | sv         |         | x     |
-| prop_sparseVectorBuggy5IsNotDifferentiallyPrivate     | `test/Spec.hs:535` | sv         |         | x     |
-| prop_sparseVectorBuggy6IsNotDifferentiallyPrivate     | `test/Spec.hs:539` | sv         |         | x     |
-| prop_sparseVectorGapIsDifferentiallyPrivate           | `test/Spec.hs:555` | svGap      | x       |       |
-| sparseVectorGapBuggyNotPrivateTest                    | `test/Spec.hs:326` | svGap      |         | x     |
+| prop_smartSumBuggyIsNotDifferentiallyPrivate          | `test/Spec.hs:504` | ss         |         | x     |
+| prop_sparseVectorIsDifferentiallyPrivate              | `test/Spec.hs:508` | sv         | x       |       |
+| prop_sparseVectorBuggyIsNotDifferentiallyPrivate      | `test/Spec.hs:524` | sv         |         | x     |
+| prop_sparseVectorBuggy4IsNotDifferentiallyPrivate     | `test/Spec.hs:532` | sv         |         | x     |
+| prop_sparseVectorBuggy5IsNotDifferentiallyPrivate     | `test/Spec.hs:536` | sv         |         | x     |
+| prop_sparseVectorBuggy6IsNotDifferentiallyPrivate     | `test/Spec.hs:540` | sv         |         | x     |
+| prop_sparseVectorGapIsDifferentiallyPrivate           | `test/Spec.hs:558` | svGap      | x       |       |
+| sparseVectorGapBuggyNotPrivateTest                    | `test/Spec.hs:322` | svGap      |         | x     |
